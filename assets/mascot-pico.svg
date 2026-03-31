@@ -1,39 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="picoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0C1638"/>
+      <stop offset="100%" stop-color="#0a0a12"/>
+    </linearGradient>
+    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#4F7BFF"/>
       <stop offset="100%" stop-color="#7A4DFF"/>
     </linearGradient>
-    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF6B6B"/>
-      <stop offset="100%" stop-color="#FF3B30"/>
-    </linearGradient>
   </defs>
   
-  <!-- Background -->
-  <rect width="200" height="200" fill="#0C1638"/>
+  <rect width="200" height="200" rx="32" fill="url(#bgGrad)"/>
   
-  <!-- Main P letterform - bold geometric -->
-  <g fill="url(#picoGradient)">
-    <!-- Vertical stem -->
-    <rect x="60" y="40" width="28" height="120" rx="4"/>
-    
-    <!-- Top bar -->
-    <rect x="60" y="40" width="50" height="28" rx="4"/>
-    
-    <!-- P bowl -->
-    <path d="M88 40 L88 68 L118 68 Q136 68 136 54 Q136 40 118 40 Z" rx="4"/>
+  <!-- P mark - confident, clean -->
+  <g transform="translate(45, 35)">
+    <rect x="0" y="0" width="35" height="110" rx="6" fill="url(#pGrad)"/>
+    <rect x="0" y="0" width="70" height="35" rx="6" fill="url(#pGrad)"/>
+    <path d="M35 0 L35 65 Q100 65 100 35 Q100 5 35 5 Z" fill="url(#pGrad)"/>
   </g>
   
-  <!-- Core node - the mind -->
-  <rect x="68" y="90" width="12" height="12" rx="2" fill="url(#accentGradient)"/>
-  
-  <!-- Signal indicators - minimal dots -->
-  <circle cx="145" cy="50" r="6" fill="url(#accentGradient)"/>
-  <circle cx="160" cy="68" r="4" fill="#4F7BFF" opacity="0.6"/>
-  <circle cx="155" cy="90" r="3" fill="#7A4DFF" opacity="0.4"/>
-  
-  <!-- Clean lines suggesting connection -->
-  <line x1="136" y1="54" x2="145" y2="52" stroke="url(#picoGradient)" stroke-width="2" stroke-linecap="round"/>
-  <line x1="136" y1="62" x2="152" y2="66" stroke="#4F7BFF" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  <!-- Subtle dot -->
+  <circle cx="155" cy="50" r="8" fill="#FF6B6B"/>
 </svg>

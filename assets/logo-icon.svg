@@ -1,29 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="picoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#4F7BFF"/>
       <stop offset="100%" stop-color="#7A4DFF"/>
     </linearGradient>
-    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF6B6B"/>
-      <stop offset="100%" stop-color="#FF3B30"/>
-    </linearGradient>
   </defs>
   
-  <!-- Background -->
-  <rect width="128" height="128" rx="16" fill="#0C1638"/>
+  <!-- Clean background -->
+  <rect width="200" height="200" rx="24" fill="#ffffff"/>
   
-  <!-- P letterform -->
-  <g fill="url(#picoGradient)">
-    <rect x="32" y="24" width="16" height="80" rx="3"/>
-    <rect x="32" y="24" width="32" height="16" rx="3"/>
-    <path d="M48 24 L48 56 Q72 56 72 40 Q72 24 48 24 Z" rx="3"/>
+  <!-- Minimal P mark -->
+  <g transform="translate(40, 40)">
+    <rect x="0" y="0" width="30" height="100" rx="4" fill="url(#pGrad)"/>
+    <rect x="0" y="0" width="60" height="30" rx="4" fill="url(#pGrad)"/>
+    <path d="M30 0 L30 55 Q85 55 85 30 Q85 5 30 5 Z" fill="url(#pGrad)"/>
   </g>
   
-  <!-- Core -->
-  <rect x="36" y="64" width="8" height="8" rx="2" fill="url(#accentGradient)"/>
-  
-  <!-- Signal -->
-  <circle cx="88" cy="32" r="4" fill="url(#accentGradient)"/>
-  <line x1="72" y1="40" x2="84" y2="33" stroke="url(#picoGradient)" stroke-width="2" stroke-linecap="round"/>
+  <!-- Small accent -->
+  <circle cx="130" cy="50" r="6" fill="#FF6B6B"/>
 </svg>

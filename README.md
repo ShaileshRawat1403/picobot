@@ -1,11 +1,11 @@
 # Picobot
 
 <p align="center">
-  <img src="assets/mascot-pico-hero.svg" alt="Pico - Your AI Assistant" width="300"/>
+  <img src="assets/mascot-pico-hero.svg" alt="Picobot" width="280"/>
 </p>
 
 <p align="center">
-  <strong>Your personal AI agent that works everywhere.</strong>
+  <strong>Your AI agent that works where you work.</strong>
 </p>
 
 <p align="center">
@@ -13,13 +13,7 @@
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"/>
   </a>
   <a href="https://python.org">
-    <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python"/>
-  </a>
-  <a href="https://github.com/picobot-ai/picobot/stargazers">
-    <img src="https://img.shields.io/github/stars/picobot-ai/picobot" alt="Stars"/>
-  </a>
-  <a href="https://github.com/picobot-ai/picobot/releases">
-    <img src="https://img.shields.io/github/v/release/picobot-ai/picobot" alt="Version"/>
+    <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python"/>
   </a>
 </p>
 
@@ -27,55 +21,38 @@
 
 ## What is Picobot?
 
-Picobot is a **privacy-focused, multi-channel AI agent framework** that brings the power of Large Language Models to your favorite messaging platforms. Whether you're on Telegram, Discord, or building custom integrations, Picobot serves as your intelligent assistant that never sleeps.
+Picobot is an AI agent you can talk to anywhere - Telegram, Discord, WhatsApp, or web. It's trained on your context, powered by prompt and context engineering, and ready to help you automate, research, and get things done.
 
-### Key Principles
-
-- **Privacy First**: Your data stays on your infrastructure
-- **Multi-Platform**: Works where you work
-- **Extensible**: Build custom skills and tools
-- **Supervised**: DAX integration for approval workflows
+Think of it as having a knowledgeable assistant that's always there, understands your workspace, and can execute tasks on your behalf.
 
 ---
 
-## Features
+## How It Works
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-Channel** | Telegram, WhatsApp, Discord, Slack, Web, Email |
-| **LLM Providers** | 15+ providers including Gemini, Claude, GPT-4, Ollama |
-| **Tool Ecosystem** | Web search, file ops, calendar, cron jobs, GitHub |
-| **Memory** | Persistent sessions with automatic memory consolidation |
-| **Skills** | Extensible skill system for custom capabilities |
-| **DAX Integration** | Supervised automation with approval workflows |
+You chat with Picobot naturally. Behind the scenes, it uses:
+- **Prompt engineering** to understand intent and context
+- **Context engineering** to maintain memory across conversations  
+- **Tool execution** to take real actions (search, files, git, code)
+
+The magic is in the conversation - no code needed on your end.
 
 ---
 
 ## Quick Start
 
-### Installation
+### Install
 
 ```bash
-# From PyPI
 pip install picobot
-
-# Or from source
-git clone https://github.com/picobot-ai/picobot.git
-cd picobot
-pip install -e .
 ```
 
-### Initialize
+### Configure
 
 ```bash
 picobot onboard
 ```
 
-This creates the configuration file at `~/.picobot/config.json`.
-
-### Configure
-
-Edit `~/.picobot/config.json`:
+This creates `~/.picobot/config.json`. Edit it to add your channels:
 
 ```json
 {
@@ -98,282 +75,144 @@ Edit `~/.picobot/config.json`:
 ### Run
 
 ```bash
-# Gateway mode (all channels)
 picobot gateway
-
-# Single agent message
-picobot agent -m "Hello, help me debug this code"
-
-# Web interface only
-picobot web
 ```
+
+Now chat with your bot on Telegram!
 
 ---
 
-## CLI Commands
+## Commands
 
-| Command | Description |
-|---------|-------------|
-| `picobot onboard` | Initialize configuration |
-| `picobot agent -m "..."` | Single message to the agent |
+| Command | What it does |
+|---------|---------------|
+| `picobot onboard` | First-time setup |
+| `picobot agent -m "..."` | Quick question |
 | `picobot gateway` | Start with all channels |
-| `picobot web` | Start web interface |
-| `picobot status` | Show current status |
-| `picobot doctor` | Run health diagnostics |
-| `picobot channels status` | Show channel status |
-| `picobot provider login` | OAuth login for providers |
+| `picobot status` | Check what's running |
+| `picobot doctor` | Diagnose issues |
 
 ---
 
-## Channel Setup
+## Setting Up Telegram
 
-### Telegram
-
-1. Create a bot via [@BotFather](https://t.me/BotFather)
-2. Get your bot token
-3. Get your user ID: send `/start` to [@userinfobot](https://t.me/userinfobot)
-4. Add to config:
-
-```json
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "123456:ABC-DEF...",
-      "allowFrom": ["123456789"]
-    }
-  }
-}
-```
-
-### Discord
-
-1. Create application at [Discord Developer Portal](https://discord.com/developers)
-2. Add bot to your server
-3. Get bot token and guild ID
-4. Configure:
-
-```json
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "guildId": "YOUR_GUILD_ID"
-    }
-  }
-}
-```
-
-### WhatsApp
-
-1. Scan QR code with `picobot channels whatsapp scan`
-2. Link persists in config
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. Send `/newbot` and follow the prompts
+3. Copy the token
+4. Send any message to your new bot, then check [@userinfobot](https://t.me/userinfobot) to get your user ID
+5. Add both to your config
 
 ---
 
-## LLM Providers
+## Supported Models
 
-### Supported Providers
+| Provider | Auth | Notes |
+|----------|------|-------|
+| **Gemini** | OAuth / API Key | Recommended - use with DAX for OAuth |
+| **OpenAI** | API Key | GPT-4, GPT-3.5 |
+| **Claude** | API Key | Opus, Sonnet, Haiku |
+| **DeepSeek** | API Key | Great for code |
+| **Ollama** | Local | Run models locally |
+| **Groq** | API Key | Fast inference |
+| **Custom** | API Key + URL | Any OpenAI-compatible API |
 
-| Provider | Auth Method | Models |
-|----------|-------------|--------|
-| **Google Gemini** | API Key / OAuth (DAX) | Gemini 1.5 Pro, 2.0, Flash |
-| **OpenAI** | API Key | GPT-4o, GPT-4 Turbo, GPT-3.5 |
-| **Anthropic** | API Key | Claude 3.5 Sonnet, Opus, Haiku |
-| **DeepSeek** | API Key | DeepSeek Chat, Coder |
-| **Ollama** | Local | All local models |
-| **Groq** | API Key | Llama, Mixtral |
-| **OpenRouter** | API Key | 100+ models |
-| **Azure OpenAI** | API Key | GPT-4, Codex |
-| **Custom** | API Key + URL | OpenAI-compatible APIs |
+### Using DAX for Gemini OAuth
 
-### OAuth Setup (Gemini via DAX)
-
-Picobot supports OAuth authentication for Gemini through DAX:
+DAX handles OAuth authentication for Gemini:
 
 ```bash
-# Start DAX OAuth server
+# Terminal 1: Start DAX
 cd /Users/Shared/MYAIAGENTS/dax
 python -m dax run
 
-# In another terminal
+# Terminal 2: Login to Gemini
 picobot provider login gemini_oauth
 ```
 
-This opens browser for OAuth flow, storing tokens securely.
-
 ---
 
-## Skills
+## What Picobot Can Do
 
-Picobot includes built-in skills:
-
-| Skill | Description |
-|-------|-------------|
-| `web` | Search the web, fetch pages |
-| `file` | Read, write, list files |
-| `terminal` | Execute whitelisted commands |
-| `calendar` | Manage calendar events |
-| `email` | Send and read emails |
-| `github` | GitHub API operations |
-| `cron` | Schedule recurring tasks |
-| `memory` | Persistent memory storage |
-| `summarize` | Summarize content |
-| `task` | Task management |
-| `weather` | Weather information |
-
-### Creating Custom Skills
-
-```markdown
-# picobot/skills/my-skill/SKILL.md
-
-## Identity
-- name: my-skill
-- version: 1.0.0
-- description: My custom skill
-
-## Triggers
-- "do something with {topic}"
-
-## Actions
-- action: my_action
-  description: Does something
-  params:
-    - name: topic
-      type: string
-      required: true
-```
+- **Answer questions** - Search the web, read documentation
+- **Manage files** - Read, write, organize your workspace
+- **Git operations** - Status, commit, push, PR summaries
+- **Code tasks** - Write, review, debug code
+- **Schedule tasks** - Set up recurring reminders
+- **Calendar & email** - Manage your time and communications
+- **And more** - Skills can be added to extend capabilities
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                         Picobot                          │
-├─────────────────────────────────────────────────────────┤
-│  Channels     │   Agent Core   │    Bus     │  Providers│
-│  ─────────    │   ──────────   │   ───     │  ──────── │
-│  Telegram     │   Context      │   Queue   │   Gemini  │
-│  WhatsApp     │   Memory       │   Events  │   OpenAI  │
-│  Discord      │   Skills       │           │   Claude  │
-│  Slack        │   Tools        │           │   Ollama  │
-│  Web          │   DAX Client   │           │   Custom  │
-└─────────────────────────────────────────────────────────┘
-                           │
-                    DAX Engine (Supervision)
-                           │
+┌─────────────────────────────────────────────────────────────┐
+│                        Picobot                               │
+├─────────────────────────────────────────────────────────────┤
+│  Channels     │   Agent     │   Bus      │   Providers    │
+│  ─────────    │   ────────  │   ───     │   ──────────   │
+│  Telegram     │   Context   │   Queue   │   Gemini      │
+│  Discord      │   Memory    │   Events  │   OpenAI      │
+│  WhatsApp     │   Skills    │           │   Claude       │
+│  Web          │   Tools     │           │   Ollama       │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                    DAX (OAuth + Supervision)
+                          │
                     Soothsayer Dashboard
 ```
-
-### Core Components
-
-- **Channels**: Bridge between messaging platforms and Picobot
-- **Agent**: LLM-powered decision making and response generation
-- **Bus**: Event queue for async operations
-- **Memory**: Session persistence and context management
-- **Skills**: Modular capability extensions
-- **DAX**: Approval workflows and supervision
 
 ---
 
 ## Security
 
-Picobot includes multiple security layers:
+Picobot is designed for responsible automation:
 
-| Feature | Description |
-|---------|-------------|
-| **Shell Allowlist** | Only pre-approved commands execute |
-| **Workspace Restriction** | File ops limited to designated workspace |
-| **DAX Approval** | File modifications require approval |
-| **Channel Allowlists** | Whitelist users per channel |
-| **Token Storage** | Secure credential management |
-
-### Environment Variables
-
-```bash
-# Channel tokens
-PICOBOT_CHANNELS__TELEGRAM__TOKEN=xxx
-
-# Agent defaults
-PICOBOT_AGENTS__DEFAULTS__MODEL=gemini-2.5-pro
-PICOBOT_AGENTS__DEFAULTS__PROVIDER=gemini_oauth
-
-# Tool config
-PICOBOT_TOOLS__WEB__SEARCH__API_KEY=xxx
-```
+- **Shell allowlist** - Only approved commands run
+- **Workspace bounds** - File ops stay in your workspace
+- **DAX approval** - Sensitive actions need your approval
+- **User allowlists** - Only whitelisted users can interact
 
 ---
 
-## Configuration Reference
+## Configuration
 
 ```json
 {
   "channels": {
-    "telegram": { ... },
-    "discord": { ... },
-    "whatsapp": { ... }
+    "telegram": { "enabled": true, "token": "..." }
   },
   "agents": {
     "defaults": {
       "model": "gemini-2.5-pro",
       "provider": "gemini_oauth",
-      "temperature": 0.7,
-      "maxTokens": 8192
-    }
-  },
-  "tools": {
-    "terminal": {
-      "allowed": ["git", "ls", "cat"],
-      "workspace": "/path/to/workspace"
+      "temperature": 0.7
     }
   },
   "dax": {
     "url": "http://localhost:3000",
     "workspaceId": "your-workspace-id"
-  },
-  "memory": {
-    "consolidationThreshold": 10,
-    "maxHistory": 1000
   }
 }
 ```
 
 ---
 
-## API Integration
+## API
 
-Picobot can be integrated with external systems via webhooks:
+Picobot exposes endpoints for integration:
 
-### Health Check
 ```
-POST /api/picobot/webhook/health
-```
-
-### Activity Sync
-```
-POST /api/picobot/webhook/activity
-{
-  "type": "message_received",
-  "channelType": "telegram",
-  "userId": "123456",
-  "message": "Hello!"
-}
-```
-
-### Commands
-```
-GET  /api/picobot/commands/pending  # Poll for pending commands
-POST /api/picobot/commands/{id}/acknowledge
-POST /api/picobot/commands/{id}/complete
+POST /api/picobot/webhook/health      # Health checks
+POST /api/picobot/webhook/activity    # Activity sync
+GET  /api/picobot/stats              # Get stats
+POST /api/picobot/send              # Send message
+GET  /api/picobot/commands/pending   # Poll commands
 ```
 
 ---
 
 ## Troubleshooting
-
-### Common Issues
 
 **Bot not responding?**
 ```bash
@@ -381,34 +220,9 @@ picobot doctor
 picobot channels status
 ```
 
-**OAuth token expired?**
+**Token expired?**
 ```bash
 picobot provider login gemini_oauth
-```
-
-**Database sync issues?**
-```bash
-# Check Soothsayer connection
-curl http://localhost:3000/api/health
-```
-
----
-
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-```bash
-# Development setup
-git clone https://github.com/picobot-ai/picobot.git
-cd picobot
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Lint
-ruff check .
 ```
 
 ---
@@ -416,15 +230,3 @@ ruff check .
 ## License
 
 MIT License - see [LICENSE](LICENSE)
-
----
-
-<p align="center">
-  <strong>Made with care by developers, for developers.</strong>
-</p>
-
-<p align="center">
-  <img src="assets/logo-icon.svg" alt="Picobot" width="32" height="32"/>
-  <br/>
-  <sub>Picobot v2.0</sub>
-</p>
