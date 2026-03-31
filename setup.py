@@ -1,19 +1,17 @@
 from setuptools import setup, find_packages
 
-all_packages = find_packages(".")
-
 setup(
     name="picobot",
-    version="0.2.0",
+    version="1.0.0",
     author="Picobot Contributors",
-    description="A lightweight AI agent framework",
-    long_description=open("README.md").read() if open("README.md", "r").readable() else "",
+    description="A lightweight, privacy-focused AI agent framework",
+    long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/HKUDS/picobot",
-    package_dir={"picobot": "."},
-    packages=["picobot"] + ["picobot." + p for p in all_packages],
+    url="https://github.com/picobot-ai/picobot",
+    packages=find_packages(where="picobot"),
+    package_dir={"": "picobot"},
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
@@ -34,8 +32,15 @@ setup(
         "oauth-cli-kit>=0.1.0",
         "litellm>=1.0.0",
         "pydantic-settings>=2.0.0",
-        "json_repair>=0.1.0",
+        "json-repair>=0.1.0",
     ],
+    extras_require={
+        "dev": [
+            "pytest>=7.0.0",
+            "pytest-asyncio>=0.21.0",
+            "ruff>=0.1.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "picobot=picobot.__main__:app",

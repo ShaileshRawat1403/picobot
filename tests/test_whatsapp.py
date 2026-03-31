@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
 """Simple test to send a message to WhatsApp via the bridge.
 
-Run manually: python test_whatsapp.py
+Run manually: python tests/test_whatsapp.py
 This requires the WhatsApp bridge to be running.
 """
 
 import asyncio
 import json
-import websockets
 import sys
+
+try:
+    import websockets
+    import pytest
+    WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    import pytest
+    WEBSOCKETS_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(not WEBSOCKETS_AVAILABLE, reason="websockets not installed")
 
 
 async def main():
+    if not WEBSOCKETS_AVAILABLE:
+        print("❌ websockets not installed. Run: pip install websockets")
+        return
+    
     uri = "ws://localhost:3001"
     
     try:
