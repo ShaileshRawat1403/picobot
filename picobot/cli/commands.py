@@ -6,6 +6,7 @@ import select
 import signal
 import sys
 from pathlib import Path
+from loguru import logger
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -596,8 +597,6 @@ def agent(
     logs: bool = typer.Option(False, "--logs/--no-logs", help="Show picobot runtime logs during chat"),
 ):
     """Interact with the agent directly."""
-    from loguru import logger
-
     from picobot.agent.loop import AgentLoop
     from picobot.bus.queue import MessageBus
     from picobot.config.paths import get_cron_dir
