@@ -60,4 +60,4 @@ jobs:
 
     - name: Run tests
       run: |
-        pytest tests/ -v --tb=short
+        PYTHONPATH=picobot pytest tests/ -v --tb=short
