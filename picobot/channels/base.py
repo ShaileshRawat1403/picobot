@@ -99,14 +99,7 @@ class BaseChannel(ABC):
         Handle an incoming message from the chat platform.
 
         This method checks permissions and forwards to the bus.
-
-        Args:
-            sender_id: The sender's identifier.
-            chat_id: The chat/channel identifier.
-            content: Message text content.
-            media: Optional list of media URLs.
-            metadata: Optional channel-specific metadata.
-            session_key: Optional session key override (e.g. thread-scoped sessions).
+        Also tracks activity to Soothsayer.
         """
         if not self.is_allowed(sender_id):
             logger.warning(
@@ -115,6 +108,8 @@ class BaseChannel(ABC):
                 sender_id, self.name,
             )
             return
+
+        await self._track_activity("message_received", str(sender_id), content)
 
         msg = InboundMessage(
             channel=self.name,
@@ -127,6 +122,27 @@ class BaseChannel(ABC):
         )
 
         await self.bus.publish_inbound(msg)
+
+    async def _track_activity(
+        self,
+        event_type: str,
+        user_id: str,
+        message: str = "",
+    ) -> None:
+        """Track activity to Soothsayer."""
+        try:
+            from picobot.bus.soothsayer_service import get_soothsayer_service, ActivityEvent
+            soothsayer = get_soothsayer_service()
+            if soothsayer and soothsayer.is_enabled:
+                event = ActivityEvent(
+                    type=event_type,
+                    channel=self.name,
+                    user_id=user_id,
+                    message=message,
+                )
+                await soothsayer.track_event(event)
+        except Exception:
+            pass
 
     @property
     def is_running(self) -> bool:

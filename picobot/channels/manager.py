@@ -117,6 +117,8 @@ class ChannelManager:
 
                 logger.debug(f"Dispatching message to channel={msg.channel}, chat_id={msg.chat_id}")
 
+                await self._track_sent_message(msg)
+
                 if msg.metadata.get("_progress"):
                     if msg.metadata.get("_tool_hint") and not self.config.channels.send_tool_hints:
                         continue
@@ -156,3 +158,19 @@ class ChannelManager:
     def enabled_channels(self) -> list[str]:
         """Get list of enabled channel names."""
         return list(self.channels.keys())
+
+    async def _track_sent_message(self, msg) -> None:
+        """Track sent message to Soothsayer."""
+        try:
+            from picobot.bus.soothsayer_service import get_soothsayer_service, ActivityEvent
+            soothsayer = get_soothsayer_service()
+            if soothsayer and soothsayer.is_enabled:
+                event = ActivityEvent(
+                    type="message_sent",
+                    channel=msg.channel,
+                    user_id=msg.chat_id,
+                    message=msg.content[:100],
+                )
+                await soothsayer.track_event(event)
+        except Exception:
+            pass

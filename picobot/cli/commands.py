@@ -378,6 +378,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     """Shared gateway runner used by both gateway and web commands."""
     from picobot.agent.loop import AgentLoop
     from picobot.bus.queue import MessageBus
+    from picobot.bus.soothsayer_service import init_soothsayer_service
     from picobot.channels.manager import ChannelManager
     from picobot.config.paths import get_cron_dir
     from picobot.cron.service import CronService
@@ -397,6 +398,9 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
+
+    # Initialize Soothsayer integration
+    soothsayer = init_soothsayer_service(config.soothsayer)
 
     cron_store_path = get_cron_dir() / "jobs.json"
     cron = CronService(cron_store_path)
@@ -520,7 +524,23 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
     async def run():
+        async def poll_commands():
+            while True:
+                try:
+                    await asyncio.sleep(5)
+                    if soothsayer.is_enabled:
+                        await soothsayer.poll_and_execute_commands()
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.debug("Command polling error: {}", e)
+
+        command_task = asyncio.create_task(poll_commands())
+
         try:
+            await soothsayer.start()
+            if soothsayer.is_enabled:
+                console.print(f"[green]✓[/green] Soothsayer: {config.soothsayer.url}")
             await cron.start()
             await heartbeat.start()
             await asyncio.gather(
@@ -530,11 +550,17 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
         except KeyboardInterrupt:
             console.print("\nShutting down...")
         finally:
+            command_task.cancel()
+            try:
+                await command_task
+            except asyncio.CancelledError:
+                pass
             await agent.close_mcp()
             heartbeat.stop()
             cron.stop()
             agent.stop()
             await channels.stop_all()
+            await soothsayer.stop()
 
     asyncio.run(run())
 

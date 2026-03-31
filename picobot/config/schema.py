@@ -322,6 +322,25 @@ class DaxConfig(Base):
     max_consecutive_failures: int = 5
 
 
+class SoothsayerConfig(Base):
+    """Soothsayer control plane integration."""
+
+    enabled: bool = False
+    url: str = "http://localhost:3000"  # Soothsayer API URL
+    api_key: str = ""  # Optional API key for Soothsayer auth
+    workspace_id: str = ""  # Soothsayer workspace ID
+    sync_interval_s: int = 30  # How often to sync activity
+    events: list[str] = Field(
+        default_factory=lambda: [
+            "session_start",
+            "session_end",
+            "message_received",
+            "message_sent",
+            "error",
+        ]
+    )  # Events to sync
+
+
 class HeartbeatConfig(Base):
     """Heartbeat service configuration."""
 
@@ -392,6 +411,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     dax: DaxConfig = Field(default_factory=DaxConfig)
+    soothsayer: SoothsayerConfig = Field(default_factory=SoothsayerConfig)
 
     @property
     def workspace_path(self) -> Path:

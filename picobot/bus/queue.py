@@ -4,6 +4,13 @@ import asyncio
 
 from picobot.bus.events import InboundMessage, OutboundMessage
 
+_message_bus: "MessageBus | None" = None
+
+
+def get_message_bus() -> "MessageBus | None":
+    """Get the global MessageBus instance."""
+    return _message_bus
+
 
 class MessageBus:
     """
@@ -14,6 +21,8 @@ class MessageBus:
     """
 
     def __init__(self):
+        global _message_bus
+        _message_bus = self
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()
 
