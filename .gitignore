@@ -51,6 +51,7 @@ whatsapp-auth/
 assets/*.svg
 !assets/logo*.svg
 !assets/favicon.svg
+!assets/mascot*.svg
 
 # Third-party binaries
 dax
