@@ -52,7 +52,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install --no-build-isolation -e ".[dev]"
+        pip install -e ".[dev,all]"
 
     - name: Verify installation
       run: |
@@ -60,4 +60,4 @@ jobs:
 
     - name: Run tests
       run: |
-        PYTHONPATH=. pytest tests/ -v --tb=short
+        pytest tests/ -v --tb=short
