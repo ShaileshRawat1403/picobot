@@ -46,7 +46,7 @@ class LLMResponse:
     thinking_blocks: list[dict] | None = None  # Anthropic extended thinking
     provider_name: str | None = None
     model_name: str | None = None
-    
+
     @property
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""

@@ -5,14 +5,13 @@ Picobot is thin ingress only - all business logic remains in DAX.
 """
 
 import json
-import os
 from typing import Any
+
 import httpx
 
 from picobot.agent.tools.base import Tool
-from picobot.bus.dax_service import get_dax_service, init_dax_service, DaxPollingService
-from picobot.bus.dax_auth import get_admin_numbers, is_authorized, get_default_url
-
+from picobot.bus.dax_auth import get_admin_numbers, get_default_url, is_authorized
+from picobot.bus.dax_service import DaxPollingService, get_dax_service
 
 DRAFT_PATTERNS = [
     "create", "write", "generate", "make", "build",
@@ -60,26 +59,26 @@ def classify_intent(message: str) -> dict[str, Any] | None:
     Priority: repo_analyze > draft_and_approve > generic
     """
     text = message.lower()
-    
+
     has_analyze_action = any(p in text for p in ANALYZE_PATTERNS)
     has_analyze_object = any(k in text for k in ANALYZE_KEYWORDS)
-    
+
     if has_analyze_action and has_analyze_object:
         return {
             "workflowClass": "repo_analyze",
             "workflowHint": "repo_analyze",
             "kind": "analysis"
         }
-    
+
     has_action = any(p in text for p in DRAFT_PATTERNS)
     has_object = any(k in text for k in DRAFT_KEYWORDS)
-    
+
     if has_action and has_object:
         return {
             "workflowClass": "draft_and_approve",
             "kind": "workflow_step"
         }
-    
+
     return None
 
 
@@ -95,16 +94,16 @@ def format_approval_message(approval: dict) -> str:
 def format_run_status(status: dict) -> str:
     """Format run status for WhatsApp display."""
     lines = []
-    
+
     workflow = status.get("workflow", {})
     progress = status.get("progress", {})
     trust = status.get("trust", {})
-    
+
     if workflow:
         lines.append(f"🤖 *{workflow.get('classLabel', workflow.get('class', 'Workflow'))}*")
     else:
         lines.append("🤖 *Workflow Running*")
-    
+
     if status.get("status") == "running":
         lines.append(f"\nStep: {progress.get('currentStepLabel', progress.get('currentStep', 'Working...'))}")
         lines.append(f"Progress: {progress.get('percentage', 0)}%")
@@ -120,22 +119,22 @@ def format_run_status(status: dict) -> str:
             lines.append(f"Reason: {status.get('terminalReasonLabel')}")
         if status.get("terminalReasonDescription"):
             lines.append(f"{status.get('terminalReasonDescription')}")
-    
+
     return "\n".join(lines)
 
 
 class DaxTool(Tool):
     """Tool for interacting with DAX workflows through Soothsayer API."""
-    
+
     def __init__(self, config: dict | None = None):
         self._config = config or {}
         self._dax_url = get_default_url(self._config.get("url"))
         self._admin_numbers = get_admin_numbers(self._config.get("admin_numbers"))
-    
+
     @property
     def name(self) -> str:
         return "dax"
-    
+
     @property
     def description(self) -> str:
         return (
@@ -145,7 +144,7 @@ class DaxTool(Tool):
             "repo_analyze (analyze, explore, understand, inspect codebase), "
             "draft_and_approve (create, write, generate files/code)."
         )
-    
+
     @property
     def parameters(self) -> dict[str, Any]:
         return {
@@ -184,34 +183,34 @@ class DaxTool(Tool):
             },
             "required": ["action"]
         }
-    
+
     async def execute(self, **kwargs: Any) -> str:
         """Execute DAX tool action."""
         action = kwargs.get("action")
-        
+
         if action == "classify_intent":
             message = kwargs.get("message", "")
             result = classify_intent(message)
             if result:
                 return json.dumps(result, indent=2)
             return json.dumps({"error": USER_ERROR_MESSAGES["INVALID_INTENT"]})
-        
+
         elif action == "create_run":
             message = kwargs.get("message", "")
             chat_id = kwargs.get("actor_id", "unknown")
             channel = kwargs.get("channel", "whatsapp")
-            
+
             if not is_authorized(chat_id, self._admin_numbers):
                 authorized_numbers = get_admin_numbers(self._admin_numbers)
                 return json.dumps({
                     "error": USER_ERROR_MESSAGES["PERMISSION_DENIED"],
                     "authorizedNumbers": authorized_numbers
                 })
-            
+
             intent = classify_intent(message)
             if not intent:
                 return json.dumps({"error": USER_ERROR_MESSAGES["INVALID_INTENT"]})
-            
+
             payload = {
                 "intent": {
                     "input": message,
@@ -223,18 +222,18 @@ class DaxTool(Tool):
                     "initiatedBy": chat_id
                 }
             }
-            
+
             try:
                 async with _HttpClient(self._dax_url) as client:
                     response = await client.post("/soothsayer/runs", payload)
-                    
+
                     if response.get("runId"):
                         run_id = response["runId"]
-                        
+
                         dax_service = get_dax_service()
                         if dax_service:
                             dax_service.track_run(run_id, chat_id, channel)
-                        
+
                         return json.dumps({
                             "success": True,
                             "runId": run_id,
@@ -243,39 +242,39 @@ class DaxTool(Tool):
                         }, indent=2)
                     else:
                         return json.dumps({"error": "Failed to create run", "details": response})
-                        
+
             except Exception as e:
                 return json.dumps({
                     "error": USER_ERROR_MESSAGES["DAX_UNAVAILABLE"],
                     "details": str(e)
                 })
-        
+
         elif action == "get_status":
             run_id = kwargs.get("run_id")
             if not run_id:
                 return json.dumps({"error": "run_id is required"})
-            
+
             try:
                 async with _HttpClient(self._dax_url) as client:
                     response = await client.get(f"/soothsayer/runs/{run_id}")
                     return json.dumps(response, indent=2)
             except Exception as e:
                 return json.dumps({"error": f"Failed to get status: {str(e)}"})
-        
+
         elif action == "get_approvals":
             run_id = kwargs.get("run_id")
             if not run_id:
                 return json.dumps({"error": "run_id is required"})
-            
+
             try:
                 async with _HttpClient(self._dax_url) as client:
                     response = await client.get(f"/soothsayer/runs/{run_id}/approvals")
-                    
+
                     pending = [a for a in response if a.get("status") == "pending"]
-                    
+
                     if not pending:
                         return json.dumps({"approvals": [], "message": "No pending approvals"})
-                    
+
                     formatted = [format_approval_message(a) for a in pending]
                     return json.dumps({
                         "approvals": pending,
@@ -284,16 +283,16 @@ class DaxTool(Tool):
                     }, indent=2)
             except Exception as e:
                 return json.dumps({"error": f"Failed to get approvals: {str(e)}"})
-        
+
         elif action == "resolve_approval":
             run_id = kwargs.get("run_id")
             approval_id = kwargs.get("approval_id")
             decision = kwargs.get("decision")
             actor_id = kwargs.get("actor_id", "unknown")
-            
+
             if not all([run_id, approval_id, decision]):
                 return json.dumps({"error": "run_id, approval_id, and decision are required"})
-            
+
             try:
                 async with _HttpClient(self._dax_url) as client:
                     response = await client.post(
@@ -304,10 +303,10 @@ class DaxTool(Tool):
                             "source": "soothsayer"
                         }
                     )
-                    
+
                     if response.get("status"):
                         is_idempotent = response.get("idempotent", False)
-                        
+
                         if is_idempotent:
                             status = response["status"]
                             return json.dumps({
@@ -316,7 +315,7 @@ class DaxTool(Tool):
                                 "idempotent": True,
                                 "message": f"ℹ️ This approval was already {status}. No changes made."
                             }, indent=2)
-                        
+
                         emoji = "✅" if decision == "approve" else "❌"
                         action_word = "approved" if decision == "approve" else "denied"
                         return json.dumps({
@@ -328,43 +327,43 @@ class DaxTool(Tool):
                         return json.dumps({"error": "Failed to resolve approval", "details": response})
             except Exception as e:
                 return json.dumps({"error": f"Failed to resolve approval: {str(e)}"})
-        
+
         elif action == "resolve_latest_approval":
             """Resolve the most recent pending approval across all active runs."""
             decision = kwargs.get("decision")
             actor_id = kwargs.get("actor_id", "unknown")
-            
+
             if not is_authorized(actor_id, self._admin_numbers):
                 authorized_numbers = get_admin_numbers(self._admin_numbers)
                 return json.dumps({
                     "error": USER_ERROR_MESSAGES["PERMISSION_DENIED"],
                     "authorizedNumbers": authorized_numbers
                 })
-            
+
             if not decision:
                 return json.dumps({"error": "decision is required"})
-            
+
             try:
                 async with _HttpClient(self._dax_url) as client:
                     overview = await client.get("/soothsayer/overview")
-                    
+
                     pending_approvals = overview.get("pendingApprovals", [])
                     if not pending_approvals:
                         return json.dumps({
                             "success": False,
                             "error": "No pending approvals found"
                         })
-                    
+
                     latest_approval = pending_approvals[0]
                     latest_run_id = latest_approval.get("runId")
                     latest_approval_id = latest_approval.get("approvalId")
-                    
+
                     if not latest_run_id or not latest_approval_id:
                         return json.dumps({
                             "success": False,
                             "error": "Could not find approval details"
                         })
-                    
+
                     resolve_response = await client.post(
                         f"/soothsayer/runs/{latest_run_id}/approvals/{latest_approval_id}",
                         {
@@ -373,10 +372,10 @@ class DaxTool(Tool):
                             "source": "soothsayer"
                         }
                     )
-                    
+
                     if resolve_response.get("status"):
                         is_idempotent = resolve_response.get("idempotent", False)
-                        
+
                         if is_idempotent:
                             return json.dumps({
                                 "success": True,
@@ -386,7 +385,7 @@ class DaxTool(Tool):
                                 "approvalId": latest_approval_id,
                                 "message": f"ℹ️ This approval was already {resolve_response['status']}. No changes made."
                             })
-                        
+
                         emoji = "✅" if decision == "approve" else "❌"
                         action_word = "approved" if decision == "approve" else "denied"
                         return json.dumps({
@@ -402,31 +401,31 @@ class DaxTool(Tool):
                             "error": "Failed to resolve approval",
                             "details": resolve_response
                         })
-                        
+
             except Exception as e:
                 return json.dumps({"error": f"Failed to resolve approval: {str(e)}"})
-        
+
         return json.dumps({"error": f"Unknown action: {action}"})
 
 
 class _HttpClient:
     """Simple async HTTP client for DAX API."""
-    
+
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
-    
+
     async def __aenter__(self):
         self.session = httpx.AsyncClient(timeout=30.0)
         return self
-    
+
     async def __aexit__(self, *args):
         await self.session.aclose()
-    
+
     async def get(self, path: str) -> dict:
         url = f"{self.base_url}{path}"
         response = await self.session.get(url)
         return response.json()
-    
+
     async def post(self, path: str, data: dict) -> dict:
         url = f"{self.base_url}{path}"
         response = await self.session.post(url, json=data)

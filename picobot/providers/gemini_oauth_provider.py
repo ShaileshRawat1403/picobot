@@ -3,8 +3,8 @@ Gemini OAuth Provider for Picobot
 Uses DAX OAuth tokens with Code Assist API (Pro/Plus serverless).
 """
 
-import os
 import json
+import os
 import time
 import uuid
 from typing import Any
@@ -17,14 +17,14 @@ from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 class GeminiOAuthProvider(LLMProvider):
     """Gemini provider using DAX OAuth with Code Assist API (serverless)."""
-    
+
     # Code Assist API (Pro/Plus serverless endpoint)
     CODE_ASSIST_URL = "https://cloudcode-pa.googleapis.com/v1internal:generateContent"
     CODE_ASSIST_LOAD_URL = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist"
     CODE_ASSIST_ONBOARD_URL = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser"
-    
+
     DAX_AUTH_PATH = os.path.expanduser("~/.local/share/dax/auth.json")
-    
+
     def __init__(self):
         super().__init__(api_key=None, api_base=None)
         self._token = ""
@@ -36,17 +36,17 @@ class GeminiOAuthProvider(LLMProvider):
         """Load OAuth token state from DAX auth.json."""
         if not os.path.exists(self.DAX_AUTH_PATH):
             raise ValueError(f"DAX auth not found at {self.DAX_AUTH_PATH}")
-        
+
         with open(self.DAX_AUTH_PATH, encoding="utf-8") as f:
             auth = json.load(f)
-        
+
         google = auth.get("google", {})
         token = google.get("access")
         expires = int(google.get("expires") or 0)
-        
+
         if not token:
             raise ValueError("No access token in DAX auth.json")
-        
+
         return token, expires
 
     def _reload_auth(self, force: bool = False) -> None:
@@ -72,20 +72,20 @@ class GeminiOAuthProvider(LLMProvider):
             "Content-Type": "application/json",
             "User-Agent": "GoogleCloud/1.0.0 GeminiCLI/0.34.0",
         }
-    
+
     async def _resolve_quota_project(self) -> str:
         """Resolve quota project for Code Assist API."""
         if self._quota_project:
             return self._quota_project
-        
+
         headers = self._auth_headers()
-        
+
         metadata = {
             "ideType": "IDE_UNSPECIFIED",
             "platform": "PLATFORM_UNSPECIFIED",
             "pluginType": "GEMINI",
         }
-        
+
         for url in [self.CODE_ASSIST_LOAD_URL, self.CODE_ASSIST_ONBOARD_URL]:
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
@@ -102,14 +102,14 @@ class GeminiOAuthProvider(LLMProvider):
                         return self._quota_project
             except Exception:
                 pass
-        
+
         self._quota_project = "free-tier"
         return self._quota_project
-    
+
     def get_default_model(self) -> str:
         """Get the default model for this provider."""
         return "gemini-2.5-pro"
-    
+
     def _build_payload(
         self,
         messages: list[dict[str, Any]],
@@ -121,16 +121,16 @@ class GeminiOAuthProvider(LLMProvider):
         """Build payload for Generative Language API."""
         gemini_contents = []
         system_instruction = None
-        
+
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            
+
             if role == "system":
                 if isinstance(content, str):
                     system_instruction = {"parts": [{"text": content}]}
                 continue
-            
+
             if role == "tool":
                 name = msg.get("name", "unknown")
                 part = {
@@ -139,7 +139,7 @@ class GeminiOAuthProvider(LLMProvider):
                         "response": {"content": content}
                     }
                 }
-                
+
                 if gemini_contents and gemini_contents[-1]["role"] == "user":
                     gemini_contents[-1]["parts"].append(part)
                 else:
@@ -148,9 +148,9 @@ class GeminiOAuthProvider(LLMProvider):
                         "parts": [part]
                     })
                 continue
-            
+
             gemini_role = "model" if role == "assistant" else "user"
-            
+
             parts = []
             if isinstance(content, str) and content:
                 parts.append({"text": content})
@@ -160,7 +160,7 @@ class GeminiOAuthProvider(LLMProvider):
                         parts.append({"text": part.get("text", "")})
                     elif isinstance(part, str):
                         parts.append({"text": part})
-            
+
             if role == "assistant" and "tool_calls" in msg and msg["tool_calls"]:
                 for tool_call in msg["tool_calls"]:
                     func = tool_call.get("function", {})
@@ -175,26 +175,26 @@ class GeminiOAuthProvider(LLMProvider):
                             "args": args
                         }
                     })
-            
+
             if parts:
                 gemini_contents.append({
                     "role": gemini_role,
                     "parts": parts
                 })
-        
+
         generation_config = {
             "temperature": temperature,
             "maxOutputTokens": max_tokens,
         }
-        
+
         payload = {
             "contents": gemini_contents,
             "generationConfig": generation_config
         }
-        
+
         if system_instruction:
             payload["systemInstruction"] = system_instruction
-            
+
         if tools:
             function_declarations = self._build_function_declarations(tools)
             if function_declarations:
@@ -202,9 +202,9 @@ class GeminiOAuthProvider(LLMProvider):
                 payload["toolConfig"] = {
                     "functionCallingConfig": {"mode": "AUTO"}
                 }
-        
+
         return payload, system_instruction
-    
+
     def _build_function_declarations(self, tools: list[dict[str, Any]]) -> list:
         """Build function declarations from tools."""
         function_declarations = []
@@ -212,7 +212,7 @@ class GeminiOAuthProvider(LLMProvider):
             if tool.get("type") == "function":
                 func = tool.get("function", {})
                 parameters = func.get("parameters", {}).copy()
-                
+
                 def fix_param_types(param_schema):
                     if isinstance(param_schema, dict):
                         if param_schema.get("type") == "object":
@@ -224,27 +224,27 @@ class GeminiOAuthProvider(LLMProvider):
                             fix_param_types(param_schema["items"])
                     return param_schema
                 fix_param_types(parameters)
-                    
+
                 function_declarations.append({
                     "name": func.get("name", ""),
                     "description": func.get("description", ""),
                     "parameters": parameters
                 })
-        
+
         return function_declarations
-    
+
     def _parse_response(self, result: dict) -> LLMResponse:
         """Parse API response into LLMResponse."""
         if "candidates" not in result or not result["candidates"]:
             raise ValueError(f"No candidates in response: {json.dumps(result)}")
-        
+
         candidate = result["candidates"][0]
         if "content" not in candidate or "parts" not in candidate["content"]:
             raise ValueError(f"No content parts in response: {json.dumps(candidate)}")
-        
+
         text_parts = []
         tool_calls = []
-        
+
         for part in candidate["content"]["parts"]:
             if "text" in part:
                 text_parts.append(part["text"])
@@ -257,20 +257,20 @@ class GeminiOAuthProvider(LLMProvider):
                     name=name,
                     arguments=args
                 ))
-        
+
         content = "".join(text_parts)
-        
+
         finish_reason = "stop"
         if candidate.get("finishReason") == "MAX_TOKENS":
             finish_reason = "length"
-        
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
             provider_name="gemini_oauth",
         )
-    
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -283,15 +283,15 @@ class GeminiOAuthProvider(LLMProvider):
     ) -> LLMResponse:
         """Send a chat completion request using Code Assist API (Pro/Plus serverless)."""
         model_name = model or self.get_default_model()
-        
+
         # Get quota project
         project = await self._resolve_quota_project()
-        
+
         # Build standard payload
         payload, _ = self._build_payload(
             messages, tools, model_name, temperature, max_tokens
         )
-        
+
         # Wrap for Code Assist API
         wrapped_payload = {
             "project": project,
@@ -325,7 +325,7 @@ class GeminiOAuthProvider(LLMProvider):
             try:
                 error_data = response.json()
                 error_msg = error_data.get("error", {}).get("message", "")
-                
+
                 # Extract retry time if available
                 import re
                 retry_match = re.search(r'(\d+)s', error_msg)
@@ -338,16 +338,16 @@ class GeminiOAuthProvider(LLMProvider):
                 raise
             except Exception:
                 raise ValueError("Gemini quota exhausted. Please wait and try again.")
-        
+
         if response.status_code != 200:
             raise ValueError(f"Gemini API error: {response.text[:200]}")
-        
+
         result = response.json()
-        
+
         # Extract response from Code Assist wrapper
         if "response" in result:
             result = result["response"]
-        
+
         parsed = self._parse_response(result)
         parsed.model_name = model_name
         return parsed

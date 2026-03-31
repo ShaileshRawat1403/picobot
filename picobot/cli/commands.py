@@ -19,12 +19,11 @@ if sys.platform == "win32":
             pass
 
 import typer
-from prompt_toolkit import print_formatted_text
-from prompt_toolkit import PromptSession
+from prompt_toolkit import PromptSession, print_formatted_text
+from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.formatted_text import ANSI, HTML
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.patch_stdout import patch_stdout
-from prompt_toolkit.application import run_in_terminal
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
@@ -262,10 +261,10 @@ def onboard():
 
 def _make_provider(config: Config):
     """Create the appropriate LLM provider from config."""
+    from picobot.providers.azure_openai_provider import AzureOpenAIProvider
     from picobot.providers.base import GenerationSettings
     from picobot.providers.fallback_provider import FallbackProvider
     from picobot.providers.openai_codex_provider import OpenAICodexProvider
-    from picobot.providers.azure_openai_provider import AzureOpenAIProvider
 
     def _build_single_provider(model: str):
         provider_name = config.get_provider_name(model)
@@ -880,7 +879,6 @@ def web(
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
 ):
     """Start picobot with the web interface enabled."""
-    from picobot.config.loader import load_config
 
     cfg = _load_runtime_config(config, workspace)
     cfg.channels.web.enabled = True
@@ -926,15 +924,15 @@ def status():
             else:
                 has_key = bool(p.api_key)
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
-        
+
         # DAX status
         if config.dax and config.dax.enabled:
-            console.print(f"DAX: [green]✓ Enabled[/green]")
+            console.print("DAX: [green]✓ Enabled[/green]")
             console.print(f"  URL: {config.dax.url}")
             admin_count = len(config.dax.admin_numbers)
             console.print(f"  Admin Numbers: {admin_count} configured")
         else:
-            console.print(f"DAX: [dim]disabled[/dim]")
+            console.print("DAX: [dim]disabled[/dim]")
 
 
 @app.command()

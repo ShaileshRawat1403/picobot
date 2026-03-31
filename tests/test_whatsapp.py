@@ -7,11 +7,10 @@ This requires the WhatsApp bridge to be running.
 
 import asyncio
 import json
-import sys
 
 try:
-    import websockets
     import pytest
+    import websockets
     WEBSOCKETS_AVAILABLE = True
 except ImportError:
     import pytest
@@ -24,23 +23,23 @@ async def main():
     if not WEBSOCKETS_AVAILABLE:
         print("❌ websockets not installed. Run: pip install websockets")
         return
-    
+
     uri = "ws://localhost:3001"
-    
+
     try:
         async with websockets.connect(uri, ping_interval=None) as ws:
             print("✅ Connected to WhatsApp bridge!")
-            
+
             # Send a test message
             payload = {
                 "type": "send",
                 "to": "+919370449266",
                 "text": "Hello from picobot! Test message."
             }
-            
+
             await ws.send(json.dumps(payload))
             print(f"📤 Sent: {payload['text']}")
-            
+
             # Wait for response with timeout
             try:
                 while True:
@@ -55,7 +54,7 @@ async def main():
                         return
             except asyncio.TimeoutError:
                 print("⏱️ Timeout waiting for response")
-                
+
     except Exception as e:
         print(f"❌ Error: {e}")
 

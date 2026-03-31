@@ -59,7 +59,7 @@ class QQChannel(BaseChannel):
     def __init__(self, config: QQConfig, bus: MessageBus):
         super().__init__(config, bus)
         self.config: QQConfig = config
-        self._client: "botpy.Client | None" = None
+        self._client: botpy.Client | None = None
         self._processed_ids: deque = deque(maxlen=1000)
         self._msg_seq: int = 1  # 消息序列号，避免被 QQ API 去重
         self._chat_type_cache: dict[str, str] = {}

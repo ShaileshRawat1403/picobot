@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """Tests for Telegram channel implementation."""
 
-import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from telegram import Update, Message, User, Chat, CallbackQuery
-from telegram.ext import ContextTypes
+from unittest.mock import MagicMock
 
+import pytest
+
+from picobot.bus.queue import MessageBus
 from picobot.channels.telegram import (
-    _strip_md,
-    _render_table_box,
-    _markdown_to_telegram_html,
     TelegramChannel,
+    _markdown_to_telegram_html,
+    _render_table_box,
+    _strip_md,
 )
 from picobot.config.schema import TelegramConfig
-from picobot.bus.queue import MessageBus
 
 
 class TestMarkdownConversion:

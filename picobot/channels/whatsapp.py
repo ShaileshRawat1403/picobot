@@ -3,7 +3,6 @@
 import asyncio
 import json
 import mimetypes
-import os
 from collections import OrderedDict
 
 from loguru import logger
@@ -47,14 +46,14 @@ class WhatsAppChannel(BaseChannel):
             try:
                 async with websockets.connect(bridge_url) as ws:
                     self._ws = ws
-                    
+
                     # Send auth token if configured
                     if self.config.bridge_token:
                         logger.debug("Sending auth token to bridge...")
                         await ws.send(json.dumps({"type": "auth", "token": self.config.bridge_token}))
                     else:
                         self._authenticated = True # Assume open if no token
-                        
+
                     self._connected = True
                     logger.info("Connected to WhatsApp bridge")
 
@@ -133,7 +132,7 @@ class WhatsAppChannel(BaseChannel):
 
             # Extract just the phone number as sender_id for the agent
             sender_id = sender.split("@")[0] if "@" in sender else sender
-            
+
             # Filter by allow_from if configured in picobot
             if self.config.allow_from:
                 # Normalize numbers for comparison
@@ -154,7 +153,7 @@ class WhatsAppChannel(BaseChannel):
 
             await self._handle_message(
                 sender_id=sender_id,
-                chat_id=sender, 
+                chat_id=sender,
                 content=content,
                 media=media_paths,
                 metadata={

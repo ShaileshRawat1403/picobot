@@ -35,7 +35,7 @@ class WebChannel(BaseChannel):
 
         self._running = True
         logger.info("Starting Web server on http://{}:{} (WebSocket: ws://{}:{})", host, port, host, port)
-        
+
         # Load index.html
         web_dir = Path(__file__).parent.parent / "web"
         self._index_html = (web_dir / "index.html").read_text("utf-8")
@@ -44,7 +44,7 @@ class WebChannel(BaseChannel):
             self._handle_connection, host, port,
             process_request=self._process_request
         )
-        
+
         while self._running:
             await asyncio.sleep(1)
 
@@ -61,7 +61,7 @@ class WebChannel(BaseChannel):
             self._server.close()
             await self._server.wait_closed()
             self._server = None
-        
+
         # Close all active client connections
         if self._clients:
             await asyncio.gather(
@@ -90,7 +90,7 @@ class WebChannel(BaseChannel):
                 await client.send(payload)
             except websockets.exceptions.ConnectionClosed:
                 disconnected.add(client)
-        
+
         for client in disconnected:
             self._clients.remove(client)
 
@@ -98,7 +98,7 @@ class WebChannel(BaseChannel):
         """Handle a new WebSocket client connection."""
         self._clients.add(websocket)
         logger.info("New web client connected. Total clients: {}", len(self._clients))
-        
+
         try:
             async for message in websocket:
                 try:
@@ -107,7 +107,7 @@ class WebChannel(BaseChannel):
                         content = data.get("content")
                         chat_id = data.get("chat_id", "web-session")
                         sender_id = data.get("sender_id", "web-user")
-                        
+
                         await self._handle_message(
                             sender_id=sender_id,
                             chat_id=chat_id,

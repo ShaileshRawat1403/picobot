@@ -16,15 +16,15 @@ from loguru import logger
 from picobot.agent.context import ContextBuilder
 from picobot.agent.memory import MemoryConsolidator
 from picobot.agent.subagent import SubagentManager
+from picobot.agent.tools.calendar import CalendarTool
 from picobot.agent.tools.cron import CronTool
+from picobot.agent.tools.dax import DaxTool
 from picobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from picobot.agent.tools.message import MessageTool
 from picobot.agent.tools.registry import ToolRegistry
 from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
-from picobot.agent.tools.dax import DaxTool
-from picobot.agent.tools.calendar import CalendarTool
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
@@ -134,31 +134,31 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
-        
+
         dax_enabled = os.environ.get("DAX_ENABLED", "").lower() == "true"
         if self.dax_config and self.dax_config.enabled:
             dax_enabled = True
-        
+
         if dax_enabled:
             self._init_dax()
-        
+
         self.tools.register(CalendarTool())
-    
+
     def _init_dax(self) -> None:
         """Initialize DAX polling service and tool."""
         from picobot.bus.dax_service import init_dax_service
-        
+
         dax_url = self.dax_config.url if self.dax_config else None
         admin_numbers = self.dax_config.admin_numbers if self.dax_config else None
         failure_threshold = self.dax_config.max_consecutive_failures if self.dax_config else 5
-        
+
         self._dax_service = init_dax_service(
             dax_url=dax_url,
             send_callback=self.bus.publish_outbound,
             admin_numbers=admin_numbers,
             failure_threshold=failure_threshold,
         )
-        
+
         dax_tool_config = {
             "url": dax_url,
             "admin_numbers": admin_numbers,
@@ -298,11 +298,11 @@ class AgentLoop:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True
         await self._connect_mcp()
-        
+
         if self._dax_service:
             self._dax_service.start()
             logger.info("DAX polling service started")
-        
+
         logger.info("Agent loop started")
 
         while self._running:
@@ -378,7 +378,7 @@ class AgentLoop:
         if self._mcp_stack:
             try:
                 await self._mcp_stack.aclose()
-            except (RuntimeError, BaseExceptionGroup):
+            except (RuntimeError, Exception):
                 pass  # MCP SDK cancel scope cleanup is noisy but harmless
             self._mcp_stack = None
 

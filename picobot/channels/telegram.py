@@ -9,7 +9,14 @@ import unicodedata
 
 from loguru import logger
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters, Update
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 from telegram.request import HTTPXRequest
 
 from picobot.bus.events import OutboundMessage
@@ -202,20 +209,20 @@ class TelegramChannel(BaseChannel):
             return False
 
         sender_str = str(sender_id)
-        
+
         # Handle plain numeric ID (no username)
         if "|" not in sender_str:
             if sender_str.isdigit():
                 return sender_str in allow_list
             return False
-        
+
         # Handle id|username format
         parts = sender_str.split("|", 1)
         if len(parts) == 2:
             sid, username = parts
             if sid.isdigit():
                 return sid in allow_list or username in allow_list
-        
+
         return False
 
     async def start(self) -> None:
@@ -247,7 +254,7 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("stop", self._forward_command))
         self._app.add_handler(CommandHandler("restart", self._forward_command))
         self._app.add_handler(CommandHandler("help", self._on_help))
-        
+
         # Add callback query handler for inline buttons (must be before MessageHandler)
         self._app.add_handler(CallbackQueryHandler(self._on_callback_query))
 
@@ -407,7 +414,7 @@ class TelegramChannel(BaseChannel):
         text = _normalize_telegram_text(self._apply_utility_footer(text, metadata))
         try:
             html = _markdown_to_telegram_html(text)
-            
+
             reply_markup = None
             if inline_buttons:
                 keyboard = []
@@ -420,7 +427,7 @@ class TelegramChannel(BaseChannel):
                         ))
                     keyboard.append(button_row)
                 reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             await self._app.bot.send_message(
                 chat_id=chat_id, text=html, parse_mode="HTML",
                 reply_parameters=reply_params,
@@ -442,7 +449,7 @@ class TelegramChannel(BaseChannel):
                             ))
                         keyboard.append(button_row)
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                
+
                 await self._app.bot.send_message(
                     chat_id=chat_id,
                     text=text,
@@ -525,33 +532,33 @@ class TelegramChannel(BaseChannel):
         query = update.callback_query
         if not query:
             return
-        
+
         try:
             # Parse callback_data (format: "approve_<run_id>" or "deny_<run_id>")
             callback_data = query.data or ""
             parts = callback_data.split("_", 1)
-            
+
             if len(parts) != 2:
                 await query.answer("Invalid action")
                 return
-            
+
             action, run_id = parts
-            
+
             if action not in ("approve", "deny"):
                 await query.answer("Unknown action")
                 return
-            
+
             # Acknowledge the button press
             await query.answer("Processing...")
-            
+
             # Build the command to forward to the agent
             command = f"resolve_latest_approval {action} {run_id}"
-            
+
             # Get sender info
             user = query.from_user
             sender_id = self._sender_id(user)
             chat_id = str(query.message.chat_id) if query.message else str(user.id)
-            
+
             # Forward to the bus for processing
             metadata = {
                 "callback_query_id": query.id,
@@ -559,14 +566,14 @@ class TelegramChannel(BaseChannel):
                 "inline_action": action,
                 "run_id": run_id,
             }
-            
+
             await self._handle_message(
                 sender_id=sender_id,
                 chat_id=chat_id,
                 content=command,
                 metadata=metadata,
             )
-            
+
         except Exception as e:
             logger.error("Error handling callback query: {}", e)
             await query.answer("Error processing request")

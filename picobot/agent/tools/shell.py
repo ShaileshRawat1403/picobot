@@ -9,7 +9,6 @@ from typing import Any
 
 from picobot.agent.tools.base import Tool
 
-
 SAFE_COMMANDS_ALLOWLIST = {
     # File reading
     "cat", "head", "tail", "less", "more", "grep", "rg", "ag", "find",
@@ -129,12 +128,12 @@ class ExecTool(Tool):
         timeout: int | None = None, **kwargs: Any,
     ) -> str:
         import re
-        
+
         cwd = working_dir or self.working_dir or os.getcwd()
         guard_error = self._guard_command(command, cwd)
         if guard_error:
             return guard_error
-        
+
         # Detect file operations that should go through DAX
         for pattern in self.FILE_OP_PATTERNS:
             if re.search(pattern, command, re.IGNORECASE):

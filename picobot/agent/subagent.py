@@ -14,7 +14,7 @@ from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
-from picobot.config.schema import ExecToolConfig
+from picobot.config.schema import ExecToolConfig, WebSearchConfig
 from picobot.providers.base import LLMProvider
 from picobot.utils.helpers import build_assistant_message
 
@@ -33,8 +33,6 @@ class SubagentManager:
         exec_config: "ExecToolConfig | None" = None,
         restrict_to_workspace: bool = False,
     ):
-        from picobot.config.schema import ExecToolConfig, WebSearchConfig
-
         self.provider = provider
         self.workspace = workspace
         self.bus = bus
@@ -104,7 +102,7 @@ class SubagentManager:
             ))
             tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
             tools.register(WebFetchTool(proxy=self.web_proxy))
-            
+
             system_prompt = self._build_subagent_prompt()
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system_prompt},
@@ -194,7 +192,7 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences). Do not men
 
         await self.bus.publish_inbound(msg)
         logger.debug("Subagent [{}] announced result to {}:{}", task_id, origin['channel'], origin['chat_id'])
-    
+
     def _build_subagent_prompt(self) -> str:
         """Build a focused system prompt for the subagent."""
         from picobot.agent.context import ContextBuilder

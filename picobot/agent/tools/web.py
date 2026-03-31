@@ -218,7 +218,7 @@ class WebSearchTool(Tool):
             headers = {"Accept": "application/json", "Authorization": f"Bearer {api_key}"}
             async with httpx.AsyncClient(proxy=self.proxy) as client:
                 r = await client.get(
-                    f"https://s.jina.ai/",
+                    "https://s.jina.ai/",
                     params={"q": query},
                     headers=headers,
                     timeout=15.0,
@@ -257,39 +257,39 @@ class WebSearchTool(Tool):
         """Direct DuckDuckGo HTML scraping - always works, no API key needed."""
         try:
             import urllib.parse
-            
+
             encoded_q = urllib.parse.quote_plus(query)
             url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
-            
+
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 resp = await client.get(url, headers={"User-Agent": USER_AGENT})
                 resp.raise_for_status()
-            
+
             html_content = resp.text
             items = []
-            
+
             urls = list(dict.fromkeys(re.findall(r'uddg=([^&"<>]+)', html_content)))
-            
+
             for raw_url in urls:
                 decoded = urllib.parse.unquote(raw_url)
                 if not decoded or 'duckduckgo' in decoded.lower():
                     continue
-                    
+
                 domain = re.sub(r'https?://(www\.)?', '', decoded).split('/')[0][:50]
                 items.append({
                     "title": f"{domain} - {decoded[:100]}",
                     "url": decoded,
                     "content": f"Result from {domain}"
                 })
-                
+
                 if len(items) >= n:
                     break
-            
+
             if not items:
                 return f"No results for: {query}"
-            
+
             return _format_results(query, items, n)
-            
+
         except Exception as e:
             logger.error("DuckDuckGo HTML scraping failed: {}", e)
             return f"Error: Web search failed ({e}). Please try again later."
