@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "picobot"
+version = "1.0.0"
+description = "A lightweight, privacy-focused AI agent framework with multi-channel support"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Picobot Contributors"}
+]
+keywords = ["ai", "agent", "llm", "telegram", "cli", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "prompt-toolkit>=3.0.0",
+    "loguru>=0.7.0",
+    "httpx>=0.24.0",
+    "oauth-cli-kit>=0.1.0",
+    "litellm>=1.0.0",
+    "pydantic-settings>=2.0.0",
+    "json-repair>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+all = [
+    "dingtalk-stream>=0.1.0",
+    "python-telegram-bot>=20.0.0",
+    "discord.py>=2.0.0",
+    "slack-sdk>=3.0.0",
+    "matrix-nio>=0.21.0",
+    "python-socketio>=5.0.0",
+]
+
+[project.scripts]
+picobot = "picobot.__main__:app"
+
+[project.urls]
+Homepage = "https://github.com/picobot-ai/picobot"
+Documentation = "https://github.com/picobot-ai/picobot#readme"
+Repository = "https://github.com/picobot-ai/picobot"
+Issues = "https://github.com/picobot-ai/picobot/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["picobot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true

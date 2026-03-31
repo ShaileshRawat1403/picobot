@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a12"/>
+      <stop offset="100%" style="stop-color:#12121f"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="50%" style="stop-color:#7b68ee"/>
+      <stop offset="100%" style="stop-color:#ff6b9d"/>
+    </linearGradient>
+    <linearGradient id="connectionGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d4ff" stop-opacity="0.8"/>
+      <stop offset="100%" style="stop-color:#ff6b9d" stop-opacity="0.3"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="nodeGlow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Dark background -->
+  <rect width="128" height="128" fill="url(#bg)"/>
+  
+  <!-- Subtle grid pattern suggesting digital space -->
+  <g opacity="0.08" stroke="#00d4ff" stroke-width="0.5">
+    <line x1="0" y1="32" x2="128" y2="32"/>
+    <line x1="0" y1="64" x2="128" y2="64"/>
+    <line x1="0" y1="96" x2="128" y2="96"/>
+    <line x1="32" y1="0" x2="32" y2="128"/>
+    <line x1="64" y1="0" x2="64" y2="128"/>
+    <line x1="96" y1="0" x2="96" y2="128"/>
+  </g>
+  
+  <!-- Neural network connections forming P -->
+  <g fill="none" stroke="url(#connectionGrad)" stroke-width="1.5" stroke-linecap="round">
+    <!-- Vertical stem connections -->
+    <line x1="44" y1="28" x2="44" y2="100"/>
+    <line x1="44" y1="28" x2="56" y2="28"/>
+    <line x1="44" y1="100" x2="56" y2="100"/>
+    
+    <!-- Top loop connections -->
+    <path d="M56 28 Q80 28 80 46 Q80 64 64 64 L44 64"/>
+    
+    <!-- Neural pathways - branching connections -->
+    <line x1="56" y1="46" x2="72" y2="46"/>
+    <line x1="68" y1="38" x2="68" y2="54"/>
+    <line x1="72" y1="46" x2="84" y2="38"/>
+    <line x1="72" y1="46" x2="84" y2="54"/>
+    
+    <!-- Lower accent connections -->
+    <line x1="44" y1="76" x2="56" y2="76"/>
+    <line x1="44" y1="88" x2="52" y2="88"/>
+  </g>
+  
+  <!-- Neural nodes at connection points -->
+  <g filter="url(#nodeGlow)">
+    <!-- Main stem nodes -->
+    <circle cx="44" cy="28" r="4" fill="url(#nodeGrad)"/>
+    <circle cx="44" cy="64" r="4" fill="url(#nodeGrad)"/>
+    <circle cx="44" cy="100" r="4" fill="url(#nodeGrad)"/>
+    
+    <!-- Loop nodes -->
+    <circle cx="56" cy="28" r="3" fill="#00d4ff"/>
+    <circle cx="80" cy="46" r="3" fill="#7b68ee"/>
+    <circle cx="64" cy="64" r="3" fill="#ff6b9d"/>
+    
+    <!-- Branch nodes -->
+    <circle cx="56" cy="46" r="2.5" fill="#00d4ff"/>
+    <circle cx="72" cy="46" r="3.5" fill="#7b68ee"/>
+    <circle cx="84" cy="38" r="2" fill="#ff6b9d"/>
+    <circle cx="84" cy="54" r="2" fill="#ff6b9d"/>
+    
+    <!-- Lower accent nodes -->
+    <circle cx="56" cy="76" r="2" fill="#7b68ee"/>
+    <circle cx="52" cy="88" r="2" fill="#ff6b9d"/>
+  </g>
+  
+  <!-- Central intelligence core - pulsing effect -->
+  <circle cx="72" cy="46" r="8" fill="none" stroke="#00d4ff" stroke-width="1" opacity="0.5"/>
+  <circle cx="72" cy="46" r="5" fill="#00d4ff" opacity="0.3"/>
+  
+  <!-- Accent dot - pico precision -->
+  <circle cx="88" cy="24" r="3" fill="#ff6b9d"/>
+  
+  <!-- Subtle signal waves emanating -->
+  <g fill="none" stroke="#00d4ff" stroke-width="0.75" opacity="0.15">
+    <path d="M92 24 Q96 20 92 16"/>
+    <path d="M96 24 Q102 18 96 12"/>
+  </g>
+</svg>

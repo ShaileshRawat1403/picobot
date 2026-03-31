@@ -1,0 +1,15 @@
+Date: 15/3/2026
+Time: 23:11
+Phone Number: +919370449266
+Message: Hello from picobot!
+--------------------
+Date: 15/3/2026
+Time: 23:13
+Phone Number: +919370449266
+Message: Test from picobot - ONLY to your number!
+--------------------
+Date: 15/3/2026
+Time: 23:17
+Phone Number: +919370449266
+Message: Hello from picobot!
+--------------------

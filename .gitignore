@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+venv/
+.venv/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.example
+
+# Logs
+*.log
+picobot.log
+
+# Node
+node_modules/
+bridge/dist/
+bridge/tokens/
+
+# Session/Memory
+.picobot/
+*.session
+sessions/
+
+# WhatsApp Bridge
+whatsapp-auth/
+
+# Assets
+assets/*.svg
+!assets/logo*.svg
+!assets/favicon.svg
+
+# Third-party binaries
+dax
+
+# Temp
+*.tmp
+*.bak

@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f0f1a"/>
+      <stop offset="100%" style="stop-color:#1a1a2e"/>
+    </linearGradient>
+    <linearGradient id="primary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="100%" style="stop-color:#6366f1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff2d7a"/>
+      <stop offset="100%" style="stop-color:#ff6b6b"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="pulse">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
+  </defs>
+  
+  <rect width="128" height="128" fill="url(#bg)"/>
+  
+  <!-- Hexagonal grid background - tech aesthetic -->
+  <g stroke="#ffffff" stroke-width="0.5" opacity="0.05">
+    <polygon points="64,8 100,28 100,68 64,88 28,68 28,28" fill="none"/>
+    <polygon points="64,20 92,36 92,64 64,80 36,64 36,36" fill="none"/>
+    <polygon points="64,32 84,44 84,60 64,72 44,60 44,44" fill="none"/>
+  </g>
+  
+  <!-- Signal waves emanating from center -->
+  <g fill="none" stroke="url(#primary)" opacity="0.15">
+    <circle cx="56" cy="64" r="20"/>
+    <circle cx="56" cy="64" r="32"/>
+    <circle cx="56" cy="64" r="44"/>
+    <circle cx="56" cy="64" r="56"/>
+  </g>
+  
+  <!-- Central P with neural network aesthetic -->
+  <g filter="url(#glow)">
+    <!-- P letterform - bold and clear -->
+    <path d="M36 32 L36 96" 
+          stroke="url(#primary)" 
+          stroke-width="8" 
+          stroke-linecap="round"
+          fill="none"/>
+    
+    <path d="M36 32 L64 32 C80 32 88 44 88 56 C88 68 80 76 64 76 L36 76" 
+          stroke="url(#primary)" 
+          stroke-width="8" 
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"/>
+  </g>
+  
+  <!-- Active nodes on P - suggesting intelligence -->
+  <g filter="url(#glow)">
+    <!-- Top of stem -->
+    <circle cx="36" cy="32" r="5" fill="#00d4ff"/>
+    <circle cx="36" cy="32" r="3" fill="#ffffff"/>
+    
+    <!-- Middle of stem -->
+    <circle cx="36" cy="64" r="5" fill="#6366f1"/>
+    
+    <!-- Bottom of stem -->
+    <circle cx="36" cy="96" r="5" fill="#00d4ff"/>
+    
+    <!-- Loop nodes -->
+    <circle cx="64" cy="32" r="4" fill="#6366f1"/>
+    <circle cx="88" cy="44" r="3" fill="#ff2d7a"/>
+    <circle cx="88" cy="56" r="3" fill="#ff2d7a"/>
+    <circle cx="64" cy="76" r="4" fill="#6366f1"/>
+  </g>
+  
+  <!-- Data stream from P to outside -->
+  <g fill="none" stroke="url(#accent)" stroke-width="2" stroke-linecap="round" stroke-dasharray="4 4">
+    <path d="M88 44 Q100 40 108 48"/>
+    <path d="M88 56 Q102 56 110 64"/>
+  </g>
+  
+  <!-- External nodes receiving data -->
+  <g filter="url(#glow)">
+    <circle cx="108" cy="48" r="4" fill="#ff2d7a"/>
+    <circle cx="110" cy="64" r="3" fill="#ff6b6b"/>
+  </g>
+  
+  <!-- Pulsing core at intersection -->
+  <circle cx="36" cy="64" r="10" fill="none" stroke="#6366f1" stroke-width="1" opacity="0.3"/>
+  <circle cx="36" cy="64" r="6" fill="#6366f1" opacity="0.2"/>
+  
+  <!-- Top accent - processing indicator -->
+  <g transform="translate(80, 24)">
+    <circle cx="0" cy="0" r="3" fill="#00d4ff" filter="url(#glow)"/>
+    <line x1="6" y1="0" x2="12" y2="0" stroke="#00d4ff" stroke-width="1.5" opacity="0.6"/>
+    <line x1="8" y1="-4" x2="14" y2="-8" stroke="#6366f1" stroke-width="1" opacity="0.4"/>
+    <line x1="8" y1="4" x2="14" y2="8" stroke="#ff2d7a" stroke-width="1" opacity="0.4"/>
+  </g>
+</svg>

@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Picobot Assistant</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/daisyui/4.12.10/full.min.css" rel="stylesheet" type="text/css" />
+    <style>
+        /* Custom adjustments */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .message {
+            max-width: 80%;
+            padding: 0.8rem 1.2rem;
+            border-radius: 1rem;
+            line-height: 1.5;
+            position: relative;
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .user-message {
+            align-self: flex-end;
+            background-color: #007bff;
+            color: #fff;
+            border-bottom-right-radius: 0.2rem;
+        }
+        .bot-message {
+            align-self: flex-start;
+            background-color: #fff;
+            color: #333;
+            border-bottom-left-radius: 0.2rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .progress-message {
+            align-self: flex-start;
+            font-size: 0.85rem;
+            color: #888;
+            font-style: italic;
+            margin-left: 0.5rem;
+        }
+        .input-container {
+            background-color: #fff;
+            padding: 1.5rem 2rem;
+            display: flex;
+            gap: 1rem;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            position: sticky;
+            bottom: 0;
+        }
+        #message-input {
+            flex: 1;
+            padding: 0.8rem 1.2rem;
+            border: 1px solid #ddd;
+            border-radius: 2rem;
+            outline: none;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        #message-input:focus {
+            border-color: #007bff;
+        }
+        #send-button {
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 2rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        #send-button:hover {
+            background-color: #0056b3;
+        }
+        #send-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .file-input-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            background-color: #f0f0f0;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .file-input-label:hover {
+            background-color: #e0e0e0;
+        }
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-connected .status-dot { background-color: #4caf50; }
+        .status-disconnected .status-dot { background-color: #f44336; }
+        pre {
+            background-color: #f8f9fa;
+            padding: 0.5rem;
+            border-radius: 0.3rem;
+            overflow-x: auto;
+            font-size: 0.9rem;
+        }
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #121212;
+                --text-color: #e0e0e0;
+                --card-bg: #1e1e1e;
+            }
+            body {
+                background-color: var(--bg-color);
+                color: var(--text-color);
+            }
+            .bot-message {
+                background-color: var(--card-bg);
+                color: var(--text-color);
+                box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            }
+            .user-message {
+                background-color: #0d6efd;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100" id="body">
+    <header class="bg-white dark:bg-gray-800 shadow-md">
+        <div class="flex items-center justify-between px-6 py-4">
+            <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">
+                🤖 Picobot Assistant
+            </h1>
+            <div class="flex items-center space-x-3 status-indicator" id="status">
+                <div class="w-2 h-2 rounded-full bg-red-500 status-dot" id="status-dot"></div>
+                <span id="status-text" class="text-sm text-gray-600 dark:text-gray-400">Disconnected</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="chat-container" id="chat-container">
+        <div class="message bot-message">Hello! I'm Picobot. How can I help you today?</div>
+    </div>
+
+    <form id="input-container" class="input-container">
+        <div class="flex space-x-3">
+            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" class="input input-bordered w-full" />
+            <label for="file-input" class="file-input-label" title="Attach file">
+                <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.csv">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20"><path fill="currentColor" d="M4 3a2 2 0 00-2 2v2a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 001.414 1.414L11 7.586V11a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-1.586l1.293-1.293a1 1 0 00-1.414-1.414L9 4.414V3a2 2 0 00-2-2H4zm1 13a1 1 0 100-2 1 1 0 000 2zM9 8a3 3 0 100-6 3 3 0 000 6zm10 0a3 3 0 100-6 3 3 0 000 6z"/></svg>
+            </label>
+            <button type="submit" id="send-button" class="btn btn-primary btn-active">Send</button>
+        </div>
+    </form>
+
+<script>
+// Configuration
+const CONFIG = {
+    wsPort: 18791, // Default picobot web port
+    maxReconnectDelay: 30000,
+    reconnectAttempts: 0
+};
+
+let socket = null;
+let reconnectTimeout = null;
+let isConnecting = false;
+let currentProgress = null;
+let fileToSend = null;
+
+// DOM elements
+const chatContainer = document.getElementById('chat-container');
+const inputForm = document.getElementById('input-container');
+const messageInput = document.getElementById('message-input');
+const sendButton = document.getElementById('send-button');
+const fileInput = document.getElementById('file-input');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const body = document.getElementById('body');
+const statusIndicator = document.getElementById('status');
+
+// Utility functions
+function setStatus(connected, text) {
+    if (connected) {
+        body.classList.remove('disconnected');
+        body.classList.add('connected');
+        statusDot.classList.remove('bg-red-500');
+        statusDot.classList.add('bg-green-500');
+        statusText.textContent = text || 'Connected';
+    } else {
+        body.classList.remove('connected');
+        body.classList.add('disconnected');
+        statusDot.classList.remove('bg-green-500');
+        statusDot.classList.add('bg-red-500');
+        statusText.textContent = text || 'Disconnected';
+    }
+}
+
+function appendMessage(sender, text, isProgress = false) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${sender}-message ${isProgress ? 'progress-message' : ''}`;
+    
+    // Basic markdown-like formatting for code blocks
+    let formattedText = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    formattedText = formattedText.replace(/
+/g, '<br>');
+    
+    msgDiv.innerHTML = formattedText;
+    chatContainer.appendChild(msgDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+    
+    return msgDiv;
+}
+
+function removeProgress() {
+    if (currentProgress) {
+        currentProgress.remove();
+        currentProgress = null;
+    }
+}
+
+function appendProgress(text) {
+    removeProgress();
+    const progressDiv = appendMessage('bot', `↳ ${text}`, true);
+    currentProgress = progressDiv;
+}
+
+// Connection handling
+function connect() {
+    if (isConnecting) return;
+    isConnecting = true;
+    
+    const host = window.location.hostname || 'localhost';
+    const wsUrl = `ws://${host}:${CONFIG.wsPort}`;
+    
+    socket = new WebSocket(wsUrl);
+    
+    socket.onopen = () => {
+        console.log('WebSocket connected');
+        setStatus(true, 'Connected');
+        CONFIG.reconnectAttempts = 0;
+        isConnecting = false;
+    };
+    
+    socket.onclose = (event) => {
+        console.log('WebSocket closed', event);
+        setStatus(false, 'Disconnected');
+        isConnecting = false;
+        scheduleReconnect();
+    };
+    
+    socket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'message') {
+                if (data.metadata && data.metadata._progress) {
+                    appendProgress(data.content);
+                } else {
+                    removeProgress();
+                    appendMessage('bot', data.content);
+                }
+            } else if (data.type === 'status') {
+                // Handle status updates if needed
+                console.log('Status:', data);
+            }
+        } catch (e) {
+            console.error('Error parsing message:', e);
+        }
+    };
+    
+    socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        socket.close(); // Trigger onclose to handle reconnect
+    };
+}
+
+function scheduleReconnect() {
+    if (CONFIG.reconnectAttempts >= 10) {
+        setStatus(false, 'Max reconnect attempts reached');
+        return;
+    }
+    
+    const delay = Math.min(
+        1000 * 2 ** CONFIG.reconnectAttempts,
+        CONFIG.maxReconnectDelay
+    );
+    
+    CONFIG.reconnectAttempts++;
+    
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = setTimeout(() => {
+        console.log(`Reconnecting attempt ${CONFIG.reconnectAttempts} in ${delay/1000}s...`);
+        connect();
+    }, delay);
+}
+
+// Event listeners
+inputForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    
+    const text = messageInput.value.trim();
+    if (!text && !fileToSend) return;
+    
+    if (text) {
+        appendMessage('user', text);
+        messageInput.value = '';
+    }
+    
+    const payload = {
+        type: 'message',
+        content: text || '',
+        chat_id: 'web-session',
+        sender_id: 'web-user'
+    };
+    
+    if (fileToSend) {
+        // For now, we'll send as a base64 data URL (for small files)
+        // In production, you'd want to upload to a server first
+        payload.metadata = { ...payload.metadata, file: fileToSend };
+        fileToSend = null;
+        fileInput.value = ''; // Reset file input
+    }
+    
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(payload));
+    } else {
+        // Queue message? For now just warn
+        console.warn('WebSocket not connected, message not sent');
+        setStatus(false, 'Not connected - message not sent');
+    }
+});
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // For simplicity, we'll handle small files as base64
+    // Larger files would need proper upload endpoint
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('File too large (max 5MB)');
+        fileInput.value = '';
+        return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        fileToSend = event.target.result; // data URL
+        // Show preview if image
+        if (file.type.startsWith('image/')) {
+            // Could show preview here
+            console.log('Image selected for upload');
+        }
+    };
+    reader.readAsDataURL(file);
+});
+
+// Handle visibility change to reconnect when tab becomes visible
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && socket && socket.readyState !== WebSocket.OPEN) {
+        console.log('Tab visible, reconnecting...');
+        connect();
+    }
+});
+
+// Handle online/offline events
+window.addEventListener('online', () => {
+    console.log('Browser online');
+    connect();
+});
+window.addEventListener('offline', () => {
+    console.log('Browser offline');
+    setStatus(false, 'Offline');
+});
+
+// Initialize
+console.log('Picobot PWA initializing...');
+connect();
+
+// Register service worker if supported
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('Service Worker registered', reg.scope))
+            .catch(err => console.error('Service Worker registration failed:', err));
+    });
+}
+</script>
+</body>
+</html>
