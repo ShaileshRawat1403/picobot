@@ -29,6 +29,8 @@ Thumbs.db
 .env
 .env.local
 .env.example
+*client_secret*.json
+*credentials*.json
 
 # Logs
 *.log

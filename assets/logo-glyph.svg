@@ -1,32 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="dark" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f0f23"/>
-      <stop offset="100%" style="stop-color:#1a1a2e"/>
+    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1EC8FF"/>
+      <stop offset="100%" stop-color="#5865F2"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#ff6b6b"/>
-      <stop offset="100%" style="stop-color:#c44569"/>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A7A"/>
+      <stop offset="100%" stop-color="#FF5F6D"/>
     </linearGradient>
   </defs>
-  
-  <!-- Dark background with subtle border -->
-  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#dark)" stroke="#2d2d44" stroke-width="1"/>
-  
-  <!-- Minimal P - thick geometric strokes -->
-  <path d="M36 32 L36 96" 
-        fill="none" 
-        stroke="#ffffff" 
-        stroke-width="10" 
-        stroke-linecap="round"/>
-        
-  <path d="M36 32 L68 32 C82 32 88 44 88 52 C88 60 82 64 68 64 L36 64" 
-        fill="none" 
-        stroke="#ffffff" 
-        stroke-width="10" 
-        stroke-linecap="round" 
-        stroke-linejoin="round"/>
-  
-  <!-- Precision dot - coral accent -->
-  <circle cx="80" cy="24" r="5" fill="url(#accent)"/>
+
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="#081120"/>
+  <path d="M38 22h38c18 0 32 14 32 32v12c0 18-14 32-32 32H56l-18 15c-3 3-8 0-8-4V98c-10-3-18-12-18-24V54c0-18 14-32 32-32h-6z" fill="none" stroke="url(#signal)" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M48 42v34" fill="none" stroke="url(#signal)" stroke-width="11" stroke-linecap="round"/>
+  <path d="M48 42h19c14 0 22 8 22 18 0 11-8 19-22 19H56" fill="none" stroke="url(#signal)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="74" cy="59" r="6" fill="url(#core)"/>
+  <circle cx="74" cy="59" r="2.5" fill="#081120"/>
+  <path d="M97 30c6 0 11 5 11 11" fill="none" stroke="#FF6B6B" stroke-width="3.5" stroke-linecap="round" opacity="0.8"/>
 </svg>

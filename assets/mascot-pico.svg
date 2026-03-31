@@ -1,24 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0C1638"/>
-      <stop offset="100%" stop-color="#0a0a12"/>
+    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1EC8FF"/>
+      <stop offset="100%" stop-color="#5865F2"/>
     </linearGradient>
-    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4F7BFF"/>
-      <stop offset="100%" stop-color="#7A4DFF"/>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A7A"/>
+      <stop offset="100%" stop-color="#FF5F6D"/>
     </linearGradient>
   </defs>
-  
-  <rect width="200" height="200" rx="32" fill="url(#bgGrad)"/>
-  
-  <!-- P mark - confident, clean -->
-  <g transform="translate(45, 35)">
-    <rect x="0" y="0" width="35" height="110" rx="6" fill="url(#pGrad)"/>
-    <rect x="0" y="0" width="70" height="35" rx="6" fill="url(#pGrad)"/>
-    <path d="M35 0 L35 65 Q100 65 100 35 Q100 5 35 5 Z" fill="url(#pGrad)"/>
-  </g>
-  
-  <!-- Subtle dot -->
-  <circle cx="155" cy="50" r="8" fill="#FF6B6B"/>
+
+  <rect width="200" height="200" rx="40" fill="#081120"/>
+  <circle cx="100" cy="100" r="72" fill="none" stroke="#143052" stroke-width="2" opacity="0.45"/>
+  <circle cx="100" cy="100" r="58" fill="none" stroke="#143052" stroke-width="2" opacity="0.25"/>
+  <path d="M58 48h58c26 0 48 22 48 48v18c0 26-22 48-48 48H86l-26 22c-5 4-12 0-12-6v-16c-14-4-24-17-24-32V96c0-26 22-48 48-48H58z" fill="none" stroke="url(#signal)" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M72 78v54" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M72 78h28c19 0 31 11 31 27 0 18-12 29-31 29H82" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="110" cy="105" r="9" fill="url(#core)"/>
+  <circle cx="110" cy="105" r="4" fill="#081120"/>
+  <path d="M145 58c8 0 14 6 14 14" fill="none" stroke="#FF6B6B" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
 </svg>

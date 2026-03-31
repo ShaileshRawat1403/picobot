@@ -1,15 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4F7BFF"/>
-      <stop offset="100%" stop-color="#7A4DFF"/>
+    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1EC8FF"/>
+      <stop offset="100%" stop-color="#5865F2"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A7A"/>
+      <stop offset="100%" stop-color="#FF5F6D"/>
     </linearGradient>
   </defs>
-  
-  <rect width="32" height="32" rx="6" fill="#ffffff"/>
-  
-  <!-- P mark -->
-  <rect x="6" y="6" width="6" height="20" rx="1.5" fill="url(#pGrad)"/>
-  <rect x="6" y="6" width="13" height="6" rx="1.5" fill="url(#pGrad)"/>
-  <path d="M12 6 L12 14 Q18 14 18 10 Q18 6 12 6 Z" fill="url(#pGrad)"/>
+
+  <rect width="200" height="200" rx="44" fill="#081120"/>
+  <path d="M58 36h58c26 0 48 22 48 48v18c0 26-22 48-48 48H86l-26 22c-5 4-12 0-12-6v-16c-14-4-24-17-24-32V84c0-26 22-48 48-48h-14z" fill="none" stroke="url(#signal)" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M72 66v54" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M72 66h28c19 0 31 11 31 27 0 18-12 29-31 29H82" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="110" cy="93" r="9" fill="url(#core)"/>
+  <circle cx="110" cy="93" r="4" fill="#081120"/>
 </svg>

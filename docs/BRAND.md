@@ -18,12 +18,12 @@
 ### Primary Logo
 `assets/logo-main.svg`
 
-Bold, minimal P letterform with clean lines. Use on any background.
+Signal-first wordmark with a message-core glyph. Use for README, landing pages, and product headers.
 
 ### Icon Version  
 `assets/logo-icon.svg`
 
-Squared version for app icons, favicons, and compact contexts.
+Rounded-square signal glyph for app icons, favicons, and compact contexts.
 
 ---
 
@@ -33,20 +33,20 @@ Squared version for app icons, favicons, and compact contexts.
 
 | Name | Hex | Usage |
 |------|-----|-------|
-| **Blue** | `#4F7BFF` | Primary accent |
-| **Purple** | `#7A4DFF` | Gradient end |
+| **Sky** | `#1EC8FF` | Primary signal accent |
+| **Indigo** | `#5865F2` | Gradient depth |
 
 ### Accent
 
 | Name | Hex | Usage |
 |------|-----|-------|
-| **Coral** | `#FF6B6B` | Notifications, highlights |
+| **Coral** | `#FF6B6B` | Alerts, highlights, active core |
 
 ### Text
 
 | Usage | Color |
 |-------|-------|
-| On light | `#0C1638` |
+| On light | `#081120` |
 | On dark | `#ffffff` |
 
 ### Backgrounds
@@ -54,7 +54,7 @@ Squared version for app icons, favicons, and compact contexts.
 | Usage | Color |
 |-------|-------|
 | Light | `#ffffff` |
-| Dark | `#0C1638` |
+| Dark | `#081120` |
 
 ---
 

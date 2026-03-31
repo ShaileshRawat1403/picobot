@@ -1,21 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <defs>
-    <linearGradient id="pGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4F7BFF"/>
-      <stop offset="100%" stop-color="#7A4DFF"/>
+    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1EC8FF"/>
+      <stop offset="100%" stop-color="#5865F2"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A7A"/>
+      <stop offset="100%" stop-color="#FF5F6D"/>
     </linearGradient>
   </defs>
-  
-  <!-- Clean background -->
-  <rect width="200" height="200" rx="24" fill="#ffffff"/>
-  
-  <!-- Minimal P mark -->
-  <g transform="translate(40, 40)">
-    <rect x="0" y="0" width="30" height="100" rx="4" fill="url(#pGrad)"/>
-    <rect x="0" y="0" width="60" height="30" rx="4" fill="url(#pGrad)"/>
-    <path d="M30 0 L30 55 Q85 55 85 30 Q85 5 30 5 Z" fill="url(#pGrad)"/>
-  </g>
-  
-  <!-- Small accent -->
-  <circle cx="130" cy="50" r="6" fill="#FF6B6B"/>
+
+  <rect width="200" height="200" rx="44" fill="#081120"/>
+  <path d="M58 36h58c26 0 48 22 48 48v18c0 26-22 48-48 48H86l-26 22c-5 4-12 0-12-6v-16c-14-4-24-17-24-32V84c0-26 22-48 48-48h-14z" fill="none" stroke="url(#signal)" stroke-width="9" stroke-linejoin="round"/>
+  <path d="M72 66v54" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round"/>
+  <path d="M72 66h28c19 0 31 11 31 27 0 18-12 29-31 29H82" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="110" cy="93" r="9" fill="url(#core)"/>
+  <circle cx="110" cy="93" r="4" fill="#081120"/>
+  <path d="M145 47c8 0 14 6 14 14" fill="none" stroke="#FF6B6B" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
 </svg>

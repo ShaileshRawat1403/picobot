@@ -30,8 +30,9 @@ Think of it as having a knowledgeable assistant that's always there, understands
 ## How It Works
 
 You chat with Picobot naturally. Behind the scenes, it uses:
+
 - **Prompt engineering** to understand intent and context
-- **Context engineering** to maintain memory across conversations  
+- **Context engineering** to maintain memory across conversations
 - **Tool execution** to take real actions (search, files, git, code)
 
 The magic is in the conversation - no code needed on your end.
@@ -84,13 +85,13 @@ Now chat with your bot on Telegram!
 
 ## Commands
 
-| Command | What it does |
-|---------|---------------|
-| `picobot onboard` | First-time setup |
-| `picobot agent -m "..."` | Quick question |
-| `picobot gateway` | Start with all channels |
-| `picobot status` | Check what's running |
-| `picobot doctor` | Diagnose issues |
+| Command                  | What it does            |
+| ------------------------ | ----------------------- |
+| `picobot onboard`        | First-time setup        |
+| `picobot agent -m "..."` | Quick question          |
+| `picobot gateway`        | Start with all channels |
+| `picobot status`         | Check what's running    |
+| `picobot doctor`         | Diagnose issues         |
 
 ---
 
@@ -106,15 +107,15 @@ Now chat with your bot on Telegram!
 
 ## Supported Models
 
-| Provider | Auth | Notes |
-|----------|------|-------|
-| **Gemini** | OAuth / API Key | Recommended - use with DAX for OAuth |
-| **OpenAI** | API Key | GPT-4, GPT-3.5 |
-| **Claude** | API Key | Opus, Sonnet, Haiku |
-| **DeepSeek** | API Key | Great for code |
-| **Ollama** | Local | Run models locally |
-| **Groq** | API Key | Fast inference |
-| **Custom** | API Key + URL | Any OpenAI-compatible API |
+| Provider     | Auth            | Notes                                |
+| ------------ | --------------- | ------------------------------------ |
+| **Gemini**   | OAuth / API Key | Recommended - use with DAX for OAuth |
+| **OpenAI**   | API Key         | GPT-4, GPT-3.5                       |
+| **Claude**   | API Key         | Opus, Sonnet, Haiku                  |
+| **DeepSeek** | API Key         | Great for code                       |
+| **Ollama**   | Local           | Run models locally                   |
+| **Groq**     | API Key         | Fast inference                       |
+| **Custom**   | API Key + URL   | Any OpenAI-compatible API            |
 
 ### Using DAX for Gemini OAuth
 
@@ -215,12 +216,14 @@ GET  /api/picobot/commands/pending   # Poll commands
 ## Troubleshooting
 
 **Bot not responding?**
+
 ```bash
 picobot doctor
 picobot channels status
 ```
 
 **Token expired?**
+
 ```bash
 picobot provider login gemini_oauth
 ```
