@@ -1,34 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0d0d1a"/>
-      <stop offset="100%" style="stop-color:#050510"/>
+    <linearGradient id="picoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F7BFF"/>
+      <stop offset="100%" stop-color="#7A4DFF"/>
     </linearGradient>
-    <linearGradient id="neural" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#00d4ff"/>
-      <stop offset="100%" style="stop-color:#6366f1"/>
-    </linearGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="1" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
   
-  <rect width="32" height="32" rx="6" fill="url(#bg)"/>
+  <rect width="32" height="32" rx="6" fill="#0C1638"/>
   
-  <!-- P letterform -->
-  <g filter="url(#glow)">
-    <line x1="10" y1="8" x2="10" y2="24" stroke="url(#neural)" stroke-width="2" stroke-linecap="round"/>
-    <line x1="10" y1="8" x2="16" y2="8" stroke="url(#neural)" stroke-width="2" stroke-linecap="round"/>
-    <path d="M16 8 L16 13 Q22 13 22 10.5 Q22 8 16 8" fill="none" stroke="url(#neural)" stroke-width="2" stroke-linecap="round"/>
+  <!-- P -->
+  <g fill="url(#picoGradient)">
+    <rect x="8" y="6" width="4" height="20" rx="1"/>
+    <rect x="8" y="6" width="10" height="4" rx="1"/>
+    <path d="M12 6 L12 16 Q18 16 18 11 Q18 6 12 6 Z" rx="1"/>
   </g>
   
-  <!-- Core node -->
-  <circle cx="10" cy="16" r="2" fill="#00d4ff" filter="url(#glow)"/>
-  
-  <!-- Signal dot -->
-  <circle cx="24" cy="8" r="1.5" fill="#f472b6"/>
+  <!-- Dot -->
+  <circle cx="24" cy="10" r="2" fill="#FF6B6B"/>
 </svg>

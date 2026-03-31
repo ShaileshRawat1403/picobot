@@ -1,69 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f172a"/>
-      <stop offset="100%" style="stop-color:#1e293b"/>
+    <linearGradient id="picoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F7BFF"/>
+      <stop offset="100%" stop-color="#7A4DFF"/>
     </linearGradient>
-    <linearGradient id="primary" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#22d3ee"/>
-      <stop offset="100%" style="stop-color:#818cf8"/>
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B6B"/>
+      <stop offset="100%" stop-color="#FF3B30"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#fb7185"/>
-      <stop offset="100%" style="stop-color:#fbbf24"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
   
-  <!-- Gradient background -->
-  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <!-- Background -->
+  <rect width="128" height="128" rx="16" fill="#0C1638"/>
   
-  <!-- Animated ring effect (static representation) -->
-  <circle cx="64" cy="64" r="50" fill="none" stroke="url(#primary)" stroke-width="0.5" opacity="0.2"/>
-  <circle cx="64" cy="64" r="40" fill="none" stroke="url(#accent)" stroke-width="0.5" opacity="0.15"/>
-  
-  <!-- Neural network P -->
-  <g filter="url(#glow)">
-    <!-- Stem -->
-    <line x1="44" y1="36" x2="44" y2="92" stroke="url(#primary)" stroke-width="7" stroke-linecap="round"/>
-    
-    <!-- Loop -->
-    <path d="M44 36 L70 36 C82 36 88 46 88 54 C88 62 82 68 70 68 L44 68" 
-          stroke="url(#primary)" 
-          stroke-width="7" 
-          stroke-linecap="round" 
-          stroke-linejoin="round"
-          fill="none"/>
-    
-    <!-- Nodes on P -->
-    <circle cx="44" cy="36" r="5" fill="#22d3ee"/>
-    <circle cx="44" cy="68" r="5" fill="#818cf8"/>
-    <circle cx="44" cy="92" r="4" fill="#22d3ee"/>
-    <circle cx="70" cy="36" r="4" fill="#818cf8"/>
-    <circle cx="88" cy="54" r="4" fill="#fb7185"/>
+  <!-- P letterform -->
+  <g fill="url(#picoGradient)">
+    <rect x="32" y="24" width="16" height="80" rx="3"/>
+    <rect x="32" y="24" width="32" height="16" rx="3"/>
+    <path d="M48 24 L48 56 Q72 56 72 40 Q72 24 48 24 Z" rx="3"/>
   </g>
   
-  <!-- External data nodes -->
-  <g filter="url(#glow)">
-    <circle cx="100" cy="36" r="4" fill="#fb7185"/>
-    <circle cx="106" cy="54" r="3" fill="#fbbf24"/>
-    <circle cx="100" cy="72" r="3" fill="#fb7185" opacity="0.7"/>
-  </g>
+  <!-- Core -->
+  <rect x="36" y="64" width="8" height="8" rx="2" fill="url(#accentGradient)"/>
   
-  <!-- Data streams -->
-  <g fill="none" stroke="url(#accent)" stroke-width="1.5" stroke-linecap="round" opacity="0.8">
-    <line x1="88" y1="46" x2="96" y2="38"/>
-    <line x1="88" y1="62" x2="102" y2="56"/>
-  </g>
-  
-  <!-- Processing indicator -->
-  <g opacity="0.6">
-    <circle cx="44" cy="68" r="12" fill="none" stroke="#818cf8" stroke-width="1" stroke-dasharray="4 2"/>
-  </g>
+  <!-- Signal -->
+  <circle cx="88" cy="32" r="4" fill="url(#accentGradient)"/>
+  <line x1="72" y1="40" x2="84" y2="33" stroke="url(#picoGradient)" stroke-width="2" stroke-linecap="round"/>
 </svg>
