@@ -62,8 +62,6 @@ Issues = "https://github.com/picobot-ai/picobot/issues"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["picobot*"]
-where = ["picobot"]
-include = ["picobot*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
