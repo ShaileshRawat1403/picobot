@@ -3,13 +3,13 @@
 ## Brand Identity
 
 ### Tagline
-**"Your AI agent that works where you work."**
+**"The personal and multi-channel front door to the DAX Suite."**
 
 ### Voice
 - Direct and confident
-- Personal, not corporate
-- Clear about what it does
-- No unnecessary jargon
+- Professional, yet accessible
+- Clear about the dual-mode nature (Assistant + Ingress)
+- No "childish" or overly-cute elements
 
 ---
 
@@ -18,13 +18,17 @@
 ### Primary Logo
 `assets/logo-main.svg`
 
-Signal-first wordmark with a message-core glyph. Use for README, landing pages, and product headers.
+A high-tech geometric wordmark. Use for README, landing pages, and product headers.
 
-### Icon Version  
+### Icon Version
 `assets/logo-icon.svg`
 
-Rounded-square signal glyph for app icons, favicons, and compact contexts.
+Minimalist "P" glyph based on geometric bars and neural nodes. Use for app icons, favicons, and compact contexts.
 
+### Mascot
+`assets/mascot-pico.svg`
+
+A more detailed version of the glyph, used for hero sections and illustrative contexts. Still professional and tech-focused.
 ---
 
 ## Color Palette

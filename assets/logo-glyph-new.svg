@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="primary-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Professional Geometric Glyph P -->
+  <g transform="translate(106, 106)">
+    <!-- Vertical Pillar -->
+    <rect x="0" y="0" width="64" height="300" rx="32" fill="url(#primary-grad)"/>
+    
+    <!-- Stylized Loop -->
+    <path d="M0 32 C180 32 260 80 260 150 C260 220 180 268 0 268" 
+          fill="none" 
+          stroke="url(#primary-grad)" 
+          stroke-width="64" 
+          stroke-linecap="round"/>
+          
+    <!-- Professional Node (Subtle Bot/Intelligence indicator) -->
+    <circle cx="160" cy="150" r="24" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="160" cy="150" r="12" fill="#6366F1"/>
+  </g>
+</svg>

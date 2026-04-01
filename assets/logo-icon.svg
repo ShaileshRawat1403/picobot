@@ -1,20 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1EC8FF"/>
-      <stop offset="100%" stop-color="#5865F2"/>
+    <linearGradient id="primary-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="100%" stop-color="#6366F1"/>
     </linearGradient>
-    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A7A"/>
-      <stop offset="100%" stop-color="#FF5F6D"/>
+    <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2D7A"/>
+      <stop offset="100%" stop-color="#FF6B6B"/>
     </linearGradient>
   </defs>
 
-  <rect width="200" height="200" rx="44" fill="#081120"/>
-  <path d="M58 36h58c26 0 48 22 48 48v18c0 26-22 48-48 48H86l-26 22c-5 4-12 0-12-6v-16c-14-4-24-17-24-32V84c0-26 22-48 48-48h-14z" fill="none" stroke="url(#signal)" stroke-width="9" stroke-linejoin="round"/>
-  <path d="M72 66v54" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round"/>
-  <path d="M72 66h28c19 0 31 11 31 27 0 18-12 29-31 29H82" fill="none" stroke="url(#signal)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="110" cy="93" r="9" fill="url(#core)"/>
-  <circle cx="110" cy="93" r="4" fill="#081120"/>
-  <path d="M145 47c8 0 14 6 14 14" fill="none" stroke="#FF6B6B" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  <!-- Abstract Tech P-Glyph -->
+  <g transform="translate(140, 100)">
+    <!-- Vertical Data Pillar -->
+    <rect x="0" y="0" width="48" height="312" rx="4" fill="url(#primary-grad)"/>
+    
+    <!-- Top Horizontal Hook -->
+    <rect x="0" y="0" width="180" height="48" rx="4" fill="url(#primary-grad)"/>
+    
+    <!-- Loop Completion - Minimalist Gap -->
+    <rect x="132" y="48" width="48" height="150" rx="4" fill="url(#primary-grad)"/>
+    <rect x="0" y="150" width="180" height="48" rx="4" fill="url(#primary-grad)"/>
+    
+    <!-- Accent Node - Intelligence Indicator -->
+    <rect x="144" y="60" width="24" height="24" rx="2" fill="#FFFFFF" opacity="0.9"/>
+    <rect x="148" y="64" width="16" height="16" rx="2" fill="url(#accent-grad)"/>
+  </g>
 </svg>
