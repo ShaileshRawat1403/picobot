@@ -2,7 +2,9 @@
 
 ## System Overview
 
-Picobot is a modular AI agent framework designed for multi-channel messaging integration. It consists of several core components that work together to provide a seamless AI assistant experience.
+Picobot is the personal and multi-channel front door to the **DAX Suite**. It operates as a dual-mode assistant, providing seamless personal productivity (Standalone Mode) while serving as the governed ingress edge for high-stakes operations (DAX-Backed Mode).
+
+Picobot's architecture is built on the **"Picobot receives, DAX executes, Soothsayer supervises"** tier model.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -112,52 +114,53 @@ The asynchronous message bus for decoupled communication.
 
 ### 4. Provider Layer
 
-LLM provider abstraction with support for multiple backends.
+LLM provider abstraction with support for multiple backends. Picobot prefers **DAX-backed providers** for governed workflows to ensure consistency and auditability.
 
 **Supported Providers:**
-- **DAX OAuth**: Google Gemini via OAuth (production)
-- **OpenAI**: GPT-4, GPT-3.5 Turbo
-- **Anthropic**: Claude 3 Opus, Sonnet, Haiku
-- **DeepSeek**: DeepSeek Chat, Coder
-- **Ollama**: Local model hosting
-- **Custom**: OpenAI-compatible APIs
+- **DAX (Primary)**: Governed execution via the DAX engine.
+- **Direct Gemini**: Google Gemini via OAuth or API Key.
+- **OpenAI**: GPT-4, GPT-3.5 Turbo.
+- **Anthropic**: Claude 3 Opus, Sonnet, Haiku.
+- **Ollama**: Local model hosting for private, Band 1/2 tasks.
+- **Custom**: OpenAI-compatible APIs.
 
-### 5. DAX Integration
+### 5. DAX Integration (Execution Authority)
 
-Supervision layer for controlled automation.
+DAX serves as the **Execution Authority** for the suite. When Picobot identifies a "Band 3" request (governed execution), it hands off the intent to DAX.
 
-**Features:**
-- Approval workflows for sensitive operations
-- Execution logging
-- Rate limiting
-- Workspace isolation
+**Core Responsibilities:**
+- **Governance**: Policy enforcement and risk-based approval workflows.
+- **Execution**: Canonical environment for file modification and code generation.
+- **Auditability**: Complete audit trail of all approved/denied operations.
+- **Recovery**: Replay and recovery of interrupted or failed workflows.
 
 ## Data Flow
 
-### Message Processing
+### Message Processing (The Capability Ladder)
+
+Picobot evaluates every message against a **Capability Ladder** to determine the execution path:
 
 ```
 1. User sends message via channel
          ↓
 2. Channel bridge receives and normalizes
          ↓
-3. Agent Engine creates context
+3. Agent Engine evaluates Intent (Band 1, 2, or 3)
          ↓
-4. Memory loaded for conversation
+4. Path Selection:
+   ├─ Band 1/2 (Local): Picobot executes directly (Search, Reminders, File Reads)
+   └─ Band 3 (DAX): Picobot hands off to DAX Execution Authority
          ↓
-5. Skills evaluated for relevance
+5. DAX Workflow (if Band 3):
+   ├─ Draft operation
+   ├─ Request Approval (relayed via Picobot)
+   └─ Execute upon user approval
          ↓
-6. LLM provider generates response
+6. Response generation (LLM)
          ↓
-7. Tools executed if needed
+7. Outbound message sent to user
          ↓
-8. DAX approval for sensitive ops
-         ↓
-9. Response formatted for channel
-         ↓
-10. Bridge sends to user
-         ↓
-11. Activity logged to Soothsayer
+8. Activity synced to Soothsayer (Operator Plane supervision)
 ```
 
 ### Session Lifecycle
