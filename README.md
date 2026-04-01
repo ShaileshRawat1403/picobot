@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Your AI agent that works where you work.</strong>
+  <strong>The personal and multi-channel front door to the DAX Suite.</strong>
 </p>
 
 <p align="center">
@@ -21,21 +21,42 @@
 
 ## What is Picobot?
 
-Picobot is an AI agent you can talk to anywhere - Telegram, Discord, WhatsApp, or web. It's trained on your context, powered by prompt and context engineering, and ready to help you automate, research, and get things done.
+Picobot is a dual-mode AI assistant that works where you work—Telegram, Discord, WhatsApp, or web. It serves as both a powerful standalone personal assistant and the **governed ingress edge** for the DAX Suite.
 
-Think of it as having a knowledgeable assistant that's always there, understands your workspace, and can execute tasks on your behalf.
+### The DAX Suite Model
+Picobot is part of a three-tier architecture designed for safety, privacy, and deterministic control:
+
+1.  **Picobot receives**: Multi-channel ingress and personal assistance.
+2.  **DAX executes**: Governed execution, approvals, and audit-grade control.
+3.  **Soothsayer supervises**: The operator plane for oversight and replay.
+
+---
+
+## Dual-Mode Operation
+
+Picobot adapts its behavior based on the complexity and risk of your request:
+
+### Mode 1: Standalone Personal Assistant
+Perfect for daily coordination and personal productivity.
+- **Personal**: Reminders, calendar queries, scheduling, and routines.
+- **Workspace**: Context retrieval, file lookups, and repository status.
+- **Research**: Quick web searches and documentation summaries.
+
+### Mode 2: DAX-Backed Governed Ingress
+When tasks involve significant system changes or code generation, Picobot routes them to DAX for governed execution.
+- **SDLC**: Writing, modifying, or refactoring code.
+- **Operations**: System setup, deployments, and migrations.
+- **Governance**: Every "risky" action requires your explicit approval via Picobot.
 
 ---
 
 ## How It Works
 
-You chat with Picobot naturally. Behind the scenes, it uses:
+You chat with Picobot naturally. Behind the scenes, it maintains a **Capability Ladder**:
 
-- **Prompt engineering** to understand intent and context
-- **Context engineering** to maintain memory across conversations
-- **Tool execution** to take real actions (search, files, git, code)
-
-The magic is in the conversation - no code needed on your end.
+- **Band 1 (Local)**: Fast, non-governed assistant tasks (Reminders, Search).
+- **Band 2 (Local)**: Workspace and repository context retrieval.
+- **Band 3 (DAX)**: Governed execution—actions are drafted by DAX, approved by you, and audited by Soothsayer.
 
 ---
 
@@ -148,7 +169,8 @@ picobot provider login gemini_oauth
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Picobot                               │
+│                        Picobot                              │
+│                (Personal Assistant Edge)                    │
 ├─────────────────────────────────────────────────────────────┤
 │  Channels     │   Agent     │   Bus      │   Providers    │
 │  ─────────    │   ────────  │   ───     │   ──────────   │
@@ -157,10 +179,12 @@ picobot provider login gemini_oauth
 │  WhatsApp     │   Skills    │           │   Claude       │
 │  Web          │   Tools     │           │   Ollama       │
 └─────────────────────────────────────────────────────────────┘
-                          │
-                    DAX (OAuth + Supervision)
-                          │
-                    Soothsayer Dashboard
+                │                           ▲
+                ▼                           │
+   ┌──────────────────────────┐    ┌──────────────────────────┐
+   │          DAX             │    │       Soothsayer         │
+   │  (Execution Authority)   │────▶   (Operator Plane)       │
+   └──────────────────────────┘    └──────────────────────────┘
 ```
 
 ---
