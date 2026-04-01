@@ -16,20 +16,23 @@ from picobot.bus.dax_service import DaxPollingService, get_dax_service
 DRAFT_PATTERNS = [
     "create", "write", "generate", "make", "build",
     "implement", "add", "modify", "refactor", "fix", "edit",
-    "delete", "remove", "cleanup", "wipe", "purge"
+    "delete", "remove", "cleanup", "wipe", "purge",
+    "setup", "install", "deploy", "migrate", "optimize"
 ]
 
 DRAFT_KEYWORDS = [
     "script", "file", "code", "function", "class", "test",
     "config", "report", "documentation", "docs", "readme",
     "backup", "deploy", "migration", "patch", "diff",
-    "folder", "directory", "temp", "cache"
+    "folder", "directory", "temp", "cache", "project", "repo",
+    "environment", "stack", "server", "database", "pipeline"
 ]
 
 ANALYZE_PATTERNS = [
     "analyze", "explore", "understand", "inspect", "survey",
     "map the code", "review", "assess", "audit", "check the codebase",
-    "analyse", "look at the code", "examine", "investigate"
+    "analyse", "look at the code", "examine", "investigate",
+    "look into", "read the code", "browse", "scan"
 ]
 
 ANALYZE_KEYWORDS = [
@@ -73,7 +76,7 @@ def classify_intent(message: str) -> dict[str, Any] | None:
     has_action = any(p in text for p in DRAFT_PATTERNS)
     has_object = any(k in text for k in DRAFT_KEYWORDS)
 
-    if has_action and has_object:
+    if has_action or has_object:
         return {
             "workflowClass": "draft_and_approve",
             "kind": "workflow_step"
@@ -152,12 +155,24 @@ class DaxTool(Tool):
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create_run", "get_status", "get_approvals", "resolve_approval", "resolve_latest_approval", "classify_intent"],
+                    "enum": ["create_run", "get_status", "get_approvals", "resolve_approval", "resolve_latest_approval", "classify_intent", "handoff"],
                     "description": "Action to perform"
                 },
                 "message": {
                     "type": "string",
-                    "description": "User message to classify for intent detection"
+                    "description": "User message or full request content"
+                },
+                "workflow_class": {
+                    "type": "string",
+                    "description": "Optional: Specific workflow class to use (e.g. repo_analyze, draft_and_approve)"
+                },
+                "workflow_hint": {
+                    "type": "string",
+                    "description": "Optional: Hint to guide the workflow"
+                },
+                "kind": {
+                    "type": "string",
+                    "description": "Optional: Kind of intent (e.g. analysis, workflow_step)"
                 },
                 "run_id": {
                     "type": "string",
@@ -195,10 +210,14 @@ class DaxTool(Tool):
                 return json.dumps(result, indent=2)
             return json.dumps({"error": USER_ERROR_MESSAGES["INVALID_INTENT"]})
 
-        elif action == "create_run":
+        elif action in ["create_run", "handoff"]:
             message = kwargs.get("message", "")
             chat_id = kwargs.get("actor_id", "unknown")
             channel = kwargs.get("channel", "whatsapp")
+
+            w_class = kwargs.get("workflow_class")
+            w_hint = kwargs.get("workflow_hint")
+            w_kind = kwargs.get("kind")
 
             if not is_authorized(chat_id, self._admin_numbers):
                 authorized_numbers = get_admin_numbers(self._admin_numbers)
@@ -207,14 +226,23 @@ class DaxTool(Tool):
                     "authorizedNumbers": authorized_numbers
                 })
 
-            intent = classify_intent(message)
-            if not intent:
+            intent = classify_intent(message) or {}
+
+            # Explicit parameters override classified intent
+            if w_class: intent["workflowClass"] = w_class
+            if w_hint: intent["workflowHint"] = w_hint
+            if w_kind: intent["kind"] = w_kind
+
+            # If no intent found and no parameters provided, we can't create a run
+            if not intent and not w_class:
                 return json.dumps({"error": USER_ERROR_MESSAGES["INVALID_INTENT"]})
 
             payload = {
                 "intent": {
                     "input": message,
-                    "kind": intent.get("kind", "workflow_step")
+                    "kind": intent.get("kind", "workflow_step"),
+                    "workflowClass": intent.get("workflowClass", "draft_and_approve"),
+                    "workflowHint": intent.get("workflowHint")
                 },
                 "metadata": {
                     "source": "picobot",
@@ -409,7 +437,7 @@ class DaxTool(Tool):
 
 
 class _HttpClient:
-    """Simple async HTTP client for DAX API."""
+    """Simple async HTTP client for DAX API with better error handling."""
 
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
@@ -424,9 +452,19 @@ class _HttpClient:
     async def get(self, path: str) -> dict:
         url = f"{self.base_url}{path}"
         response = await self.session.get(url)
-        return response.json()
+        if response.status_code != 200:
+            return {"error": f"HTTP {response.status_code}", "text": response.text}
+        try:
+            return response.json()
+        except Exception as e:
+            return {"error": "Invalid JSON response", "details": str(e), "text": response.text}
 
     async def post(self, path: str, data: dict) -> dict:
         url = f"{self.base_url}{path}"
         response = await self.session.post(url, json=data)
-        return response.json()
+        if response.status_code not in (200, 201, 202):
+            return {"error": f"HTTP {response.status_code}", "text": response.text}
+        try:
+            return response.json()
+        except Exception as e:
+            return {"error": "Invalid JSON response", "details": str(e), "text": response.text}

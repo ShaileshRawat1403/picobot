@@ -1,28 +1,74 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="signal" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1EC8FF"/>
-      <stop offset="100%" stop-color="#5865F2"/>
+    <linearGradient id="primary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF"/>
+      <stop offset="100%" stop-color="#6366F1"/>
     </linearGradient>
-    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A7A"/>
-      <stop offset="100%" stop-color="#FF5F6D"/>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2D7A"/>
+      <stop offset="100%" stop-color="#FF6B6B"/>
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="40%" r="60%">
-      <stop offset="0%" stop-color="#14294D"/>
-      <stop offset="100%" stop-color="#081120"/>
-    </radialGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
   </defs>
 
-  <rect width="400" height="400" rx="56" fill="url(#glow)"/>
-  <circle cx="200" cy="200" r="142" fill="none" stroke="#173359" stroke-width="4" opacity="0.4"/>
-  <circle cx="200" cy="200" r="116" fill="none" stroke="#173359" stroke-width="3" opacity="0.22"/>
-  <path d="M120 90h118c52 0 92 40 92 92v36c0 52-40 92-92 92h-60l-54 44c-10 8-24 1-24-11v-33c-29-8-50-36-50-68v-60c0-52 40-92 92-92h-22z" fill="none" stroke="url(#signal)" stroke-width="14" stroke-linejoin="round"/>
-  <path d="M150 146v102" fill="none" stroke="url(#signal)" stroke-width="24" stroke-linecap="round"/>
-  <path d="M150 146h54c36 0 60 22 60 52 0 34-24 56-60 56h-34" fill="none" stroke="url(#signal)" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="222" cy="198" r="15" fill="url(#core)"/>
-  <circle cx="222" cy="198" r="6" fill="#081120"/>
-  <path d="M292 110c14 0 24 10 24 24" fill="none" stroke="#FF6B6B" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
-  <path d="M308 88c27 0 46 19 46 46" fill="none" stroke="#FF6B6B" stroke-width="8" stroke-linecap="round" opacity="0.35"/>
-  <text x="200" y="360" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="34" font-weight="700" letter-spacing="6" fill="#B4C6E4">PICOBOT</text>
+  <!-- Background Hexagon -->
+  <path d="M256 40 L442 148 L442 364 L256 472 L70 364 L70 148 Z" fill="#0A0A14" stroke="#1A1A2E" stroke-width="4"/>
+  
+  <!-- Circuit Grid - Subtle -->
+  <g stroke="#ffffff" stroke-width="1" opacity="0.08" fill="none">
+    <path d="M70 148 L256 256 L442 148"/>
+    <path d="M256 472 L256 256"/>
+    <circle cx="256" cy="256" r="120" stroke-dasharray="8 12"/>
+    <circle cx="256" cy="256" r="180" stroke-dasharray="4 20"/>
+  </g>
+
+  <!-- The "P" Core - Highly Stylized Robot Form -->
+  <g filter="url(#glow)">
+    <!-- Vertical Spine -->
+    <rect x="160" y="120" width="32" height="272" rx="16" fill="url(#primary)"/>
+    
+    <!-- Outer Loop -->
+    <path d="M160 120 C280 120 352 160 352 220 C352 280 280 320 160 320" 
+          fill="none" 
+          stroke="url(#primary)" 
+          stroke-width="32" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+          
+    <!-- Connecting Bridge -->
+    <rect x="160" y="210" width="160" height="24" rx="12" fill="url(#primary)" opacity="0.8"/>
+  </g>
+
+  <!-- Neural Nodes - Glowing points of intelligence -->
+  <g filter="url(#soft-glow)">
+    <!-- Main Eye - The "P" Loop center -->
+    <circle cx="256" cy="220" r="18" fill="url(#accent)"/>
+    <circle cx="256" cy="220" r="8" fill="#FFFFFF"/>
+    
+    <!-- Peripheral Nodes -->
+    <circle cx="176" cy="136" r="10" fill="#FFFFFF" opacity="0.9"/>
+    <circle cx="176" cy="222" r="8" fill="#6366F1"/>
+    <circle cx="176" cy="376" r="10" fill="#00D4FF"/>
+    
+    <circle cx="352" cy="220" r="10" fill="#FF2D7A"/>
+    <circle cx="280" cy="125" r="6" fill="#6366F1" opacity="0.7"/>
+    <circle cx="280" cy="315" r="6" fill="#6366F1" opacity="0.7"/>
+  </g>
+
+  <!-- Data Streams - Dynamic Motion -->
+  <g fill="none" stroke="url(#primary)" stroke-width="4" stroke-linecap="round" opacity="0.4">
+    <path d="M360 180 Q400 160 420 200" stroke-dasharray="10 15"/>
+    <path d="M360 260 Q400 280 420 240" stroke-dasharray="8 12"/>
+  </g>
+  
+  <!-- Outer Ring - Stability -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#primary)" stroke-width="2" opacity="0.1"/>
+  <path d="M256 16 A240 240 0 0 1 496 256" fill="none" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
 </svg>
