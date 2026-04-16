@@ -525,6 +525,64 @@
             font-weight: 600;
         }
         
+        .dax-status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .dax-runs-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .run-item {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .run-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .run-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #737373;
+        }
+        
+        .run-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        
+        .run-status.running {
+            background: #22c55e20;
+            color: #22c55e;
+        }
+        
+        .run-status.waiting {
+            background: #eab30820;
+            color: #eab308;
+        }
+        
+        .run-status.completed {
+            background: #3b82f620;
+            color: #3b82f6;
+        }
+        
+        .run-status.failed {
+            background: #ef444420;
+            color: #ef4444;
+        }
+        
         .tool-card {
             background: #1a1a1a;
             border: 1px solid #262626;
@@ -823,10 +881,12 @@
                     <button class="modal-nav-item" onclick="switchPanel('models')">
                         <span>🤖</span> Models
                     </button>
-                    <button class="modal-nav-item" onclick="switchPanel('security')">
-                        <span>🔒</span> Security
-                    </button>
+<button class="modal-nav-item" onclick="switchPanel('security')">
+                    <button class="modal-nav-item" onclick="switchPanel('dax')">
+                    <button class="modal-nav-item" onclick="switchPanel('skills')">
+                    </div>
                 </div>
+            </div>
                 
                 <div class="modal-body">
                     <!-- Dashboard Panel -->
@@ -868,10 +928,43 @@
                     
                     <!-- Security Panel -->
                     <div id="panel-security" class="panel">
-                        <h3 class="panel-title">Security & DAX</h3>
-                        <div class="stat-card">
-                            <div class="stat-label">DAX Autonomy</div>
-                            <div class="badge success" id="dax-status">Active</div>
+                        <h3 class="panel-title">Security</h3>
+                        <div class="form-group">
+                            <label>Allowed Users</label>
+                            <input type="text" class="input" placeholder="User IDs (comma separated)" id="allowed-users">
+                        </div>
+                    </div>
+                    <div id="panel-dax" class="panel">
+                        <h3 class="panel-title">DAX Status</h3>
+                        <div class="dax-status-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Status</div>
+                                <div class="badge success" id="dax-status">Active</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Active Runs</div>
+                                <div class="stat-value" id="dax-runs">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Pending Approvals</div>
+                                <div class="stat-value" id="dax-approvals">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Completed Today</div>
+                                <div class="stat-value" id="dax-completed">0</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="refreshDaxStatus()" style="margin-top:12px;">
+                            <i data-lucide="refresh-cw"></i> Refresh
+                        </button>
+                        <div class="dax-runs-list" id="dax-runs-list" style="margin-top:16px;">
+                            <!-- Runs will be populated here -->
+                        </div>
+                    </div>
+                    <div id="panel-skills" class="panel">
+                        <h3 class="panel-title">Skills</h3>
+                        <div id="skills-list">
+                            <p style="color:#737373;">Loading skills...</p>
                         </div>
                     </div>
                 </div>
@@ -1116,8 +1209,72 @@
                         daxStatus.className = 'badge';
                     }
                 }
+                loadSkills();
             } catch (e) {
                 console.error('Failed to load settings:', e);
+            }
+        }
+        
+        async function loadSkills() {
+            try {
+                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/skills');
+                if (res.ok) {
+                    const data = await res.json();
+                    const skills = data.skills || [];
+                    const list = document.getElementById('skills-list');
+                    if (skills.length === 0) {
+                        list.innerHTML = '<p style="color:#737373;">No skills available</p>';
+                    } else {
+                        list.innerHTML = skills.map(s => `
+                            <div class="tool-card">
+                                <div class="tool-icon" style="background:#6366f1;">
+                                    <i data-lucide="zap"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:600;">${s.name}</div>
+                                    <div style="font-size:13px;color:#737373;">${s.source}</div>
+                                </div>
+                            </div>
+                        `).join('');
+                        lucide.createIcons();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load skills:', e);
+            }
+        }
+        
+        window.refreshDaxStatus = async function() {
+            try {
+                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/dax/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    const runs = data.runs || [];
+                    const approvals = data.pendingApprovals || [];
+                    
+                    document.getElementById('dax-runs').textContent = runs.length;
+                    document.getElementById('dax-approvals').textContent = approvals.length;
+                    document.getElementById('dax-completed').textContent = runs.filter(r => r.status === 'completed').length;
+                    
+                    const runsList = document.getElementById('dax-runs-list');
+                    if (runs.length === 0) {
+                        runsList.innerHTML = '<p style="color:#737373;">No active runs</p>';
+                    } else {
+                        runsList.innerHTML = runs.map(run => `
+                            <div class="run-item">
+                                <div class="run-header">
+                                    <span class="run-id">${run.runId || run.id || 'N/A'}</span>
+                                    <span class="run-status ${run.status}">${run.status || 'unknown'}</span>
+                                </div>
+                                <p>${run.workflowClass || 'Workflow'}</p>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load DAX status:', e);
+                document.getElementById('dax-runs-list').innerHTML = '<p style="color:#ef4444;">Failed to load DAX status</p>';
             }
         }
         

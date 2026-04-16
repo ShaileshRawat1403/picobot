@@ -199,6 +199,30 @@ class WebChannel(BaseChannel):
                     logger.error(f"HTTP error: {e}")
                 finally:
                     writer.close()
+            elif path == "/api/skills":
+                from picobot.agent.skills import SkillsLoader
+                from picobot.config.paths import get_workspace_path
+
+                try:
+                    workspace = get_workspace_path()
+                    loader = SkillsLoader(workspace)
+                    skills = loader.list_skills(filter_unavailable=False)
+                    response = json.dumps({"skills": skills}).encode()
+                    writer.write(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + str(len(response)).encode()
+                        + b"\r\n\r\n"
+                        + response
+                    )
+                except Exception as e:
+                    logger.error(f"Skills API error: {e}")
+                    err = json.dumps({"error": str(e)}).encode()
+                    writer.write(
+                        b"HTTP/1.1 500 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + str(len(err)).encode()
+                        + b"\r\n\r\n"
+                        + err
+                    )
             elif path.startswith("/api/webhook"):
                 from picobot.bus.webhooks import create_webhook_manager
                 from picobot.config.loader import load_config
