@@ -2,407 +2,1145 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Picobot Assistant</title>
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0d6efd">
-    <!-- Tailwind CSS via CDN -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picobot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/daisyui/4.12.10/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
     <style>
-        /* Custom adjustments */
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 2rem;
+        :root {
+            --sidebar-width: 240px;
+            --header-height: 56px;
+        }
+        
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #0f0f0f;
+            color: #ededed;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: #0a0a0a;
+            border-right: 1px solid #262626;
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            position: fixed;
+            left: 0;
+            top: 0;
         }
-        .message {
-            max-width: 80%;
-            padding: 0.8rem 1.2rem;
-            border-radius: 1rem;
-            line-height: 1.5;
-            position: relative;
-            animation: fadeIn 0.2s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .user-message {
-            align-self: flex-end;
-            background-color: #007bff;
-            color: #fff;
-            border-bottom-right-radius: 0.2rem;
-        }
-        .bot-message {
-            align-self: flex-start;
-            background-color: #fff;
-            color: #333;
-            border-bottom-left-radius: 0.2rem;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        }
-        .progress-message {
-            align-self: flex-start;
-            font-size: 0.85rem;
-            color: #888;
-            font-style: italic;
-            margin-left: 0.5rem;
-        }
-        .input-container {
-            background-color: #fff;
-            padding: 1.5rem 2rem;
+        
+        .sidebar-header {
+            height: var(--header-height);
             display: flex;
-            gap: 1rem;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-            position: sticky;
-            bottom: 0;
+            align-items: center;
+            padding: 0 16px;
+            border-bottom: 1px solid #262626;
         }
-        #message-input {
-            flex: 1;
-            padding: 0.8rem 1.2rem;
-            border: 1px solid #ddd;
-            border-radius: 2rem;
-            outline: none;
-            font-size: 1rem;
-            transition: border-color 0.2s;
+        
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        #message-input:focus {
-            border-color: #007bff;
-        }
-        #send-button {
-            background-color: #007bff;
-            color: #fff;
-            border: none;
-            padding: 0.8rem 1.5rem;
-            border-radius: 2rem;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.2s;
-        }
-        #send-button:hover {
-            background-color: #0056b3;
-        }
-        #send-button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        .file-input-label {
-            display: inline-flex;
+        
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 8px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
-            background-color: #f0f0f0;
-            border-radius: 50%;
-            cursor: pointer;
-            transition: background-color 0.2s;
+            font-size: 18px;
         }
-        .file-input-label:hover {
-            background-color: #e0e0e0;
+        
+        .logo-text {
+            font-weight: 600;
+            font-size: 18px;
+            letter-spacing: -0.5px;
         }
-        .status-indicator {
-            display: inline-flex;
+        
+        .sidebar-nav {
+            flex: 1;
+            padding: 16px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .nav-item {
+            display: flex;
             align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+            color: #a1a1a1;
+            font-size: 14px;
+            font-weight: 500;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
         }
+        
+        .nav-item:hover {
+            background: #171717;
+            color: #ededed;
+        }
+        
+        .nav-item.active {
+            background: #262626;
+            color: #ededed;
+        }
+        
+        .nav-item i {
+            width: 18px;
+            height: 18px;
+            opacity: 0.8;
+        }
+        
+        /* Main Content */
+        .main {
+            margin-left: var(--sidebar-width);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header */
+        .header {
+            height: var(--header-height);
+            background: #0f0f0f;
+            border-bottom: 1px solid #262626;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            flex-shrink: 0;
+        }
+        
+        .header-title {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #737373;
+        }
+        
         .status-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            margin-right: 4px;
+            background: #ef4444;
         }
-        .status-connected .status-dot { background-color: #4caf50; }
-        .status-disconnected .status-dot { background-color: #f44336; }
-        pre {
-            background-color: #f8f9fa;
-            padding: 0.5rem;
-            border-radius: 0.3rem;
-            overflow-x: auto;
-            font-size: 0.9rem;
+        
+        .status-dot.connected {
+            background: #22c55e;
         }
-        /* Dark mode support */
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --bg-color: #121212;
-                --text-color: #e0e0e0;
-                --card-bg: #1e1e1e;
-            }
-            body {
-                background-color: var(--bg-color);
-                color: var(--text-color);
-            }
-            .bot-message {
-                background-color: var(--card-bg);
-                color: var(--text-color);
-                box-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            }
-            .user-message {
-                background-color: #0d6efd;
-            }
+        
+        /* Chat Area */
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
         }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 800px;
+        }
+        
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 16px;
+        }
+        
+        .message-avatar.bot {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        }
+        
+        .message-avatar.user {
+            background: #262626;
+        }
+        
+        .message-content {
+            flex: 1;
+        }
+        
+        .message-bubble {
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .message.user .message-bubble {
+            background: #262626;
+        }
+        
+        .message.bot .message-bubble {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+        }
+        
+        .message-time {
+            font-size: 11px;
+            color: #525252;
+            margin-top: 4px;
+            padding: 0 4px;
+        }
+        
+        /* Input Area */
+        .input-area {
+            padding: 16px 24px 24px;
+            background: #0f0f0f;
+        }
+        
+        .input-container {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        
+        .input-wrapper {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            transition: border-color 0.15s;
+        }
+        
+        .input-wrapper:focus-within {
+            border-color: #404040;
+        }
+        
+        .message-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #ededed;
+            font-size: 14px;
+        }
+        
+        .message-input::placeholder {
+            color: #525252;
+        }
+        
+        .send-btn {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            transition: opacity 0.15s;
+        }
+        
+        .send-btn:hover {
+            opacity: 0.9;
+        }
+        
+        /* Slash Commands Menu */
+        .slash-menu {
+            position: absolute;
+            bottom: 100%;
+            left: 24px;
+            right: 24px;
+            max-width: 800px;
+            margin-bottom: 8px;
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+            z-index: 100;
+        }
+        
+        .slash-menu.visible {
+            display: block;
+        }
+        
+        .slash-menu-header {
+            padding: 10px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #525252;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: #171717;
+        }
+        
+        .slash-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        
+        .slash-item:hover {
+            background: #262626;
+        }
+        
+        .slash-item-badge {
+            font-size: 12px;
+            font-weight: 600;
+            color: #a1a1aa;
+            background: #262626;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        
+        /* Modal / Settings Panel */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-overlay.visible {
+            display: flex;
+        }
+        
+        .modal {
+            width: 90%;
+            max-width: 1200px;
+            height: 85%;
+            background: #0f0f0f;
+            border: 1px solid #262626;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #262626;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #737373;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+        
+        .modal-close:hover {
+            background: #262626;
+            color: #ededed;
+        }
+        
+        .modal-content {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .modal-sidebar {
+            width: 220px;
+            background: #0a0a0a;
+            border-right: 1px solid #262626;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .modal-nav-item {
+            padding: 10px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #737373;
+            transition: all 0.15s;
+            border: none;
+            background: transparent;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-nav-item:hover {
+            background: #171717;
+            color: #a1a1a1;
+        }
+        
+        .modal-nav-item.active {
+            background: #262626;
+            color: #ededed;
+        }
+        
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 32px;
+        }
+        
+        .panel {
+            display: none;
+        }
+        
+        .panel.active {
+            display: block;
+        }
+        
+        .panel-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #a1a1a1;
+            margin-bottom: 8px;
+        }
+        
+        .form-input {
+            width: 100%;
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #ededed;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        
+        .form-input:focus {
+            border-color: #404040;
+        }
+        
+        .form-textarea {
+            min-height: 200px;
+            resize: vertical;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-card {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: #737373;
+            margin-bottom: 8px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .tool-card {
+            background: #1a1a1a;
+            border: 1px solid #262626;
+            border-radius: 10px;
+            padding: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            margin-bottom: 12px;
+        }
+        
+        .tool-icon {
+            width: 40px;
+            height: 40px;
+            background: #262626;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        
+        .tool-info h4 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0 0 4px;
+        }
+        
+        .tool-info p {
+            font-size: 13px;
+            color: #737373;
+            margin: 0;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #262626;
+            color: #a1a1a1;
+            margin-right: 6px;
+        }
+        
+        .badge.success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+        }
+        
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #262626;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: none;
+        }
+        
+        .btn-ghost {
+            background: transparent;
+            color: #a1a1a1;
+        }
+        
+        .btn-ghost:hover {
+            background: #262626;
+            color: #ededed;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
+        
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #737373;
+        }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #262626;
+            border-top-color: #6366f1;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Prose markdown styling */
+        .prose a { color: #6366f1; }
+        .prose code { background: #262626; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+        .prose pre { background: #171717; padding: 16px; border-radius: 8px; overflow-x: auto; }
+        .prose pre code { background: transparent; padding: 0; }
     </style>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100" id="body">
-    <header class="bg-white dark:bg-gray-800 shadow-md">
-        <div class="flex items-center justify-between px-6 py-4">
-            <h1 class="flex items-baseline gap-3 text-xl font-bold text-gray-800 dark:text-gray-100">
-                <span class="tracking-tight">Picobot</span>
-                <span class="text-xs font-semibold uppercase tracking-[0.28em] text-sky-500 dark:text-sky-400">Agent</span>
-            </h1>
-            <div class="flex items-center space-x-3 status-indicator" id="status">
-                <div class="w-2 h-2 rounded-full bg-red-500 status-dot" id="status-dot"></div>
-                <span id="status-text" class="text-sm text-gray-600 dark:text-gray-400">Disconnected</span>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">
+                <div class="logo-icon">🤖</div>
+                <span class="logo-text">Picobot</span>
             </div>
         </div>
-    </header>
+        
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="switchMainTab('chat')">
+                <i data-lucide="message-circle"></i>
+                <span>Chat</span>
+            </button>
+            <button class="nav-item" onclick="switchMainTab('tools')">
+                <i data-lucide="wrench"></i>
+                <span>Tools</span>
+            </button>
+            <button class="nav-item" onclick="switchMainTab('agents')">
+                <i data-lucide="brain"></i>
+                <span>Agents</span>
+            </button>
+            <button class="nav-item" onclick="switchMainTab('integrations')">
+                <i data-lucide="plug"></i>
+                <span>Integrations</span>
+            </button>
+            
+            <div style="flex: 1;"></div>
+            
+            <button class="nav-item" onclick="openSettings()">
+                <i data-lucide="settings"></i>
+                <span>Settings</span>
+            </button>
+        </nav>
+    </aside>
 
-    <div class="chat-container" id="chat-container">
-        <div class="message bot-message">Hello! I'm Picobot. How can I help you today?</div>
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-title" id="page-title">Chat</div>
+            <div class="header-actions">
+                <div class="status-indicator">
+                    <div class="status-dot" id="status-dot"></div>
+                    <span id="status-text">Connecting...</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Chat View -->
+        <div id="view-chat" class="view">
+            <div class="chat-area" id="chat-container">
+                <div class="message bot">
+                    <div class="message-avatar bot">🤖</div>
+                    <div class="message-content">
+                        <div class="message-bubble">
+                            Welcome to Picobot! I'm ready to help you with coding, research, and more.
+                            <br><br>
+                            Type <code>/</code> for available commands or click <b>Settings</b> to configure your agent.
+                        </div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <div class="slash-menu" id="slash-menu">
+                    <div class="slash-menu-header">Commands</div>
+                    <div class="slash-item" onclick="fillInput('/search ')">
+                        <span class="slash-item-badge">/search</span>
+                        <span>Search the web</span>
+                    </div>
+                    <div class="slash-item" onclick="fillInput('/exec ')">
+                        <span class="slash-item-badge">/exec</span>
+                        <span>Run shell command</span>
+                    </div>
+                    <div class="slash-item" onclick="fillInput('/analyze ')">
+                        <span class="slash-item-badge">/analyze</span>
+                        <span>Analyze repository</span>
+                    </div>
+                    <div class="slash-item" onclick="fillInput('/new')">
+                        <span class="slash-item-badge">/new</span>
+                        <span>Start new session</span>
+                    </div>
+                </div>
+                
+                <form class="input-container" id="input-form">
+                    <div class="input-wrapper">
+                        <input type="text" class="message-input" id="message-input" placeholder="Ask anything..." autocomplete="off">
+                    </div>
+                    <button type="submit" class="send-btn">
+                        <i data-lucide="send" style="width:16px;height:16px;"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Tools View -->
+        <div id="view-tools" class="view" style="display:none;padding:24px;overflow-y:auto;">
+            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">Available Tools</h2>
+            
+            <div class="tool-card">
+                <div class="tool-icon">💻</div>
+                <div class="tool-info">
+                    <h4>Computer Control</h4>
+                    <p>Execute shell commands and scripts</p>
+                </div>
+            </div>
+            <div class="tool-card">
+                <div class="tool-icon">🌐</div>
+                <div class="tool-info">
+                    <h4>Web Research</h4>
+                    <p>Search and browse the web</p>
+                </div>
+            </div>
+            <div class="tool-card">
+                <div class="tool-icon">📁</div>
+                <div class="tool-info">
+                    <h4>File Operations</h4>
+                    <p>Read, write, and edit files</p>
+                </div>
+            </div>
+            <div class="tool-card">
+                <div class="tool-icon">⏰</div>
+                <div class="tool-info">
+                    <h4>Scheduler</h4>
+                    <p>Schedule and manage tasks</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Agents View -->
+        <div id="view-agents" class="view" style="display:none;padding:24px;overflow-y:auto;">
+            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">AI Agents</h2>
+            <div class="stat-card" style="max-width:400px;">
+                <div class="stat-label">Active Model</div>
+                <div class="stat-value" id="active-model">Loading...</div>
+            </div>
+            <div style="margin-top:20px;">
+                <div class="form-group">
+                    <label class="form-label">Model String</label>
+                    <input type="text" class="form-input" id="model-input" placeholder="e.g. gpt-4o" style="max-width:400px;">
+                </div>
+                <button class="btn btn-primary" onclick="saveModel()">Update Model</button>
+            </div>
+        </div>
+        
+        <!-- Integrations View -->
+        <div id="view-integrations" class="view" style="display:none;padding:24px;overflow-y:auto;">
+            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">MCP Integrations</h2>
+            <div class="stat-card" style="max-width:400px;">
+                <div class="stat-label">Connected Servers</div>
+                <div class="stat-value" id="mcp-count">0</div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title">Settings</div>
+                <button class="modal-close" onclick="closeSettings()">
+                    <i data-lucide="x" style="width:20px;height:20px;"></i>
+                </button>
+            </div>
+            
+            <div class="modal-content">
+                <div class="modal-sidebar">
+                    <button class="modal-nav-item active" onclick="switchPanel('dashboard')">
+                        <span>📊</span> Dashboard
+                    </button>
+                    <button class="modal-nav-item" onclick="switchPanel('persona')">
+                        <span>🧠</span> AI Personality
+                    </button>
+                    <button class="modal-nav-item" onclick="switchPanel('models')">
+                        <span>🤖</span> Models
+                    </button>
+                    <button class="modal-nav-item" onclick="switchPanel('security')">
+                        <span>🔒</span> Security
+                    </button>
+                </div>
+                
+                <div class="modal-body">
+                    <!-- Dashboard Panel -->
+                    <div id="panel-dashboard" class="panel active">
+                        <h3 class="panel-title">System Overview</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Active Model</div>
+                                <div class="stat-value" style="font-size:16px;" id="summary-model">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Autonomy</div>
+                                <div class="stat-value" style="font-size:16px;" id="summary-autonomy">-</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">MCP Servers</div>
+                                <div class="stat-value" style="font-size:16px;" id="summary-mcp">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Persona Panel -->
+                    <div id="panel-persona" class="panel">
+                        <h3 class="panel-title">AI Personality (SOUL.md)</h3>
+                        <div class="form-group">
+                            <label class="form-label">System Prompt</label>
+                            <textarea class="form-input form-textarea" id="system-prompt-input" placeholder="Enter your agent's personality and instructions..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <!-- Models Panel -->
+                    <div id="panel-models" class="panel">
+                        <h3 class="panel-title">Model Configuration</h3>
+                        <div class="form-group">
+                            <label class="form-label">Model String</label>
+                            <input type="text" class="form-input" id="settings-model-input" placeholder="e.g. gpt-4o, claude-3">
+                        </div>
+                    </div>
+                    
+                    <!-- Security Panel -->
+                    <div id="panel-security" class="panel">
+                        <h3 class="panel-title">Security & DAX</h3>
+                        <div class="stat-card">
+                            <div class="stat-label">DAX Autonomy</div>
+                            <div class="badge success" id="dax-status">Active</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div></div>
+                <div style="display:flex;gap:12px;">
+                    <button class="btn btn-ghost" onclick="closeSettings()">Cancel</button>
+                    <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <form id="input-container" class="input-container">
-        <div class="flex space-x-3">
-            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" class="input input-bordered w-full" />
-            <label for="file-input" class="file-input-label" title="Attach file">
-                <input type="file" id="file-input" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.csv">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" viewBox="0 0 20 20"><path fill="currentColor" d="M4 3a2 2 0 00-2 2v2a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 001.414 1.414L11 7.586V11a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2h-1.586l1.293-1.293a1 1 0 00-1.414-1.414L9 4.414V3a2 2 0 00-2-2H4zm1 13a1 1 0 100-2 1 1 0 000 2zM9 8a3 3 0 100-6 3 3 0 000 6zm10 0a3 3 0 100-6 3 3 0 000 6z"/></svg>
-            </label>
-            <button type="submit" id="send-button" class="btn btn-primary btn-active">Send</button>
-        </div>
-    </form>
-
-<script>
-// Configuration
-const CONFIG = {
-    wsPort: 18791, // Default picobot web port
-    maxReconnectDelay: 30000,
-    reconnectAttempts: 0
-};
-
-let socket = null;
-let reconnectTimeout = null;
-let isConnecting = false;
-let currentProgress = null;
-let fileToSend = null;
-
-// DOM elements
-const chatContainer = document.getElementById('chat-container');
-const inputForm = document.getElementById('input-container');
-const messageInput = document.getElementById('message-input');
-const sendButton = document.getElementById('send-button');
-const fileInput = document.getElementById('file-input');
-const statusDot = document.getElementById('status-dot');
-const statusText = document.getElementById('status-text');
-const body = document.getElementById('body');
-const statusIndicator = document.getElementById('status');
-
-// Utility functions
-function setStatus(connected, text) {
-    if (connected) {
-        body.classList.remove('disconnected');
-        body.classList.add('connected');
-        statusDot.classList.remove('bg-red-500');
-        statusDot.classList.add('bg-green-500');
-        statusText.textContent = text || 'Connected';
-    } else {
-        body.classList.remove('connected');
-        body.classList.add('disconnected');
-        statusDot.classList.remove('bg-green-500');
-        statusDot.classList.add('bg-red-500');
-        statusText.textContent = text || 'Disconnected';
-    }
-}
-
-function appendMessage(sender, text, isProgress = false) {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${sender}-message ${isProgress ? 'progress-message' : ''}`;
-    
-    // Basic markdown-like formatting for code blocks
-    let formattedText = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-    formattedText = formattedText.replace(/
-/g, '<br>');
-    
-    msgDiv.innerHTML = formattedText;
-    chatContainer.appendChild(msgDiv);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-    
-    return msgDiv;
-}
-
-function removeProgress() {
-    if (currentProgress) {
-        currentProgress.remove();
-        currentProgress = null;
-    }
-}
-
-function appendProgress(text) {
-    removeProgress();
-    const progressDiv = appendMessage('bot', `↳ ${text}`, true);
-    currentProgress = progressDiv;
-}
-
-// Connection handling
-function connect() {
-    if (isConnecting) return;
-    isConnecting = true;
-    
-    const host = window.location.hostname || 'localhost';
-    const wsUrl = `ws://${host}:${CONFIG.wsPort}`;
-    
-    socket = new WebSocket(wsUrl);
-    
-    socket.onopen = () => {
-        console.log('WebSocket connected');
-        setStatus(true, 'Connected');
-        CONFIG.reconnectAttempts = 0;
-        isConnecting = false;
-    };
-    
-    socket.onclose = (event) => {
-        console.log('WebSocket closed', event);
-        setStatus(false, 'Disconnected');
-        isConnecting = false;
-        scheduleReconnect();
-    };
-    
-    socket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'message') {
-                if (data.metadata && data.metadata._progress) {
-                    appendProgress(data.content);
-                } else {
-                    removeProgress();
-                    appendMessage('bot', data.content);
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
                 }
-            } else if (data.type === 'status') {
-                // Handle status updates if needed
-                console.log('Status:', data);
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+        
+        // Config
+        const CONFIG = {
+            wsPort: 18791,
+            apiPort: 18792,
+            maxReconnectDelay: 30000,
+            reconnectAttempts: 0
+        };
+        
+        let socket = null;
+        let reconnectTimeout = null;
+        let isConnecting = false;
+        let currentProgress = null;
+        
+        // Elements
+        const chatContainer = document.getElementById('chat-container');
+        const inputForm = document.getElementById('input-form');
+        const messageInput = document.getElementById('message-input');
+        const slashMenu = document.getElementById('slash-menu');
+        
+        // Connection
+        function connect() {
+            if (isConnecting) return;
+            isConnecting = true;
+            
+            const host = window.location.hostname || 'localhost';
+            const wsUrl = `ws://${host}:${CONFIG.wsPort}`;
+            
+            socket = new WebSocket(wsUrl);
+            
+            socket.onopen = () => {
+                setStatus(true);
+                CONFIG.reconnectAttempts = 0;
+                isConnecting = false;
+            };
+            
+            socket.onclose = () => {
+                setStatus(false);
+                isConnecting = false;
+                scheduleReconnect();
+            };
+            
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'message') {
+                        if (data.metadata && data.metadata._progress) {
+                            appendProgress(data.content);
+                        } else {
+                            removeProgress();
+                            appendMessage('bot', data.content);
+                        }
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            };
+        }
+        
+        function scheduleReconnect() {
+            const delay = Math.min(1000 * Math.pow(2, CONFIG.reconnectAttempts), CONFIG.maxReconnectDelay);
+            CONFIG.reconnectAttempts++;
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connect, delay);
+        }
+        
+        function setStatus(connected) {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Connected';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Disconnected';
             }
-        } catch (e) {
-            console.error('Error parsing message:', e);
         }
-    };
-    
-    socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        socket.close(); // Trigger onclose to handle reconnect
-    };
-}
-
-function scheduleReconnect() {
-    if (CONFIG.reconnectAttempts >= 10) {
-        setStatus(false, 'Max reconnect attempts reached');
-        return;
-    }
-    
-    const delay = Math.min(
-        1000 * 2 ** CONFIG.reconnectAttempts,
-        CONFIG.maxReconnectDelay
-    );
-    
-    CONFIG.reconnectAttempts++;
-    
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = setTimeout(() => {
-        console.log(`Reconnecting attempt ${CONFIG.reconnectAttempts} in ${delay/1000}s...`);
-        connect();
-    }, delay);
-}
-
-// Event listeners
-inputForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    
-    const text = messageInput.value.trim();
-    if (!text && !fileToSend) return;
-    
-    if (text) {
-        appendMessage('user', text);
-        messageInput.value = '';
-    }
-    
-    const payload = {
-        type: 'message',
-        content: text || '',
-        chat_id: 'web-session',
-        sender_id: 'web-user'
-    };
-    
-    if (fileToSend) {
-        // For now, we'll send as a base64 data URL (for small files)
-        // In production, you'd want to upload to a server first
-        payload.metadata = { ...payload.metadata, file: fileToSend };
-        fileToSend = null;
-        fileInput.value = ''; // Reset file input
-    }
-    
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(payload));
-    } else {
-        // Queue message? For now just warn
-        console.warn('WebSocket not connected, message not sent');
-        setStatus(false, 'Not connected - message not sent');
-    }
-});
-
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // For simplicity, we'll handle small files as base64
-    // Larger files would need proper upload endpoint
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        alert('File too large (max 5MB)');
-        fileInput.value = '';
-        return;
-    }
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        fileToSend = event.target.result; // data URL
-        // Show preview if image
-        if (file.type.startsWith('image/')) {
-            // Could show preview here
-            console.log('Image selected for upload');
+        
+        // Messages
+        function appendMessage(sender, text) {
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const html = marked.parse(text);
+            
+            const msg = document.createElement('div');
+            msg.className = `message ${sender}`;
+            msg.innerHTML = `
+                <div class="message-avatar ${sender}">${sender === 'bot' ? '🤖' : 'You'}</div>
+                <div class="message-content">
+                    <div class="message-bubble prose">${html}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+            
+            chatContainer.appendChild(msg);
+            msg.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
+            chatContainer.scrollTop = chatContainer.scrollHeight;
         }
-    };
-    reader.readAsDataURL(file);
-});
-
-// Handle visibility change to reconnect when tab becomes visible
-document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && socket && socket.readyState !== WebSocket.OPEN) {
-        console.log('Tab visible, reconnecting...');
+        
+        function appendProgress(text) {
+            const msg = document.createElement('div');
+            msg.className = 'message bot';
+            msg.innerHTML = `
+                <div class="message-avatar bot">🤖</div>
+                <div class="message-content">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <span>${text}</span>
+                    </div>
+                </div>
+            `;
+            chatContainer.appendChild(msg);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            currentProgress = msg;
+        }
+        
+        function removeProgress() {
+            if (currentProgress) {
+                currentProgress.remove();
+                currentProgress = null;
+            }
+        }
+        
+        // Sending
+        function sendToServer(text) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'message',
+                    content: text,
+                    chat_id: 'web-session',
+                    sender_id: 'web-user',
+                    metadata: {}
+                }));
+            }
+        }
+        
+        // Input handling
+        messageInput.addEventListener('input', (e) => {
+            if (e.target.value === '/') {
+                slashMenu.classList.add('visible');
+            } else if (!e.target.value.startsWith('/')) {
+                slashMenu.classList.remove('visible');
+            }
+        });
+        
+        inputForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = messageInput.value.trim();
+            if (!text) return;
+            
+            appendMessage('user', text);
+            sendToServer(text);
+            messageInput.value = '';
+            slashMenu.classList.remove('visible');
+        });
+        
+        window.fillInput = function(text) {
+            messageInput.value = text;
+            messageInput.focus();
+            slashMenu.classList.remove('visible');
+        };
+        
+        // Main navigation
+        window.switchMainTab = function(tab) {
+            document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => el.classList.remove('active'));
+            event.target.closest('.nav-item').classList.add('active');
+            
+            document.querySelectorAll('.view').forEach(el => el.style.display = 'none');
+            document.getElementById('view-' + tab).style.display = 'block';
+            
+            const titles = { chat: 'Chat', tools: 'Tools', agents: 'Agents', integrations: 'Integrations' };
+            document.getElementById('page-title').textContent = titles[tab] || tab;
+        };
+        
+        // Settings modal
+        window.openSettings = function() {
+            document.getElementById('settings-modal').classList.add('visible');
+            loadDashboardData();
+        };
+        
+        window.closeSettings = function() {
+            document.getElementById('settings-modal').classList.remove('visible');
+        };
+        
+        window.switchPanel = function(panel) {
+            document.querySelectorAll('.modal-nav-item').forEach(el => el.classList.remove('active'));
+            event.target.closest('.modal-nav-item').classList.add('active');
+            
+            document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+            document.getElementById('panel-' + panel).classList.add('active');
+        };
+        
+        async function loadDashboardData() {
+            try {
+                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/settings');
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    document.getElementById('active-model').textContent = data.model || 'Not set';
+                    document.getElementById('settings-model-input').value = data.model || '';
+                    document.getElementById('summary-model').textContent = data.model || '-';
+                    document.getElementById('summary-autonomy').textContent = data.dax?.enabled ? 'Enabled' : 'Disabled';
+                    document.getElementById('summary-mcp').textContent = (data.mcp_servers || []).length;
+                    document.getElementById('mcp-count').textContent = (data.mcp_servers || []).length;
+                    document.getElementById('system-prompt-input').value = data.system_prompt || '';
+                    
+                    const daxStatus = document.getElementById('dax-status');
+                    if (data.dax?.enabled) {
+                        daxStatus.textContent = 'Active';
+                        daxStatus.className = 'badge success';
+                    } else {
+                        daxStatus.textContent = 'Disabled';
+                        daxStatus.className = 'badge';
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+        }
+        
+        window.saveSettings = async function() {
+            const model = document.getElementById('settings-model-input').value.trim();
+            const systemPrompt = document.getElementById('system-prompt-input').value.trim();
+            
+            if (model) sendToServer('/model ' + model);
+            if (systemPrompt) sendToServer('/system ' + systemPrompt);
+            
+            closeSettings();
+            appendMessage('bot', '✅ Settings saved and applied!');
+        };
+        
+        window.saveModel = function() {
+            const model = document.getElementById('model-input').value.trim();
+            if (model) {
+                sendToServer('/model ' + model);
+            }
+        };
+        
+        // Connect on load
         connect();
-    }
-});
-
-// Handle online/offline events
-window.addEventListener('online', () => {
-    console.log('Browser online');
-    connect();
-});
-window.addEventListener('offline', () => {
-    console.log('Browser offline');
-    setStatus(false, 'Offline');
-});
-
-// Initialize
-console.log('Picobot PWA initializing...');
-connect();
-
-// Register service worker if supported
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('Service Worker registered', reg.scope))
-            .catch(err => console.error('Service Worker registration failed:', err));
-    });
-}
-</script>
+    </script>
 </body>
 </html>

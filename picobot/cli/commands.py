@@ -297,7 +297,7 @@ def _make_provider(config: Config):
         # Gemini OAuth: Reuses DAX's OAuth credentials
         if provider_name == "gemini_oauth":
             from picobot.providers.gemini_oauth_provider import create_provider
-            return create_provider()
+            return create_provider(api_base=config.get_api_base(model))
 
         from picobot.providers.litellm_provider import LiteLLMProvider
         from picobot.providers.registry import find_by_name

@@ -100,7 +100,7 @@ class TestProviderBootstrap:
         primary = DummyProvider("gemini", LLMResponse(content="ok", finish_reason="stop"))
         fallback_instances: list[DummyProvider] = []
 
-        def fake_create_provider():
+        def fake_create_provider(**kwargs):
             return primary
 
         def fake_codex_provider(default_model: str):

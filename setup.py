@@ -8,8 +8,7 @@ setup(
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
     url="https://github.com/picobot-ai/picobot",
-    packages=find_packages(where="picobot"),
-    package_dir={"": "picobot"},
+    packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -33,6 +32,10 @@ setup(
         "litellm>=1.0.0",
         "pydantic-settings>=2.0.0",
         "json-repair>=0.1.0",
+        "websockets>=11.0.0",
+        "python-telegram-bot>=20.0",
+        "duckduckgo-search>=3.8.0",
+        "pyppeteer>=1.0.0",
     ],
     extras_require={
         "dev": [

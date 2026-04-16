@@ -25,8 +25,8 @@ class GeminiOAuthProvider(LLMProvider):
 
     DAX_AUTH_PATH = os.path.expanduser("~/.local/share/dax/auth.json")
 
-    def __init__(self):
-        super().__init__(api_key=None, api_base=None)
+    def __init__(self, api_base: str | None = None):
+        super().__init__(api_key=None, api_base=api_base)
         self._token = ""
         self._token_expires_ms = 0
         self._reload_auth(force=True)
@@ -303,13 +303,16 @@ class GeminiOAuthProvider(LLMProvider):
             },
         }
 
+        # Use api_base if provided (e.g. for DAX proxy), otherwise use default Google endpoint
+        target_url = self.api_base or self.CODE_ASSIST_URL
+
         async def _send_request() -> httpx.Response:
             headers = {
                 **self._auth_headers(),
                 "x-activity-request-id": uuid.uuid4().hex[:16],
             }
             async with httpx.AsyncClient(timeout=120.0) as client:
-                return await client.post(self.CODE_ASSIST_URL, headers=headers, json=wrapped_payload)
+                return await client.post(target_url, headers=headers, json=wrapped_payload)
 
         response = await _send_request()
 
@@ -355,4 +358,4 @@ class GeminiOAuthProvider(LLMProvider):
 
 def create_provider(**kwargs):
     """Factory function for compatibility with Picobot's provider interface."""
-    return GeminiOAuthProvider()
+    return GeminiOAuthProvider(api_base=kwargs.get("api_base"))
