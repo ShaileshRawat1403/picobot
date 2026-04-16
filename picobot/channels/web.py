@@ -195,6 +195,45 @@ class WebChannel(BaseChannel):
                         await writer.drain()
                 except Exception as e:
                     logger.error(f"DAX stream API error: {e}")
+                except Exception as e:
+                    logger.error(f"HTTP error: {e}")
+                finally:
+                    writer.close()
+            elif path.startswith("/api/webhook"):
+                from picobot.bus.webhooks import create_webhook_manager
+                from picobot.config.loader import load_config
+
+                try:
+                    config = load_config()
+                    webhook_cfg = config.webhook
+                    if not webhook_cfg.inbound_enabled:
+                        writer.write(b"HTTP/1.1 404 Not Enabled\r\nContent-Length: 0\r\n\r\n")
+                        writer.close()
+                        return
+
+                    body = data
+                    if body:
+                        headers = {"x-webhook-signature": ""}
+                        for line in lines:
+                            if line.startswith("x-webhook-signature:"):
+                                headers["x-webhook-signature"] = line.split(":", 1)[1].strip()
+
+                        manager = create_webhook_manager(self.bus)
+                        msg = await manager.handle_inbound(path, body, headers)
+                        if msg:
+                            await self.bus.publish_inbound(msg)
+                            writer.write(
+                                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+                            )
+                        else:
+                            writer.write(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n")
+                    else:
+                        writer.write(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                except Exception as e:
+                    logger.error(f"Webhook error: {e}")
+                    writer.write(b"HTTP/1.1 500 Error\r\nContent-Length: 0\r\n\r\n")
+                writer.close()
+                return
             else:
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
         except Exception as e:
