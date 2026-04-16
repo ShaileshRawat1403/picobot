@@ -223,7 +223,7 @@ class SkillsLoader:
         """
         content = self.load_skill(name)
         if not content:
-return None
+            return None
 
     def check_dependencies(self, name: str) -> list[str]:
         """Check skill dependencies and return missing ones."""

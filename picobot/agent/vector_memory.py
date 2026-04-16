@@ -10,7 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from loguru import logger
 
@@ -81,8 +84,8 @@ class VectorMemory:
 
     def _encode(self, texts: list[str]) -> np.ndarray:
         model = self._get_model()
-        if model is None:
-            return np.random.rand(len(texts), EMBEDDING_DIM).astype(np.float32)
+        if model is None or np is None:
+            return np.random.rand(len(texts), EMBEDDING_DIM).astype(np.float32) if np else None
         embeddings = model.encode(texts, convert_to_numpy=True)
         return embeddings
 

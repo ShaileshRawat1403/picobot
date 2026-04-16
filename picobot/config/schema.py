@@ -1,7 +1,7 @@
 """Configuration schema using Pydantic."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -550,3 +550,7 @@ class Config(BaseSettings):
         return None
 
     model_config = ConfigDict(env_prefix="PICOBOT_", env_nested_delimiter="__")
+
+
+# Rebuild Config to ensure all fields are registered
+Config.model_rebuild()

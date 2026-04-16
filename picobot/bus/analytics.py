@@ -29,7 +29,18 @@ class Analytics:
             self.data = {"events": [], "daily": {}}
 
     def _save(self) -> None:
-        self.analytics_file.write_text(json.dumps(self.data, indent=2), "utf-8")
+        data_to_save = {
+            "events": self.data["events"],
+            "daily": {},
+        }
+        for date_key, daily in self.data.get("daily", {}).items():
+            data_to_save["daily"][date_key] = {
+                "messages": daily.get("messages", 0),
+                "tool_calls": daily.get("tool_calls", 0),
+                "errors": daily.get("errors", 0),
+                "channels": list(daily.get("channels", set())),
+            }
+        self.analytics_file.write_text(json.dumps(data_to_save, indent=2), "utf-8")
 
     def track(
         self,
