@@ -10,7 +10,7 @@ from slack_sdk.socket_mode.websockets import SocketModeClient
 from slack_sdk.web.async_client import AsyncWebClient
 from slackify_markdown import slackify_markdown
 
-from picobot.bus.events import OutboundMessage
+from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.channels.base import BaseChannel
 from picobot.config.schema import SlackConfig
@@ -81,12 +81,21 @@ class SlackChannel(BaseChannel):
             slack_meta = msg.metadata.get("slack", {}) if msg.metadata else {}
             thread_ts = slack_meta.get("thread_ts")
             channel_type = slack_meta.get("channel_type")
-            # Slack DMs don't use threads; channel/group replies may keep thread_ts.
             thread_ts_param = thread_ts if thread_ts and channel_type != "im" else None
 
-            # Slack rejects empty text payloads. Keep media-only messages media-only,
-            # but send a single blank message when the bot has no text or files to send.
-            if msg.content or not (msg.media or []):
+            inline_buttons = msg.metadata.get("inline_buttons") if msg.metadata else None
+            approval_buttons = msg.metadata.get("approval_buttons") if msg.metadata else None
+            buttons = approval_buttons or (inline_buttons[0] if inline_buttons else None)
+            if buttons:
+                btn_list = buttons[0] if isinstance(buttons[0], list) else buttons
+                blocks = self._build_approval_blocks(btn_list, msg.content or "Approval needed")
+                await self._web_client.chat_postMessage(
+                    channel=msg.chat_id,
+                    text=msg.content or "Approval needed",
+                    blocks=blocks,
+                    thread_ts=thread_ts_param,
+                )
+            elif msg.content or not (msg.media or []):
                 await self._web_client.chat_postMessage(
                     channel=msg.chat_id,
                     text=self._to_mrkdwn(msg.content) if msg.content else " ",
@@ -115,9 +124,7 @@ class SlackChannel(BaseChannel):
             return
 
         # Acknowledge right away
-        await client.send_socket_mode_response(
-            SocketModeResponse(envelope_id=req.envelope_id)
-        )
+        await client.send_socket_mode_response(SocketModeResponse(envelope_id=req.envelope_id))
 
         payload = req.payload or {}
         event = payload.get("event") or {}
@@ -278,3 +285,46 @@ class SlackChannel(BaseChannel):
             if parts:
                 rows.append(" · ".join(parts))
         return "\n".join(rows)
+
+    def _build_approval_blocks(self, buttons: list[dict], fallback_text: str) -> list[dict]:
+        elements = []
+        for btn in buttons:
+            action_id = btn.get("action", "approve")
+            run_id = btn.get("run_id", "")
+            approval_id = btn.get("approval_id", "")
+            elements.append(
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": btn.get("label", "Approve")},
+                    "style": "primary" if action_id == "approve" else "danger",
+                    "action_id": f"{action_id}:{run_id}:{approval_id}",
+                    "value": f"{run_id}:{approval_id}",
+                }
+            )
+        return [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": fallback_text or "Approval needed"},
+            },
+            {"type": "actions", "elements": elements},
+        ]
+
+    async def _handle_interaction(self, payload: dict) -> None:
+        action_id = payload.get("action_id", "")
+        if ":" not in action_id:
+            return
+        parts = action_id.split(":")
+        if len(parts) < 3:
+            return
+        action, run_id, approval_id = parts[0], parts[1], parts[2]
+        user_id = payload.get("user", {}).get("id", "")
+        chat_id = payload.get("channel", {}).get("id", "")
+        if action in ("approve", "deny"):
+            msg = InboundMessage(
+                channel=self.name,
+                sender_id=str(user_id),
+                chat_id=str(chat_id),
+                content=f"/resolve {action} {run_id} {approval_id}",
+                metadata={"approval": True},
+            )
+            await self.bus.publish_inbound(msg)

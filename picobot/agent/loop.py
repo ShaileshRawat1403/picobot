@@ -25,6 +25,7 @@ from picobot.agent.tools.registry import ToolRegistry
 from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
+from picobot.agent.vector_memory import VectorMemory
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
@@ -115,6 +116,7 @@ class AgentLoop:
             get_tool_definitions=self.tools.get_definitions,
         )
         self._dax_service = None
+        self.vector_memory = VectorMemory(workspace)
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
@@ -145,6 +147,11 @@ class AgentLoop:
             self._init_dax()
 
         self.tools.register(CalendarTool())
+
+        from picobot.agent.tools.vector_memory import create_vector_memory_tools
+
+        for tool in create_vector_memory_tools(self.vector_memory):
+            self.tools.register(tool)
 
     def _init_dax(self) -> None:
         """Initialize DAX polling service and tool."""
@@ -371,6 +378,69 @@ class AgentLoop:
 
         asyncio.create_task(_do_restart())
 
+    async def _handle_resolve_command(
+        self, msg: InboundMessage, cmd: str, session
+    ) -> OutboundMessage | None:
+        parts = cmd.split()
+        if len(parts) < 3:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Usage: /resolve approve|deny <run_id> [approval_id]\nOr: /resolve approve|deny (resolves latest)",
+            )
+
+        action = parts[1].lower()
+        if action not in ("approve", "deny"):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="Action must be 'approve' or 'deny'",
+            )
+
+        run_id = parts[2] if len(parts) > 2 else ""
+        approval_id = parts[3] if len(parts) > 3 else None
+
+        if not self._dax_service:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="DAX is not enabled. Configure DAX to resolve approvals.",
+            )
+
+        resolve_action = (
+            "resolve_latest_approval" if not (run_id and approval_id) else "resolve_approval"
+        )
+        tool = self.tools.get("dax")
+        if not tool:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content="DAX tool not available",
+            )
+
+        try:
+            if resolve_action == "resolve_latest_approval":
+                result = await tool.execute(action=resolve_action, decision=action)
+            else:
+                result = await tool.execute(
+                    action=resolve_action,
+                    run_id=run_id,
+                    approval_id=approval_id,
+                    decision=action,
+                )
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=f"✅ {action.title()} processed: {result}",
+                metadata={"approval_resolved": True},
+            )
+        except Exception as e:
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=f"Error resolving approval: {e}",
+            )
+
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the global lock."""
         async with self._processing_lock:
@@ -480,10 +550,13 @@ class AgentLoop:
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="New session started."
             )
+        if cmd.startswith("/resolve"):
+            return await self._handle_resolve_command(msg, cmd, session)
         if cmd == "/help":
             lines = [
                 "🐈 picobot commands:",
                 "/new — Start a new conversation",
+                "/resolve approve|deny [run_id] [approval_id] — Resolve DAX approval",
                 "/status — Show runtime status",
                 "/model — Show active model routing",
                 "/last_error — Show the most recent LLM error",

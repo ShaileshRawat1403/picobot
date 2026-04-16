@@ -124,6 +124,77 @@ class WebChannel(BaseChannel):
                         + b"\r\n\r\n"
                         + err
                     )
+            elif path == "/api/dax/status":
+                import httpx
+
+                try:
+                    config = load_config()
+                    if not config.dax.enabled or not config.dax.url:
+                        response = json.dumps({"error": "DAX not enabled"}).encode()
+                        writer.write(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                            + str(len(response)).encode()
+                            + b"\r\n\r\n"
+                            + response
+                        )
+                        return
+
+                    async def fetch_dax_status():
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            r = await client.get(f"{config.dax.url}/soothsayer/overview")
+                            if r.status_code == 200:
+                                return r.json()
+                            return {"error": f"DAX returned {r.status_code}"}
+
+                    status = asyncio.create_task(fetch_dax_status())
+                    data = await asyncio.wait_for(status, timeout=15.0)
+                    response = json.dumps(data).encode()
+                    writer.write(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + str(len(response)).encode()
+                        + b"\r\n\r\n"
+                        + response
+                    )
+                except Exception as e:
+                    logger.error(f"DAX status API error: {e}")
+                    err = json.dumps({"error": str(e)}).encode()
+                    writer.write(
+                        b"HTTP/1.1 500 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                        + str(len(err)).encode()
+                        + b"\r\n\r\n"
+                        + err
+                    )
+            elif path == "/api/dax/stream":
+                import httpx
+
+                try:
+                    config = load_config()
+                    if not config.dax.enabled or not config.dax.url:
+                        writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+                        return
+
+                    async def stream_dax_events():
+                        async with httpx.AsyncClient(timeout=30.0) as client:
+                            r = await client.get(
+                                f"{config.dax.url}/soothsayer/overview",
+                                headers={"Accept": "text/event-stream"},
+                            )
+                            async for line in r.aiter_lines():
+                                if line.strip():
+                                    yield f"data: {line}\n\n".encode()
+
+                    writer.write(
+                        b"HTTP/1.1 200 OK\r\n"
+                        + b"Content-Type: text/event-stream\r\n"
+                        + b"Cache-Control: no-cache\r\n"
+                        + b"Connection: keep-alive\r\n"
+                        + b"Access-Control-Allow-Origin: *\r\n\r\n"
+                    )
+                    async for chunk in stream_dax_events():
+                        writer.write(chunk)
+                        await writer.drain()
+                except Exception as e:
+                    logger.error(f"DAX stream API error: {e}")
             else:
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
         except Exception as e:

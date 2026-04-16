@@ -1,37 +1,46 @@
 ---
 name: memory
-description: Two-layer memory system with grep-based recall.
+description: Two-layer memory with vector search + grep. Always load this skill.
 always: true
 ---
 
 # Memory
 
-## Structure
+Picobot has two memory systems:
 
-- `memory/MEMORY.md` — Long-term facts (preferences, project context, relationships). Always loaded into your context.
-- `memory/HISTORY.md` — Append-only event log. NOT loaded into context. Search it with grep-style tools or in-memory filters. Each entry starts with [YYYY-MM-DD HH:MM].
+## 1. Vector Memory (Semantic Search)
 
-## Search Past Events
+Fast, semantic similarity search for past conversations and facts.
 
-Choose the search method based on file size:
+- **Search**: Use `search_memory` tool for natural language queries like "what did I say about the API?" or "previous project preferences"
+- **Store**: Use `remember` tool to save important facts with automatic embedding
 
-- Small `memory/HISTORY.md`: use `read_file`, then search in-memory
-- Large or long-lived `memory/HISTORY.md`: use the `exec` tool for targeted search
+Example:
+```
+Tool: search_memory
+query: "what did I ask about OAuth?" 
+limit: 5
+```
 
-Examples:
+## 2. File Memory (Grep Search)
+
+For precise text matching and large history files.
+
+- `memory/MEMORY.md` — Long-term facts (preferences, project context, relationships). Always loaded.
+- `memory/HISTORY.md` — Append-only event log. Search with grep when vector search misses.
+
+### Grep Search (for HISTORY.md)
+
 - **Linux/macOS:** `grep -i "keyword" memory/HISTORY.md`
 - **Windows:** `findstr /i "keyword" memory\HISTORY.md`
-- **Cross-platform Python:** `python -c "from pathlib import Path; text = Path('memory/HISTORY.md').read_text(encoding='utf-8'); print('\n'.join([l for l in text.splitlines() if 'keyword' in l.lower()][-20:]))"`
 
-Prefer targeted command-line search for large history files.
+## When to Update Memory
 
-## When to Update MEMORY.md
-
-Write important facts immediately using `edit_file` or `write_file`:
+Use `remember` tool immediately for important facts:
 - User preferences ("I prefer dark mode")
 - Project context ("The API uses OAuth2")
 - Relationships ("Alice is the project lead")
 
 ## Auto-consolidation
 
-Old conversations are automatically summarized and appended to HISTORY.md when the session grows large. Long-term facts are extracted to MEMORY.md. You don't need to manage this.
+Old conversations are automatically summarized and appended to file memory when the session grows large.
