@@ -26,6 +26,7 @@ from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
 from picobot.agent.vector_memory import VectorMemory
+from picobot.bus.analytics import get_analytics
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
@@ -86,6 +87,7 @@ class AgentLoop:
         self.dax_config = dax_config
         self.skill_config = skill_config or {}
 
+        self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
@@ -453,6 +455,7 @@ class AgentLoop:
         """Process a message under the global lock."""
         async with self._processing_lock:
             try:
+                self.analytics.track("message", channel=msg.channel, model=self.model)
                 response = await self._process_message(msg)
                 if response is not None:
                     await self.bus.publish_outbound(response)
@@ -470,6 +473,7 @@ class AgentLoop:
                 raise
             except Exception:
                 logger.exception("Error processing message for session {}", msg.session_key)
+                self.analytics.track("error", channel=msg.channel, model=self.model)
                 await self.bus.publish_outbound(
                     OutboundMessage(
                         channel=msg.channel,

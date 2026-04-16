@@ -63,6 +63,7 @@ def _flush_pending_tty_input() -> None:
 
     try:
         import termios
+
         termios.tcflush(fd, termios.TCIFLUSH)
         return
     except Exception:
@@ -85,6 +86,7 @@ def _restore_terminal() -> None:
         return
     try:
         import termios
+
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _SAVED_TERM_ATTRS)
     except Exception:
         pass
@@ -97,6 +99,7 @@ def _init_prompt_session() -> None:
     # Save terminal state so we can restore it on exit
     try:
         import termios
+
         _SAVED_TERM_ATTRS = termios.tcgetattr(sys.stdin.fileno())
     except Exception:
         pass
@@ -109,7 +112,7 @@ def _init_prompt_session() -> None:
     _PROMPT_SESSION = PromptSession(
         history=FileHistory(str(history_file)),
         enable_open_in_editor=False,
-        multiline=False,   # Enter submits (single line mode)
+        multiline=False,  # Enter submits (single line mode)
     )
 
 
@@ -142,10 +145,9 @@ def _print_agent_response(response: str, render_markdown: bool) -> None:
 
 async def _print_interactive_line(text: str) -> None:
     """Print async interactive updates with prompt_toolkit-safe Rich styling."""
+
     def _write() -> None:
-        ansi = _render_interactive_ansi(
-            lambda c: c.print(f"  [dim]↳ {text}[/dim]")
-        )
+        ansi = _render_interactive_ansi(lambda c: c.print(f"  [dim]↳ {text}[/dim]"))
         print_formatted_text(ANSI(ansi), end="")
 
     await run_in_terminal(_write)
@@ -153,6 +155,7 @@ async def _print_interactive_line(text: str) -> None:
 
 async def _print_interactive_response(response: str, render_markdown: bool) -> None:
     """Print async interactive replies with prompt_toolkit-safe Rich styling."""
+
     def _write() -> None:
         content = response or ""
         ansi = _render_interactive_ansi(
@@ -192,7 +195,6 @@ async def _read_interactive_input_async() -> str:
         raise KeyboardInterrupt from exc
 
 
-
 def version_callback(value: bool):
     if value:
         console.print(f"{__logo__} picobot v{__version__}")
@@ -201,9 +203,7 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
-    version: bool = typer.Option(
-        None, "--version", "-v", callback=version_callback, is_eager=True
-    ),
+    version: bool = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True),
 ):
     """picobot - Personal AI Assistant."""
     pass
@@ -225,7 +225,9 @@ def onboard():
     if config_path.exists():
         console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
         console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
-        console.print("  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
+        console.print(
+            "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
+        )
         if typer.confirm("Overwrite?"):
             config = Config()
             save_config(config)
@@ -233,12 +235,16 @@ def onboard():
         else:
             config = load_config()
             save_config(config)
-            console.print(f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
+            console.print(
+                f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
+            )
     else:
         save_config(Config())
         console.print(f"[green]✓[/green] Created config at {config_path}")
 
-    console.print("[dim]Config template now uses `maxTokens` + `contextWindowTokens`; `memoryWindow` is no longer a runtime setting.[/dim]")
+    console.print(
+        "[dim]Config template now uses `maxTokens` + `contextWindowTokens`; `memoryWindow` is no longer a runtime setting.[/dim]"
+    )
 
     # Create workspace
     workspace = get_workspace_path()
@@ -253,11 +259,10 @@ def onboard():
     console.print("\nNext steps:")
     console.print("  1. Add your API key to [cyan]~/.picobot/config.json[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
-    console.print("  2. Chat: [cyan]picobot agent -m \"Hello!\"[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/picobot#-chat-apps[/dim]")
-
-
-
+    console.print('  2. Chat: [cyan]picobot agent -m "Hello!"[/cyan]')
+    console.print(
+        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/picobot#-chat-apps[/dim]"
+    )
 
 
 def _make_provider(config: Config):
@@ -277,6 +282,7 @@ def _make_provider(config: Config):
         # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
         if provider_name == "custom":
             from picobot.providers.custom_provider import CustomProvider
+
             return CustomProvider(
                 api_key=p.api_key if p else "no-key",
                 api_base=config.get_api_base(model) or "http://localhost:8000/v1",
@@ -286,7 +292,9 @@ def _make_provider(config: Config):
         if provider_name == "azure_openai":
             if not p or not p.api_key or not p.api_base:
                 console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
-                console.print("Set them in ~/.picobot/config.json under providers.azure_openai section")
+                console.print(
+                    "Set them in ~/.picobot/config.json under providers.azure_openai section"
+                )
                 console.print("Use the model field to specify the deployment name.")
                 raise typer.Exit(1)
             return AzureOpenAIProvider(
@@ -297,14 +305,17 @@ def _make_provider(config: Config):
         # Gemini OAuth: Reuses DAX's OAuth credentials
         if provider_name == "gemini_oauth":
             from picobot.providers.gemini_oauth_provider import create_provider
+
             return create_provider(api_base=config.get_api_base(model))
 
         from picobot.providers.litellm_provider import LiteLLMProvider
         from picobot.providers.registry import find_by_name
 
         spec = find_by_name(provider_name)
-        if not model.startswith("bedrock/") and not (p and p.api_key) and not (
-            spec and (spec.is_oauth or spec.is_local)
+        if (
+            not model.startswith("bedrock/")
+            and not (p and p.api_key)
+            and not (spec and (spec.is_oauth or spec.is_local))
         ):
             console.print("[red]Error: No API key configured.[/red]")
             console.print("Set one in ~/.picobot/config.json under providers section")
@@ -389,6 +400,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
 
     if verbose:
         import logging
+
         logging.basicConfig(level=logging.DEBUG)
 
     _print_deprecated_memory_window_notice(config)
@@ -428,6 +440,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
         """Execute a cron job through the agent."""
         from picobot.agent.tools.cron import CronTool
         from picobot.agent.tools.message import MessageTool
+
         reminder_note = (
             "[Scheduled Task] Timer finished.\n\n"
             f"Task '{job.name}' has been triggered.\n"
@@ -455,12 +468,14 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
 
         if job.payload.deliver and job.payload.to and response:
             from picobot.bus.events import OutboundMessage
-            await bus.publish_outbound(OutboundMessage(
-                channel=job.payload.channel or "cli",
-                chat_id=job.payload.to,
-                content=response
-            ))
+
+            await bus.publish_outbound(
+                OutboundMessage(
+                    channel=job.payload.channel or "cli", chat_id=job.payload.to, content=response
+                )
+            )
         return response
+
     cron.on_job = on_cron_job
 
     channels = ChannelManager(config, bus)
@@ -497,10 +512,13 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     async def on_heartbeat_notify(response: str) -> None:
         """Deliver a heartbeat response to the user's channel."""
         from picobot.bus.events import OutboundMessage
+
         channel, chat_id = _pick_heartbeat_target()
         if channel == "cli":
             return
-        await bus.publish_outbound(OutboundMessage(channel=channel, chat_id=chat_id, content=response))
+        await bus.publish_outbound(
+            OutboundMessage(channel=channel, chat_id=chat_id, content=response)
+        )
 
     hb_cfg = config.gateway.heartbeat
     heartbeat = HeartbeatService(
@@ -580,8 +598,6 @@ def gateway(
     _run_gateway(cfg, verbose=verbose)
 
 
-
-
 # ============================================================================
 # Agent Commands
 # ============================================================================
@@ -593,8 +609,12 @@ def agent(
     session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
-    logs: bool = typer.Option(False, "--logs/--no-logs", help="Show picobot runtime logs during chat"),
+    markdown: bool = typer.Option(
+        True, "--markdown/--no-markdown", help="Render assistant output as Markdown"
+    ),
+    logs: bool = typer.Option(
+        False, "--logs/--no-logs", help="Show picobot runtime logs during chat"
+    ),
 ):
     """Interact with the agent directly."""
     from picobot.agent.loop import AgentLoop
@@ -639,6 +659,7 @@ def agent(
     def _thinking_ctx():
         if logs:
             from contextlib import nullcontext
+
             return nullcontext()
         # Animated spinner is safe to use with prompt_toolkit input handling
         return console.status("[dim]picobot is thinking...[/dim]", spinner="dots")
@@ -655,7 +676,9 @@ def agent(
         # Single message mode — direct call, no bus needed
         async def run_once():
             with _thinking_ctx():
-                response = await agent_loop.process_direct(message, session_id, on_progress=_cli_progress)
+                response = await agent_loop.process_direct(
+                    message, session_id, on_progress=_cli_progress
+                )
             _print_agent_response(response, render_markdown=markdown)
             await agent_loop.close_mcp()
 
@@ -663,8 +686,11 @@ def agent(
     else:
         # Interactive mode — route through bus like other channels
         from picobot.bus.events import InboundMessage
+
         _init_prompt_session()
-        console.print(f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n")
+        console.print(
+            f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n"
+        )
 
         if ":" in session_id:
             cli_channel, cli_chat_id = session_id.split(":", 1)
@@ -680,11 +706,11 @@ def agent(
         signal.signal(signal.SIGINT, _handle_signal)
         signal.signal(signal.SIGTERM, _handle_signal)
         # SIGHUP is not available on Windows
-        if hasattr(signal, 'SIGHUP'):
+        if hasattr(signal, "SIGHUP"):
             signal.signal(signal.SIGHUP, _handle_signal)
         # Ignore SIGPIPE to prevent silent process termination when writing to closed pipes
         # SIGPIPE is not available on Windows
-        if hasattr(signal, 'SIGPIPE'):
+        if hasattr(signal, "SIGPIPE"):
             signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
         async def run_interactive():
@@ -738,12 +764,14 @@ def agent(
                         turn_done.clear()
                         turn_response.clear()
 
-                        await bus.publish_inbound(InboundMessage(
-                            channel=cli_channel,
-                            sender_id="user",
-                            chat_id=cli_chat_id,
-                            content=user_input,
-                        ))
+                        await bus.publish_inbound(
+                            InboundMessage(
+                                channel=cli_channel,
+                                sender_id="user",
+                                chat_id=cli_chat_id,
+                                content=user_input,
+                            )
+                        )
 
                         with _thinking_ctx():
                             await turn_done.wait()
@@ -925,8 +953,12 @@ def status():
 
     console.print(f"{__logo__} picobot Status\n")
 
-    console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
-    console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
+    console.print(
+        f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}"
+    )
+    console.print(
+        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}"
+    )
 
     if config_path.exists():
         from picobot.providers.registry import PROVIDERS
@@ -948,7 +980,9 @@ def status():
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
                 has_key = bool(p.api_key)
-                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+                console.print(
+                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
+                )
 
         # DAX status
         if config.dax and config.dax.enabled:
@@ -958,6 +992,172 @@ def status():
             console.print(f"  Admin Numbers: {admin_count} configured")
         else:
             console.print("DAX: [dim]disabled[/dim]")
+
+
+@app.command()
+def memory():
+    """Manage vector memory and search."""
+    from picobot.agent.vector_memory import VectorMemory
+    from picobot.config.paths import get_workspace_path
+
+    import typer
+    from rich.console import Console
+    from rich.table import Table
+
+    action = typer.Argument(..., help="action: list, search, add, clear")
+    query = typer.Option(None, help="Search query for memory search")
+    content = typer.Option(None, help="Content to remember")
+
+    console = Console()
+
+    async def run():
+        workspace = get_workspace_path()
+        vm = VectorMemory(workspace)
+
+        if action == "list":
+            count = vm.count()
+            console.print(f"[bold]Vector Memory[/bold]: {count} entries")
+        elif action == "search" and query:
+            results = vm.search(query)
+            if not results:
+                console.print("[dim]No results found[/dim]")
+            else:
+                table = Table(show_header=True)
+                table.add_column("#", style="dim")
+                table.add_column("Content")
+                table.add_column("Score", style="dim")
+                for i, (c, s) in enumerate(results, 1):
+                    table.add_row(str(i), c[:80] + "..." if len(c) > 80 else c, f"{s:.2f}")
+                console.print(table)
+        elif action == "add" and content:
+            vm.add(content)
+            console.print(f"[green]✓[/green] Added to memory")
+        elif action == "clear":
+            vm.clear()
+            console.print(f"[green]✓[/green] Memory cleared")
+        else:
+            console.print("[yellow]Usage:[/yellow]")
+            console.print("  picobot memory list")
+            console.print("  picobot memory search --query 'theme'")
+            console.print("  picobot memory add --content 'I prefer dark mode'")
+            console.print("  picobot memory clear")
+
+    import asyncio
+
+    asyncio.run(run())
+
+
+@app.command()
+def skills():
+    """List and manage skills."""
+    from picobot.agent.skills import SkillsLoader
+    from picobot.config.paths import get_workspace_path
+
+    import typer
+    from rich.console import Console
+    from rich.table import Table
+
+    filter_name = typer.Option(None, help="Filter by skill name")
+
+    console = Console()
+    workspace = get_workspace_path()
+    loader = SkillsLoader(workspace)
+    all_skills = loader.list_skills(filter_unavailable=False)
+
+    if filter_name:
+        all_skills = [s for s in all_skills if filter_name in s["name"]]
+
+    table = Table(show_header=True)
+    table.add_column("Skill", style="cyan")
+    table.add_column("Source", style="dim")
+    table.add_column("Available", style="green")
+
+    for s in all_skills:
+        avail = "✓" if loader._check_requirements(loader._get_skill_meta(s["name"])) else "✗"
+        table.add_row(s["name"], s["source"], avail)
+
+    console.print(table)
+
+
+@app.command()
+def webhook():
+    """Manage webhooks."""
+    from picobot.config.loader import load_config
+    from picobot.config.schema import WebhookConfig
+
+    import typer
+    from rich.console import Console
+
+    subcmd = typer.Argument(..., help="subcommand: list, enable, disable")
+    url = typer.Option(None, help="Webhook URL")
+    secret = typer.Option(None, help="Webhook secret")
+
+    console = Console()
+    config = load_config()
+    wh = config.webhook
+
+    if subcmd == "list":
+        console.print(f"[bold]Webhook Configuration[/bold]")
+        console.print(f"  Enabled: {'Yes' if wh.enabled else 'No'}")
+        console.print(f"  URL: {wh.url or '(not set)'}")
+        console.print(f"  Inbound: {'Enabled' if wh.inbound_enabled else 'Disabled'}")
+    elif subcmd == "enable" and url:
+        console.print(f"[yellow]Edit config.json to enable webhook:[/yellow]")
+        console.print(f"  picobot config set webhook.enabled true")
+        console.print(f"  picobot config set webhook.url {url}")
+    else:
+        console.print("[yellow]Usage:[/yellow]")
+        console.print("  picobot webhook list")
+        console.print("  picobot webhook enable --url https://...")
+
+
+@app.command()
+def analytics():
+    """Show usage analytics."""
+    from picobot.config.paths import get_workspace_path
+    from picobot.bus.analytics import get_analytics
+
+    import typer
+    from rich.console import Console
+
+    days = typer.Option(7, help="Number of days to show")
+    console = Console()
+    workspace = get_workspace_path()
+    analytics = get_analytics(workspace)
+    stats = analytics.get_stats(days)
+
+    console.print(f"[bold]Usage Statistics (Last {days} days)[/bold]")
+    console.print(f"  Messages: {stats['total_messages']}")
+    console.print(f"  Tool Calls: {stats['total_tool_calls']}")
+    console.print(f"  Errors: {stats['total_errors']}")
+    console.print(f"  Channels: {', '.join(stats['channels']) or 'none'}")
+
+
+@app.command()
+def mcp():
+    """List MCP servers and their tools."""
+    from picobot.config.loader import load_config
+
+    import typer
+    from rich.console import Console
+    from rich.table import Table
+
+    config = load_config()
+    servers = config.tools.mcp_servers
+    console = Console()
+
+    table = Table(show_header=True)
+    table.add_column("Server", style="cyan")
+    table.add_column("Type", style="dim")
+    table.add_column("Status", style="green")
+
+    if not servers:
+        console.print("[yellow]No MCP servers configured[/yellow]")
+    else:
+        for name, cfg in servers.items():
+            table.add_row(name, cfg.type or "stdio", "configured")
+        console.print(table)
+    console.print("\n[dim]Edit config.json to add MCP servers[/dim]")
 
 
 @app.command()
@@ -972,6 +1172,7 @@ def doctor():
 
     # Check Python version
     import sys
+
     version = sys.version_info
     if version.major >= 3 and version.minor >= 8:
         console.print(f"[green]✓[/green] Python: {version.major}.{version.minor}.{version.micro}")
@@ -982,6 +1183,7 @@ def doctor():
 
     # Check config exists
     from picobot.config.loader import get_config_path, load_config
+
     config_path = get_config_path()
     if config_path.exists():
         console.print(f"[green]✓[/green] Config: {config_path}")
@@ -1012,7 +1214,9 @@ def doctor():
         if p is None:
             continue
         if spec.is_oauth:
-            console.print(f"[dim]  {spec.label}:[/dim] [cyan]OAuth[/cyan] (use `picobot provider login`)")
+            console.print(
+                f"[dim]  {spec.label}:[/dim] [cyan]OAuth[/cyan] (use `picobot provider login`)"
+            )
             has_any_key = True
         elif spec.is_local:
             if p.api_base:
@@ -1036,6 +1240,7 @@ def doctor():
 
     # Check tmux
     import shutil
+
     if shutil.which("tmux"):
         console.print("\n[green]✓[/green] tmux: installed")
         checks_passed += 1
@@ -1070,12 +1275,15 @@ def _register_login(name: str):
     def decorator(fn):
         _LOGIN_HANDLERS[name] = fn
         return fn
+
     return decorator
 
 
 @provider_app.command("login")
 def provider_login(
-    provider: str = typer.Argument(..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"),
+    provider: str = typer.Argument(
+        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"
+    ),
 ):
     """Authenticate with an OAuth provider."""
     from picobot.providers.registry import PROVIDERS
@@ -1100,6 +1308,7 @@ def provider_login(
 def _login_openai_codex() -> None:
     try:
         from oauth_cli_kit import get_token, login_oauth_interactive
+
         token = None
         try:
             token = get_token()
@@ -1114,7 +1323,9 @@ def _login_openai_codex() -> None:
         if not (token and token.access):
             console.print("[red]✗ Authentication failed[/red]")
             raise typer.Exit(1)
-        console.print(f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]")
+        console.print(
+            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]"
+        )
     except ImportError:
         console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
         raise typer.Exit(1)
@@ -1128,7 +1339,12 @@ def _login_github_copilot() -> None:
 
     async def _trigger():
         from litellm import acompletion
-        await acompletion(model="github_copilot/gpt-4o", messages=[{"role": "user", "content": "hi"}], max_tokens=1)
+
+        await acompletion(
+            model="github_copilot/gpt-4o",
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+        )
 
     try:
         asyncio.run(_trigger())
