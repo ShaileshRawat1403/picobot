@@ -419,6 +419,15 @@ class WebhookConfig(Base):
     allowed_ips: list[str] = Field(default_factory=list)  # IP allowlist for inbound
 
 
+class SkillConfig(Base):
+    """Skill configuration."""
+
+    enabled: bool = True  # Enable/disable individual skill
+    parameters: dict[str, Any] = Field(default_factory=dict)  # Skill parameters
+    priority: int = 0  # Load priority (higher = loaded first)
+    description: str = ""  # Custom description override
+
+
 class ToolsConfig(Base):
     """Tools configuration."""
 
@@ -427,6 +436,7 @@ class ToolsConfig(Base):
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
     webhooks: dict[str, WebhookConfig] = Field(default_factory=dict)
+    skills: dict[str, SkillConfig] = Field(default_factory=dict)
 
 
 class Config(BaseSettings):

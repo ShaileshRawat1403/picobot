@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
 # Default builtin skills directory (relative to this file)
 BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"
@@ -18,10 +19,16 @@ class SkillsLoader:
     specific tools or perform certain tasks.
     """
 
-    def __init__(self, workspace: Path, builtin_skills_dir: Path | None = None):
+    def __init__(
+        self,
+        workspace: Path,
+        builtin_skills_dir: Path | None = None,
+        skill_config: dict[str, Any] | None = None,
+    ):
         self.workspace = workspace
         self.workspace_skills = workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
+        self.skill_config = skill_config or {}
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """
@@ -41,7 +48,9 @@ class SkillsLoader:
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        skills.append({"name": skill_dir.name, "path": str(skill_file), "source": "workspace"})
+                        skills.append(
+                            {"name": skill_dir.name, "path": str(skill_file), "source": "workspace"}
+                        )
 
         # Built-in skills
         if self.builtin_skills and self.builtin_skills.exists():
@@ -49,7 +58,9 @@ class SkillsLoader:
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists() and not any(s["name"] == skill_dir.name for s in skills):
-                        skills.append({"name": skill_dir.name, "path": str(skill_file), "source": "builtin"})
+                        skills.append(
+                            {"name": skill_dir.name, "path": str(skill_file), "source": "builtin"}
+                        )
 
         # Filter by requirements
         if filter_unavailable:
@@ -123,7 +134,7 @@ class SkillsLoader:
             skill_meta = self._get_skill_meta(s["name"])
             available = self._check_requirements(skill_meta)
 
-            lines.append(f"  <skill available=\"{str(available).lower()}\">")
+            lines.append(f'  <skill available="{str(available).lower()}">')
             lines.append(f"    <name>{name}</name>")
             lines.append(f"    <description>{desc}</description>")
             lines.append(f"    <location>{path}</location>")
@@ -163,7 +174,7 @@ class SkillsLoader:
         if content.startswith("---"):
             match = re.match(r"^---\n.*?\n---\n", content, re.DOTALL)
             if match:
-                return content[match.end():].strip()
+                return content[match.end() :].strip()
         return content
 
     def _parse_picobot_metadata(self, raw: str) -> dict:
@@ -212,7 +223,43 @@ class SkillsLoader:
         """
         content = self.load_skill(name)
         if not content:
-            return None
+return None
+
+    def check_dependencies(self, name: str) -> list[str]:
+        """Check skill dependencies and return missing ones."""
+        meta = self._get_skill_meta(name)
+        deps = meta.get("metadata", {}).get("picobot", {}).get("depends", [])
+        missing = []
+        for dep in deps:
+            if not self.load_skill(dep):
+                missing.append(dep)
+        return missing
+
+    def get_skill_params(self, name: str) -> dict[str, Any]:
+        """Get configured parameters for a skill."""
+        skill_cfg = self.skill_config.get(name)
+        if skill_cfg and hasattr(skill_cfg, "parameters"):
+            return skill_cfg.parameters
+        return {}
+
+    def is_skill_enabled(self, name: str) -> bool:
+        """Check if a skill is enabled in config."""
+        skill_cfg = self.skill_config.get(name)
+        if skill_cfg is None:
+            return True  # Default enabled
+        return getattr(skill_cfg, "enabled", True)
+
+    def apply_skill_parameters(self, content: str, name: str) -> str:
+        """Apply configured parameters to skill content."""
+        params = self.get_skill_params(name)
+        if not params:
+            return content
+        # Replace {{param}} placeholders in content
+        for key, value in params.items():
+            placeholder = f"{{{{{key}}}}}"
+            if placeholder in content:
+                content = content.replace(placeholder, str(value))
+        return content
 
         if content.startswith("---"):
             match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
@@ -222,7 +269,7 @@ class SkillsLoader:
                 for line in match.group(1).split("\n"):
                     if ":" in line:
                         key, value = line.split(":", 1)
-                        metadata[key.strip()] = value.strip().strip('"\'')
+                        metadata[key.strip()] = value.strip().strip("\"'")
                 return metadata
 
         return None

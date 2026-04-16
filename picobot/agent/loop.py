@@ -67,8 +67,9 @@ class AgentLoop:
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
         dax_config: DaxConfig | None = None,
+        skill_config: dict[str, SkillConfig] | None = None,
     ):
-        from picobot.config.schema import ExecToolConfig, WebSearchConfig
+        from picobot.config.schema import ExecToolConfig, SkillConfig, WebSearchConfig
 
         self.bus = bus
         self.channels_config = channels_config
@@ -83,8 +84,9 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
         self.dax_config = dax_config
+        self.skill_config = skill_config or {}
 
-        self.context = ContextBuilder(workspace)
+        self.context = ContextBuilder(workspace, skill_config=self.skill_config)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         self.subagents = SubagentManager(
@@ -149,9 +151,15 @@ class AgentLoop:
         self.tools.register(CalendarTool())
 
         from picobot.agent.tools.vector_memory import create_vector_memory_tools
+        from picobot.agent.tools.skills import ListSkillsTool, GetSkillTool
+        from picobot.agent.skills import SkillsLoader
 
         for tool in create_vector_memory_tools(self.vector_memory):
             self.tools.register(tool)
+
+        skills_loader = SkillsLoader(self.workspace, skill_config=self.skill_config)
+        self.tools.register(ListSkillsTool(skills_loader))
+        self.tools.register(GetSkillTool(skills_loader))
 
     def _init_dax(self) -> None:
         """Initialize DAX polling service and tool."""
