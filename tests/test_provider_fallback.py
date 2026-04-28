@@ -61,7 +61,7 @@ class TestFallbackProvider:
             primary=primary,
             fallback=fallback,
             primary_model="gemini-2.5-pro",
-            fallback_model="openai-codex/gpt-5.1-codex",
+            fallback_model="openai-codex/gpt-5.3-codex",
         )
 
         response = asyncio.run(
@@ -109,8 +109,12 @@ class TestProviderBootstrap:
             fallback_instances.append(instance)
             return instance
 
-        monkeypatch.setattr("picobot.providers.gemini_oauth_provider.create_provider", fake_create_provider)
-        monkeypatch.setattr("picobot.providers.openai_codex_provider.OpenAICodexProvider", fake_codex_provider)
+        monkeypatch.setattr(
+            "picobot.providers.gemini_oauth_provider.create_provider", fake_create_provider
+        )
+        monkeypatch.setattr(
+            "picobot.providers.openai_codex_provider.OpenAICodexProvider", fake_codex_provider
+        )
 
         config = Config.model_validate(
             {

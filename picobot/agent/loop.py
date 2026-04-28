@@ -27,6 +27,7 @@ from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
 from picobot.agent.vector_memory import VectorMemory
 from picobot.bus.analytics import get_analytics
+from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
@@ -182,8 +183,9 @@ class AgentLoop:
             "url": dax_url,
             "admin_numbers": admin_numbers,
         }
-        self.tools.register(DaxTool(config=dax_tool_config))
-        logger.info("DAX tool registered")
+        dax_queue = get_dax_queue(self.workspace)
+        self.tools.register(DaxTool(config=dax_tool_config, dax_queue=dax_queue))
+        logger.info("DAX tool registered with queue")
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""

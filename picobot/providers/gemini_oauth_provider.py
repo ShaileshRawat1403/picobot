@@ -7,6 +7,7 @@ import json
 import os
 import time
 import uuid
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -32,7 +33,7 @@ class GeminiOAuthProvider(LLMProvider):
         self._reload_auth(force=True)
         self._quota_project = None
 
-    def _load_auth(self) -> tuple[str, int]:
+def _load_auth(self) -> tuple[str, int]:
         """Load OAuth token state from DAX auth.json."""
         if not os.path.exists(self.DAX_AUTH_PATH):
             raise ValueError(f"DAX auth not found at {self.DAX_AUTH_PATH}")
@@ -49,6 +50,13 @@ class GeminiOAuthProvider(LLMProvider):
 
         return token, expires
 
+    def _is_token_expired(self) -> bool:
+        """Check if the current access token is expired."""
+        if not self._token_expires_ms:
+            return True
+        now_ms = int(time.time() * 1000)
+        return now_ms >= self._token_expires_ms
+
     def _reload_auth(self, force: bool = False) -> None:
         """Reload auth from disk when missing, rotated, or near expiry."""
         now_ms = int(time.time() * 1000)
@@ -60,7 +68,12 @@ class GeminiOAuthProvider(LLMProvider):
         self._token = token
         self._token_expires_ms = expires
 
-        # Quota-project lookup is tied to auth context; refresh it on token change.
+        if self._is_token_expired():
+            logger.warning(
+                "DAX Google OAuth token expired at {}. Please run: cd /Users/Shared/MYAIAGENTS/dax/packages/dax && bun run src/index.ts auth login google",
+                datetime.fromtimestamp(self._token_expires_ms / 1000).isoformat()
+            )
+
         if force or token != previous_token:
             self._quota_project = None
 
@@ -307,6 +320,11 @@ class GeminiOAuthProvider(LLMProvider):
         target_url = self.api_base or self.CODE_ASSIST_URL
 
         async def _send_request() -> httpx.Response:
+            if self._is_token_expired():
+                raise ValueError(
+                    "DAX Google OAuth token has expired. Please refresh by running:\n"
+                    "cd /Users/Shared/MYAIAGENTS/dax/packages/dax && bun run src/index.ts auth login google"
+                )
             headers = {
                 **self._auth_headers(),
                 "x-activity-request-id": uuid.uuid4().hex[:16],

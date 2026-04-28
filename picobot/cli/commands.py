@@ -335,7 +335,7 @@ def _make_provider(config: Config):
 
     fallback_model = defaults.fallback_model
     if fallback_model is None and provider_name == "gemini_oauth":
-        fallback_model = "openai-codex/gpt-5.1-codex"
+        fallback_model = "openai-codex/gpt-5.3-codex"
     if fallback_model and fallback_model != model:
         provider = FallbackProvider(
             primary=provider,
