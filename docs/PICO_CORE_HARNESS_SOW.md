@@ -70,10 +70,57 @@ them:
 - multi-agent graphs, training trajectories, or “self-improvement” claims
   before Pico can measure a repeatable improvement on a real task.
 
+## Provider accounts and OAuth
+
+Pico needs a small, honest account-connection framework in addition to
+write-only API-key setup. OAuth proves that a provider authorised Pico for a
+specific scope; it does **not** mean that a consumer chat subscription can be
+used as a general model API.
+
+Every account connection must have a provider-owned authorisation flow,
+explicit scopes, encrypted local refresh-token storage, a disconnect/revoke
+operation, bounded refresh, and a status that distinguishes `connected`,
+`expired`, `needs_reauth`, and `error`. Browser code never receives a refresh
+token. A connection is usable only after Pico validates that the provider
+actually permits the selected capability.
+
+### Initial provider policy
+
+| Provider route | Pico decision |
+| --- | --- |
+| OpenAI API | Keep the existing write-only API-key route. It is the supported route for model inference from Pico. |
+| ChatGPT Plus/Pro/Business subscription | Do not treat this as a Pico model-provider credential. ChatGPT subscription and API billing are separate. Pico must not capture browser session cookies, reuse a Codex/ChatGPT login token, or emulate private web endpoints. |
+| OpenAI account OAuth | Add only if OpenAI publishes a supported OAuth/account-authorisation flow that grants Pico the exact inference capability it needs. Until then the UI states the API-key route plainly rather than displaying a misleading “Connect ChatGPT” button. |
+| Gemini API | Add a Google OAuth connection only for the official Gemini API OAuth path, with an owner-selected Cloud project and minimal scopes. It is an API-authorisation route; it does not claim to consume a Gemini consumer subscription. |
+| Gemini consumer subscription / CLI entitlement | Do not extract or reuse CLI credentials. A future official, supported account-backed interface can be evaluated separately. |
+| Custom OpenAI-compatible endpoint | Continue to support one named endpoint with API key or no key, never a generic OAuth proxy. |
+
+This preserves a future extension point without encoding any provider-specific
+workaround. If a provider authorises a supported local account flow later, it
+becomes an adapter behind the same connection contract rather than a new Pico
+platform feature.
+
 ## Delivery sequence
 
 Each package is a vertical slice: storage and API contract, agent integration,
 tests, then the smallest truthful web visibility. No settings-only mockups.
+
+### CH0 — Provider-account connection framework
+
+**Outcome:** Pico can connect a provider account where the provider grants a
+real, supported authorisation flow—without retaining browser sessions or
+misrepresenting subscription entitlement.
+
+Create a provider-account registry and encrypted local credential store
+separate from API keys. Start with the official Gemini API OAuth flow only
+after its local redirect, token storage, disconnect, refresh, and negative
+tests are designed. Retain API-key setup for OpenAI. No ChatGPT-subscription
+adapter ships in this package.
+
+**Acceptance gate:** state/PKCE and redirect validation, encrypted token
+storage, disconnect, expired-token handling, scope denial, owner isolation,
+and no-token-readback tests pass. The UI never calls a subscription usable
+until a provider capability probe confirms it.
 
 ### CH1 — Turn and run ledger
 
@@ -220,12 +267,15 @@ manual owner test.
 
 ## Implementation order
 
-1. **CH1** is next. It makes every later capability legible and resolves the
+1. **CH0 design** defines the provider-account contract, but **CH1** is the
+   first runtime implementation. It makes every later capability legible and resolves the
    current “working/stuck” ambiguity.
-2. **CH2** and **CH3** make model selection and context repeatable.
-3. **CH4** modularises future tools without platform sprawl.
-4. **CH5** turns missions and subagents into governed work.
-5. **CH6** makes repeated personal use practical.
+2. Implement **CH0** when Gemini API OAuth is the actual next provider route;
+   it does not block the run ledger or OpenAI API-key use.
+3. **CH2** and **CH3** make model selection and context repeatable.
+4. **CH4** modularises future tools without platform sprawl.
+5. **CH5** turns missions and subagents into governed work.
+6. **CH6** makes repeated personal use practical.
 
 UI redesign follows these mechanics. Each slice may add a small honest control
 or receipt, but Pico should not imitate Hermes's desktop settings surface or
