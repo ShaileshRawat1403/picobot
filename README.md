@@ -154,12 +154,13 @@ personal memory as the CLI. Keep it bound to localhost for personal use:
 
 ```bash
 cd /Users/Shailesh/MYAIAGENTS/picobot
-python3 -m picobot web --host 127.0.0.1 --port 18791 --config .picobot/config.json
+./scripts/pico-web
 ```
 
 Then open <http://127.0.0.1:18792>. The WebSocket listens on `18791`; the page
 is served on `18792`. Each browser connection receives only replies for its
-own server-bound chat session.
+own server-bound chat session. The launcher intentionally does not stop an
+existing Pico process; press `Ctrl+C` in its terminal before starting a new one.
 
 ### Isolated Pico test
 
