@@ -33,7 +33,7 @@ class GeminiOAuthProvider(LLMProvider):
         self._reload_auth(force=True)
         self._quota_project = None
 
-def _load_auth(self) -> tuple[str, int]:
+    def _load_auth(self) -> tuple[str, int]:
         """Load OAuth token state from DAX auth.json."""
         if not os.path.exists(self.DAX_AUTH_PATH):
             raise ValueError(f"DAX auth not found at {self.DAX_AUTH_PATH}")

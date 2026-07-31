@@ -225,6 +225,18 @@ class SkillsLoader:
         if not content:
             return None
 
+        if content.startswith("---"):
+            match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+            if match:
+                metadata = {}
+                for line in match.group(1).split("\n"):
+                    if ":" in line:
+                        key, value = line.split(":", 1)
+                        metadata[key.strip()] = value.strip().strip("\"'")
+                return metadata
+
+        return None
+
     def check_dependencies(self, name: str) -> list[str]:
         """Check skill dependencies and return missing ones."""
         meta = self._get_skill_meta(name)
@@ -260,16 +272,3 @@ class SkillsLoader:
             if placeholder in content:
                 content = content.replace(placeholder, str(value))
         return content
-
-        if content.startswith("---"):
-            match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
-            if match:
-                # Simple YAML parsing
-                metadata = {}
-                for line in match.group(1).split("\n"):
-                    if ":" in line:
-                        key, value = line.split(":", 1)
-                        metadata[key.strip()] = value.strip().strip("\"'")
-                return metadata
-
-        return None

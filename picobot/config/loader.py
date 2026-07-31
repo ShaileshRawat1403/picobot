@@ -34,17 +34,45 @@ def load_config(config_path: Path | None = None) -> Config:
     """
     path = config_path or get_config_path()
 
+    data: dict = {}
     if path.exists():
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             data = _migrate_config(data)
-            return Config.model_validate(data)
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Warning: Failed to load config from {path}: {e}")
             print("Using default configuration.")
 
-    return Config()
+    return Config.model_validate(_apply_profile_env(data, path.parent / ".env"))
+
+
+def _apply_profile_env(data: dict, env_path: Path) -> dict:
+    """Overlay profile-local secrets without storing them in config.json.
+
+    The profile uses the conventional ``OPENAI_API_KEY`` name. It is read only
+    in process and takes precedence over an empty JSON provider field.
+    """
+    if not env_path.exists():
+        return data
+    try:
+        from dotenv import dotenv_values
+
+        values = dotenv_values(env_path)
+    except Exception:
+        return data
+
+    openai_key = values.get("OPENAI_API_KEY")
+    if not isinstance(openai_key, str) or not openai_key.strip():
+        return data
+
+    result = dict(data)
+    providers = dict(result.get("providers") or {})
+    openai = dict(providers.get("openai") or {})
+    openai["apiKey"] = openai_key.strip()
+    providers["openai"] = openai
+    result["providers"] = providers
+    return result
 
 
 def save_config(config: Config, config_path: Path | None = None) -> None:

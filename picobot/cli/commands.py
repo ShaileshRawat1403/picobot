@@ -215,11 +215,16 @@ def main(
 
 
 @app.command()
-def onboard():
+def onboard(
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+):
     """Initialize picobot configuration and workspace."""
-    from picobot.config.loader import get_config_path, load_config, save_config
+    from picobot.config.loader import get_config_path, load_config, save_config, set_config_path
     from picobot.config.schema import Config
 
+    if config:
+        set_config_path(Path(config).expanduser().resolve())
     config_path = get_config_path()
 
     if config_path.exists():
@@ -246,18 +251,23 @@ def onboard():
         "[dim]Config template now uses `maxTokens` + `contextWindowTokens`; `memoryWindow` is no longer a runtime setting.[/dim]"
     )
 
+    if workspace:
+        configured = load_config()
+        configured.agents.defaults.workspace = workspace
+        save_config(configured)
+
     # Create workspace
-    workspace = get_workspace_path()
+    workspace_path = get_workspace_path(workspace)
 
-    if not workspace.exists():
-        workspace.mkdir(parents=True, exist_ok=True)
-        console.print(f"[green]✓[/green] Created workspace at {workspace}")
+    if not workspace_path.exists():
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        console.print(f"[green]✓[/green] Created workspace at {workspace_path}")
 
-    sync_workspace_templates(workspace)
+    sync_workspace_templates(workspace_path)
 
     console.print(f"\n{__logo__} picobot is ready!")
     console.print("\nNext steps:")
-    console.print("  1. Add your API key to [cyan]~/.picobot/config.json[/cyan]")
+    console.print(f"  1. Add OPENAI_API_KEY to [cyan]{config_path.parent / '.env'}[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
     console.print('  2. Chat: [cyan]picobot agent -m "Hello!"[/cyan]')
     console.print(
@@ -938,7 +948,7 @@ def web(
     cfg.channels.web.port = port
     cfg.channels.web.host = host
 
-    console.print(f"{__logo__} Starting picobot web interface on http://{host}:{port}...")
+    console.print(f"{__logo__} Starting picobot web interface on http://{host}:{port + 1}...")
     _run_gateway(cfg, verbose=False)
 
 
@@ -995,56 +1005,71 @@ def status():
 
 
 @app.command()
-def memory():
-    """Manage vector memory and search."""
-    from picobot.agent.vector_memory import VectorMemory
-    from picobot.config.paths import get_workspace_path
+def memory(
+    action: str = typer.Argument(..., help="action: list, search, add, why, confirm, reject, forget"),
+    query: str | None = typer.Option(None, help="Query for search"),
+    content: str | None = typer.Option(None, help="Content to remember"),
+    memory_id: str | None = typer.Option(None, "--id", help="Full memory id or displayed id prefix"),
+    owner: str = typer.Option("cli:user", help="Memory owner (normally leave unchanged)"),
+    kind: str = typer.Option("fact", help="Memory kind, e.g. preference, goal, constraint"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+):
+    """Manage durable personal memory and lexical recall."""
+    from picobot.memory import PersonalMemoryStore
 
-    import typer
     from rich.console import Console
     from rich.table import Table
 
-    action = typer.Argument(..., help="action: list, search, add, clear")
-    query = typer.Option(None, help="Search query for memory search")
-    content = typer.Option(None, help="Content to remember")
-
     console = Console()
+    runtime_config = _load_runtime_config(config, workspace)
+    store = PersonalMemoryStore(runtime_config.workspace_path)
 
-    async def run():
-        workspace = get_workspace_path()
-        vm = VectorMemory(workspace)
-
+    try:
         if action == "list":
-            count = vm.count()
-            console.print(f"[bold]Vector Memory[/bold]: {count} entries")
+            items = store.list(owner)
+            if not items:
+                console.print("[dim]No personal memories found[/dim]")
+                return
+            table = Table(title="Personal Memory", show_header=True)
+            table.add_column("ID", style="dim")
+            table.add_column("Status")
+            table.add_column("Kind")
+            table.add_column("Value")
+            for item in items:
+                table.add_row(item.id[:8], item.status, item.kind, item.value)
+            console.print(table)
         elif action == "search" and query:
-            results = vm.search(query)
-            if not results:
-                console.print("[dim]No results found[/dim]")
-            else:
-                table = Table(show_header=True)
-                table.add_column("#", style="dim")
-                table.add_column("Content")
-                table.add_column("Score", style="dim")
-                for i, (c, s) in enumerate(results, 1):
-                    table.add_row(str(i), c[:80] + "..." if len(c) > 80 else c, f"{s:.2f}")
-                console.print(table)
+            items = store.recall(owner, query)
+            if not items:
+                console.print("[dim]No confirmed memories matched[/dim]")
+                return
+            for item in items:
+                console.print(f"[bold]{item.id[:8]}[/bold] ({item.kind}) {item.value}")
         elif action == "add" and content:
-            vm.add(content)
-            console.print(f"[green]✓[/green] Added to memory")
-        elif action == "clear":
-            vm.clear()
-            console.print(f"[green]✓[/green] Memory cleared")
+            item = store.remember(owner, content, kind=kind)
+            console.print(f"[green]✓[/green] Remembered {item.id[:8]}")
+        elif action in {"why", "confirm", "reject", "forget"} and memory_id:
+            resolved = store.resolve_id(owner, memory_id)
+            if action == "why":
+                item = store.get(owner, resolved)
+                console.print(
+                    f"{item.id}\nStatus: {item.status}\nSource: {item.source_type}\n"
+                    f"Confidence: {item.confidence:.0%}\nValue: {item.value}"
+                )
+            else:
+                status = {"confirm": "confirmed", "reject": "rejected", "forget": "forgotten"}[action]
+                item = store.transition(owner, resolved, status)
+                console.print(f"[green]✓[/green] Memory {item.id[:8]} is now {item.status}")
         else:
             console.print("[yellow]Usage:[/yellow]")
             console.print("  picobot memory list")
             console.print("  picobot memory search --query 'theme'")
-            console.print("  picobot memory add --content 'I prefer dark mode'")
-            console.print("  picobot memory clear")
-
-    import asyncio
-
-    asyncio.run(run())
+            console.print("  picobot memory add --content 'I prefer dark mode' --kind preference")
+            console.print("  picobot memory why --id <memory-id>")
+            console.print("  picobot memory confirm|reject|forget --id <memory-id>")
+    except (KeyError, ValueError) as exc:
+        console.print(f"[red]Memory:[/red] {exc}")
 
 
 @app.command()
@@ -1097,13 +1122,13 @@ def webhook():
     wh = config.webhook
 
     if subcmd == "list":
-        console.print(f"[bold]Webhook Configuration[/bold]")
+        console.print("[bold]Webhook Configuration[/bold]")
         console.print(f"  Enabled: {'Yes' if wh.enabled else 'No'}")
         console.print(f"  URL: {wh.url or '(not set)'}")
         console.print(f"  Inbound: {'Enabled' if wh.inbound_enabled else 'Disabled'}")
     elif subcmd == "enable" and url:
-        console.print(f"[yellow]Edit config.json to enable webhook:[/yellow]")
-        console.print(f"  picobot config set webhook.enabled true")
+        console.print("[yellow]Edit config.json to enable webhook:[/yellow]")
+        console.print("  picobot config set webhook.enabled true")
         console.print(f"  picobot config set webhook.url {url}")
     else:
         console.print("[yellow]Usage:[/yellow]")

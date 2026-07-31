@@ -1,1303 +1,342 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Picobot</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-    
-    <style>
-        :root {
-            --sidebar-width: 240px;
-            --header-height: 56px;
-        }
-        
-        * {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #0f0f0f;
-            color: #ededed;
-        }
-        
-        /* Sidebar */
-        .sidebar {
-            width: var(--sidebar-width);
-            height: 100vh;
-            background: #0a0a0a;
-            border-right: 1px solid #262626;
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            left: 0;
-            top: 0;
-        }
-        
-        .sidebar-header {
-            height: var(--header-height);
-            display: flex;
-            align-items: center;
-            padding: 0 16px;
-            border-bottom: 1px solid #262626;
-        }
-        
-        .sidebar-logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .logo-icon {
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-        }
-        
-        .logo-text {
-            font-weight: 600;
-            font-size: 18px;
-            letter-spacing: -0.5px;
-        }
-        
-        .sidebar-nav {
-            flex: 1;
-            padding: 16px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 10px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.15s;
-            color: #a1a1a1;
-            font-size: 14px;
-            font-weight: 500;
-            border: none;
-            background: transparent;
-            width: 100%;
-            text-align: left;
-        }
-        
-        .nav-item:hover {
-            background: #171717;
-            color: #ededed;
-        }
-        
-        .nav-item.active {
-            background: #262626;
-            color: #ededed;
-        }
-        
-        .nav-item i {
-            width: 18px;
-            height: 18px;
-            opacity: 0.8;
-        }
-        
-        /* Main Content */
-        .main {
-            margin-left: var(--sidebar-width);
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        /* Header */
-        .header {
-            height: var(--header-height);
-            background: #0f0f0f;
-            border-bottom: 1px solid #262626;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 24px;
-            flex-shrink: 0;
-        }
-        
-        .header-title {
-            font-weight: 600;
-            font-size: 15px;
-        }
-        
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: #737373;
-        }
-        
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ef4444;
-        }
-        
-        .status-dot.connected {
-            background: #22c55e;
-        }
-        
-        /* Chat Area */
-        .chat-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-        
-        .message {
-            display: flex;
-            gap: 12px;
-            max-width: 800px;
-        }
-        
-        .message.user {
-            align-self: flex-end;
-            flex-direction: row-reverse;
-        }
-        
-        .message-avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            font-size: 16px;
-        }
-        
-        .message-avatar.bot {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        }
-        
-        .message-avatar.user {
-            background: #262626;
-        }
-        
-        .message-content {
-            flex: 1;
-        }
-        
-        .message-bubble {
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        
-        .message.user .message-bubble {
-            background: #262626;
-        }
-        
-        .message.bot .message-bubble {
-            background: #1a1a1a;
-            border: 1px solid #262626;
-        }
-        
-        .message-time {
-            font-size: 11px;
-            color: #525252;
-            margin-top: 4px;
-            padding: 0 4px;
-        }
-        
-        /* Input Area */
-        .input-area {
-            padding: 16px 24px 24px;
-            background: #0f0f0f;
-        }
-        
-        .input-container {
-            max-width: 800px;
-            margin: 0 auto;
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-        }
-        
-        .input-wrapper {
-            flex: 1;
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 12px;
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            transition: border-color 0.15s;
-        }
-        
-        .input-wrapper:focus-within {
-            border-color: #404040;
-        }
-        
-        .message-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            color: #ededed;
-            font-size: 14px;
-        }
-        
-        .message-input::placeholder {
-            color: #525252;
-        }
-        
-        .send-btn {
-            width: 36px;
-            height: 36px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            transition: opacity 0.15s;
-        }
-        
-        .send-btn:hover {
-            opacity: 0.9;
-        }
-        
-        /* Slash Commands Menu */
-        .slash-menu {
-            position: absolute;
-            bottom: 100%;
-            left: 24px;
-            right: 24px;
-            max-width: 800px;
-            margin-bottom: 8px;
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 10px;
-            overflow: hidden;
-            display: none;
-            z-index: 100;
-        }
-        
-        .slash-menu.visible {
-            display: block;
-        }
-        
-        .slash-menu-header {
-            padding: 10px 14px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #525252;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: #171717;
-        }
-        
-        .slash-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            cursor: pointer;
-            transition: background 0.1s;
-        }
-        
-        .slash-item:hover {
-            background: #262626;
-        }
-        
-        .slash-item-badge {
-            font-size: 12px;
-            font-weight: 600;
-            color: #a1a1aa;
-            background: #262626;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        
-        /* Modal / Settings Panel */
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.8);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        
-        .modal-overlay.visible {
-            display: flex;
-        }
-        
-        .modal {
-            width: 90%;
-            max-width: 1200px;
-            height: 85%;
-            background: #0f0f0f;
-            border: 1px solid #262626;
-            border-radius: 16px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        
-        .modal-header {
-            padding: 20px 24px;
-            border-bottom: 1px solid #262626;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            background: transparent;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            color: #737373;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s;
-        }
-        
-        .modal-close:hover {
-            background: #262626;
-            color: #ededed;
-        }
-        
-        .modal-content {
-            flex: 1;
-            display: flex;
-            overflow: hidden;
-        }
-        
-        .modal-sidebar {
-            width: 220px;
-            background: #0a0a0a;
-            border-right: 1px solid #262626;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .modal-nav-item {
-            padding: 10px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            color: #737373;
-            transition: all 0.15s;
-            border: none;
-            background: transparent;
-            text-align: left;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .modal-nav-item:hover {
-            background: #171717;
-            color: #a1a1a1;
-        }
-        
-        .modal-nav-item.active {
-            background: #262626;
-            color: #ededed;
-        }
-        
-        .modal-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 24px 32px;
-        }
-        
-        .panel {
-            display: none;
-        }
-        
-        .panel.active {
-            display: block;
-        }
-        
-        .panel-title {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 24px;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: #a1a1a1;
-            margin-bottom: 8px;
-        }
-        
-        .form-input {
-            width: 100%;
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 14px;
-            color: #ededed;
-            outline: none;
-            transition: border-color 0.15s;
-        }
-        
-        .form-input:focus {
-            border-color: #404040;
-        }
-        
-        .form-textarea {
-            min-height: 200px;
-            resize: vertical;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        
-        .stat-card {
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 12px;
-            padding: 20px;
-        }
-        
-        .stat-label {
-            font-size: 13px;
-            color: #737373;
-            margin-bottom: 8px;
-        }
-        
-        .stat-value {
-            font-size: 24px;
-            font-weight: 600;
-        }
-        
-        .dax-status-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-        
-        .dax-runs-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-        
-        .run-item {
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 8px;
-        }
-        
-        .run-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        
-        .run-id {
-            font-family: monospace;
-            font-size: 12px;
-            color: #737373;
-        }
-        
-        .run-status {
-            font-size: 12px;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        
-        .run-status.running {
-            background: #22c55e20;
-            color: #22c55e;
-        }
-        
-        .run-status.waiting {
-            background: #eab30820;
-            color: #eab308;
-        }
-        
-        .run-status.completed {
-            background: #3b82f620;
-            color: #3b82f6;
-        }
-        
-        .run-status.failed {
-            background: #ef444420;
-            color: #ef4444;
-        }
-        
-        .tool-card {
-            background: #1a1a1a;
-            border: 1px solid #262626;
-            border-radius: 10px;
-            padding: 16px;
-            display: flex;
-            align-items: flex-start;
-            gap: 14px;
-            margin-bottom: 12px;
-        }
-        
-        .tool-icon {
-            width: 40px;
-            height: 40px;
-            background: #262626;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        
-        .tool-info h4 {
-            font-size: 15px;
-            font-weight: 600;
-            margin: 0 0 4px;
-        }
-        
-        .tool-info p {
-            font-size: 13px;
-            color: #737373;
-            margin: 0;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            background: #262626;
-            color: #a1a1a1;
-            margin-right: 6px;
-        }
-        
-        .badge.success {
-            background: rgba(34, 197, 94, 0.15);
-            color: #22c55e;
-        }
-        
-        .modal-footer {
-            padding: 16px 24px;
-            border-top: 1px solid #262626;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .btn {
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.15s;
-            border: none;
-        }
-        
-        .btn-ghost {
-            background: transparent;
-            color: #a1a1a1;
-        }
-        
-        .btn-ghost:hover {
-            background: #262626;
-            color: #ededed;
-        }
-        
-        .btn-primary {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            opacity: 0.9;
-        }
-        
-        /* Loading */
-        .loading {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 16px;
-            background: #1a1a1a;
-            border-radius: 10px;
-            font-size: 13px;
-            color: #737373;
-        }
-        
-        .spinner {
-            width: 16px;
-            height: 16px;
-            border: 2px solid #262626;
-            border-top-color: #6366f1;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Prose markdown styling */
-        .prose a { color: #6366f1; }
-        .prose code { background: #262626; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
-        .prose pre { background: #171717; padding: 16px; border-radius: 8px; overflow-x: auto; }
-        .prose pre code { background: transparent; padding: 0; }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico — Personal Workbench</title>
+  <style>
+    :root { --ink:#16182b; --muted:#6f728a; --line:#e3e4ef; --paper:#f8f8fc; --panel:#fff; --pico:#645cf6; --pico-dark:#4039bf; --pico-pale:#eeedff; --good:#168266; --bad:#c94b5b; --rail:272px; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--paper); color:var(--ink); font:14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, textarea { font:inherit; }
+    button { cursor:pointer; }
+    .app { min-height:100vh; display:grid; grid-template-columns:var(--rail) minmax(0,1fr); }
+    .rail { position:fixed; inset:0 auto 0 0; width:var(--rail); padding:20px 16px 14px; overflow:auto; background:#fff; border-right:1px solid var(--line); display:flex; flex-direction:column; gap:20px; }
+    .brand { display:flex; align-items:center; gap:10px; padding:0 8px; font-size:19px; font-weight:750; letter-spacing:-.04em; }
+    .mark { width:34px; height:34px; display:grid; place-items:center; border-radius:11px; background:linear-gradient(135deg,#8a84ff,var(--pico-dark)); box-shadow:0 8px 18px #665df540; font-size:18px; }
+    .new-session { border:0; border-radius:11px; padding:11px 12px; display:flex; gap:9px; align-items:center; justify-content:center; background:var(--pico); color:#fff; font-weight:700; box-shadow:0 7px 16px #655df531; }
+    .new-session:hover { background:var(--pico-dark); }
+    .nav, .sessions { display:grid; gap:4px; }
+    .nav-button, .session-button { width:100%; border:0; background:transparent; color:var(--muted); border-radius:9px; text-align:left; padding:9px 10px; display:flex; align-items:center; gap:10px; }
+    .nav-button { font-weight:650; }
+    .nav-button:hover, .nav-button.active, .session-button:hover, .session-button.active { color:var(--ink); background:var(--pico-pale); }
+    .section-label { display:flex; align-items:center; justify-content:space-between; padding:0 10px; color:#898ba0; font-size:11px; letter-spacing:.13em; font-weight:750; text-transform:uppercase; }
+    .session-button { display:block; overflow:hidden; }
+    .session-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:590; }
+    .session-meta { margin-top:2px; color:#9799aa; font-size:11px; }
+    .rail-footer { margin-top:auto; border-top:1px solid var(--line); padding:14px 8px 0; color:var(--muted); font-size:12px; }
+    .runtime { display:flex; align-items:center; gap:7px; }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--bad); }
+    .dot.ready { background:var(--good); box-shadow:0 0 0 4px #16826618; }
+    main { min-width:0; margin-left:var(--rail); min-height:100vh; display:flex; flex-direction:column; }
+    .topbar { height:68px; padding:0 30px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); background:#ffffffc9; backdrop-filter:blur(14px); }
+    .eyebrow { color:#8b8da0; font-size:11px; font-weight:750; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { margin:1px 0 0; font-size:17px; letter-spacing:-.025em; }
+    .connection { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; }
+    .view { display:none; flex:1; min-height:0; }
+    .view.active { display:flex; }
+    .chat-view { flex-direction:column; }
+    .transcript { width:min(860px,100%); margin:0 auto; padding:38px 30px 22px; flex:1; overflow:auto; display:flex; flex-direction:column; gap:22px; }
+    .welcome { padding:21px 22px; border:1px solid #dddbff; border-radius:16px; background:linear-gradient(135deg,#f5f4ff,#fff); }
+    .welcome h2 { margin:0 0 7px; font-size:20px; letter-spacing:-.035em; }
+    .welcome p { margin:0; color:var(--muted); }
+    .message { display:flex; gap:11px; max-width:88%; }
+    .message.user { align-self:flex-end; flex-direction:row-reverse; }
+    .avatar { width:29px; height:29px; flex:none; border-radius:9px; display:grid; place-items:center; background:var(--pico-pale); }
+    .message.user .avatar { background:#e8e9f1; font-size:11px; font-weight:750; }
+    .bubble { padding:11px 13px; border:1px solid var(--line); border-radius:4px 14px 14px; background:#fff; white-space:pre-wrap; }
+    .message.user .bubble { border-color:#dad8ff; background:var(--pico-pale); border-radius:14px 4px 14px 14px; }
+    .message-time { margin-top:4px; color:#999bad; font-size:11px; }
+    .progress { color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; }
+    .spinner { width:13px; height:13px; border:2px solid #d9d8f8; border-top-color:var(--pico); border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .composer-area { padding:10px 30px 27px; background:linear-gradient(0deg,var(--paper) 75%,transparent); }
+    .composer { width:min(860px,100%); margin:auto; border:1px solid #d9d9e7; border-radius:15px; padding:7px 7px 7px 15px; display:flex; align-items:end; gap:9px; background:#fff; box-shadow:0 9px 27px #2f2b5e0b; }
+    .composer:focus-within { border-color:#aaa5ff; box-shadow:0 0 0 4px #655df514; }
+    textarea { border:0; outline:0; resize:none; min-height:40px; max-height:180px; padding:10px 0; flex:1; background:transparent; color:var(--ink); }
+    .send { width:38px; height:38px; border:0; border-radius:11px; background:var(--pico); color:#fff; font-size:16px; }
+    .send:disabled { opacity:.45; cursor:not-allowed; }
+    .composer-hint { width:min(860px,100%); margin:8px auto 0; color:#9a9bad; font-size:11px; }
+    .workspace-view { overflow:auto; padding:36px 40px; align-items:flex-start; justify-content:center; }
+    .workspace { width:min(900px,100%); }
+    .workspace-head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:24px; }
+    .workspace-head h2 { margin:2px 0 0; font-size:27px; letter-spacing:-.045em; }
+    .workspace-head p { margin:4px 0 0; color:var(--muted); }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:17px; }
+    .memory-add { display:flex; gap:8px; margin-bottom:18px; }
+    .memory-add input { min-width:0; flex:1; border:1px solid var(--line); border-radius:10px; padding:10px 11px; outline:0; }
+    .memory-add input:focus { border-color:#aaa5ff; }
+    .action { border:0; border-radius:9px; padding:9px 12px; font-weight:700; background:var(--pico); color:#fff; }
+    .action.secondary { color:var(--pico-dark); background:var(--pico-pale); }
+    .memory-list, .skills-list { display:grid; gap:9px; }
+    .memory-card, .skill-card { border:1px solid var(--line); border-radius:12px; padding:14px; display:flex; gap:12px; align-items:flex-start; justify-content:space-between; }
+    .memory-copy, .skill-copy { min-width:0; }
+    .memory-value, .skill-name { font-weight:680; }
+    .memory-meta, .skill-meta { margin-top:3px; color:var(--muted); font-size:12px; }
+    .forget { border:0; color:#9b5361; background:#fff0f2; border-radius:8px; padding:7px 9px; font-size:12px; }
+    .skill-state { flex:none; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:700; background:#e8f7f2; color:#14725a; }
+    .skill-state.unavailable { color:#8b6c23; background:#fff8df; }
+    .artifact-layout { display:grid; grid-template-columns:minmax(260px,.78fr) minmax(300px,1.22fr); gap:14px; align-items:start; }
+    .mission-layout { display:grid; grid-template-columns:minmax(260px,.78fr) minmax(300px,1.22fr); gap:14px; align-items:start; }
+    .mission-form textarea { min-height:130px; }
+    .mission-card { width:100%; border:1px solid #dfe3e8; border-radius:4px; padding:12px; background:#fff; color:var(--ink); text-align:left; }
+    .mission-card:hover, .mission-card.active { border-color:#9eb4d4; background:#f4f7fb; }
+    .mission-detail { margin-top:14px; }
+    .mission-detail h3 { margin:0 0 5px; font-size:15px; }
+    .mission-detail p { margin:5px 0; color:#59616d; font-size:12px; }
+    .mission-detail textarea { width:100%; min-height:64px; margin-top:10px; border:1px solid #d7dce3; border-radius:4px; padding:8px; resize:vertical; color:var(--ink); background:#fff; }
+    .mission-detail textarea:focus { outline:0; border-color:#8da8cf; }
+    .mission-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+    .mission-checkpoints { display:grid; gap:7px; margin-top:14px; }
+    .mission-checkpoint { border-top:1px solid #e7e9ed; padding-top:8px; }
+    .artifact-form { display:grid; gap:9px; }
+    .artifact-form input, .artifact-form select, .artifact-form textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px 11px; outline:0; background:#fff; color:var(--ink); }
+    .artifact-form textarea { min-height:180px; resize:vertical; }
+    .artifact-form input:focus, .artifact-form select:focus, .artifact-form textarea:focus { border-color:#aaa5ff; }
+    .form-row { display:grid; grid-template-columns:1fr 120px; gap:8px; }
+    .artifact-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .artifact-card { width:100%; border:1px solid var(--line); border-radius:12px; padding:13px; background:#fff; text-align:left; color:var(--ink); }
+    .artifact-card:hover, .artifact-card.active { border-color:#aaa5ff; background:#fbfaff; }
+    .artifact-title { font-weight:700; }
+    .artifact-preview { min-height:310px; white-space:pre-wrap; overflow:auto; border:1px solid var(--line); border-radius:12px; padding:14px; background:#fbfbfe; color:#32344a; font:12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .empty { padding:24px; text-align:center; color:var(--muted); border:1px dashed #d9d9e6; border-radius:12px; }
+    .toast { position:fixed; right:20px; bottom:20px; max-width:330px; border-radius:11px; padding:11px 13px; background:#242438; color:#fff; box-shadow:0 14px 40px #18182733; opacity:0; pointer-events:none; transform:translateY(8px); transition:.2s; }
+    .toast.show { opacity:1; transform:none; }
+    /* Calm, work-first interface inspired by the useful restraint of Hermes. */
+    :root { --ink:#20242b; --muted:#737983; --line:#dfe3e8; --paper:#f7f8fa; --panel:#fff; --pico:#315a9e; --pico-dark:#244778; --pico-pale:#e7eef9; --good:#2b7b63; --bad:#c2525f; --rail:256px; }
+    body { background:#f7f8fa; font-size:14px; letter-spacing:-.004em; }
+    .app { display:block; }
+    .rail { padding:18px 14px 14px; gap:17px; background:#f8f9fb; border-right-color:#e1e4e8; }
+    .brand { gap:9px; padding:3px 8px; font-size:17px; font-weight:680; letter-spacing:-.025em; }
+    .mark { width:24px; height:24px; border-radius:5px; background:#263a59; box-shadow:none; color:#fff; font-size:12px; font-weight:750; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .new-session { min-height:34px; justify-content:flex-start; padding:8px 10px; border:1px solid #ced6e3; border-radius:5px; background:#fff; color:#273d60; box-shadow:none; font-size:13px; font-weight:650; }
+    .new-session:hover { background:#eef3fa; color:#213d68; }
+    .nav, .sessions { gap:2px; }
+    .nav-button, .session-button { min-height:34px; border-radius:4px; padding:7px 9px; color:#626974; font-size:13px; }
+    .nav-button { font-weight:560; }
+    .nav-button:hover, .nav-button.active, .session-button:hover, .session-button.active { color:#263c60; background:#e8eef8; }
+    .nav-icon { width:14px; height:14px; display:inline-block; flex:none; position:relative; opacity:.8; }
+    .nav-chat { border:1.4px solid currentColor; border-radius:4px; }
+    .nav-chat::after { content:""; position:absolute; left:2px; bottom:-3px; width:4px; height:4px; border-left:1.4px solid currentColor; transform:skewY(-36deg); }
+    .nav-artifacts { border:1.4px solid currentColor; border-radius:2px; }
+    .nav-artifacts::before { content:""; position:absolute; left:3px; right:3px; top:4px; border-top:1.4px solid currentColor; box-shadow:0 3px 0 currentColor; }
+    .nav-memory { border:1.4px solid currentColor; border-radius:50%; }
+    .nav-memory::before { content:""; position:absolute; inset:3px; border:1px solid currentColor; border-radius:50%; }
+    .nav-skills::before, .nav-skills::after { content:""; position:absolute; top:6px; width:7px; border-top:1.4px solid currentColor; transform:rotate(45deg); }
+    .nav-skills::after { transform:rotate(-45deg); }
+    .nav-context::before, .nav-context::after { content:""; position:absolute; left:1px; right:1px; border-top:1.4px solid currentColor; }
+    .nav-context::before { top:4px; box-shadow:0 4px 0 currentColor,0 8px 0 currentColor; }
+    .section-label { padding:8px 9px 4px; color:#949aa3; font-size:10px; letter-spacing:.12em; font-weight:700; }
+    .session-button { padding:7px 9px; }
+    .session-title { font-weight:560; }
+    .session-meta, .rail-footer { color:#8a919a; }
+    .rail-footer { border-top-color:#e1e4e8; padding:12px 9px 0; font-size:11px; }
+    .dot { width:7px; height:7px; }
+    main { margin-left:var(--rail); width:calc(100% - var(--rail)); background:var(--paper); }
+    .topbar { height:58px; padding:0 28px; border-bottom-color:#e1e4e8; background:#fafbfc; backdrop-filter:none; }
+    .eyebrow { color:#848b95; font-size:10px; font-weight:680; letter-spacing:.1em; }
+    h1 { margin:0; font-size:15px; font-weight:650; letter-spacing:-.018em; }
+    .title-line { display:flex; align-items:center; gap:8px; }
+    .session-title-input { width:min(300px,48vw); height:27px; border:1px solid #8da8cf; border-radius:4px; padding:3px 7px; background:#fff; color:var(--ink); font-size:14px; font-weight:620; outline:none; }
+    .title-action { border:0; padding:3px 4px; background:transparent; color:#687180; font-size:11px; }
+    .title-action:hover { color:#315a9e; text-decoration:underline; text-underline-offset:3px; }
+    .title-action.primary { padding:4px 7px; border:1px solid #315a9e; border-radius:3px; background:#315a9e; color:#fff; text-decoration:none; }
+    .connection { color:#7c838d; font-size:11px; }
+    .transcript { width:min(900px,100%); padding:42px 34px 20px; gap:20px; }
+    .welcome { padding:0 0 0 18px; max-width:610px; border:0; border-left:2px solid #c8d6eb; border-radius:0; background:transparent; }
+    .welcome h2 { margin:0 0 5px; font-size:18px; font-weight:620; letter-spacing:-.03em; }
+    .welcome p { font-size:13px; max-width:560px; }
+    .message { gap:10px; max-width:82%; }
+    .avatar { width:24px; height:24px; border-radius:4px; background:#263a59; color:#fff; font-size:10px; font-weight:720; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .message.user .avatar { background:#e9edf2; color:#555f6d; font-size:9px; }
+    .bubble { padding:9px 0; border:0; border-radius:0; background:transparent; color:#292e36; line-height:1.58; }
+    .message.user .bubble { padding:9px 11px; border:1px solid #d9e2ef; border-radius:4px; background:#edf3fa; }
+    .message-time { color:#969ca5; font-size:10px; }
+    .progress { color:#747c87; font-size:11px; }
+    .spinner { width:12px; height:12px; border-color:#d3dce9; border-top-color:#315a9e; }
+    .composer-area { padding:12px 34px 22px; background:linear-gradient(0deg,#f7f8fa 70%,transparent); }
+    .composer { width:min(900px,100%); min-height:48px; border-color:#d7dce3; border-radius:5px; padding:5px 5px 5px 13px; box-shadow:none; }
+    .composer:focus-within { border-color:#8da8cf; box-shadow:0 0 0 3px #315a9e12; }
+    .send { width:34px; height:34px; border-radius:4px; background:#315a9e; font-size:15px; }
+    .composer-hint { width:min(900px,100%); color:#969ca5; font-size:10px; }
+    .workspace-view { padding:34px 38px; }
+    .workspace { width:min(940px,100%); }
+    .workspace-head { margin-bottom:20px; }
+    .workspace-head h2 { font-size:23px; font-weight:620; letter-spacing:-.035em; }
+    .workspace-head p { font-size:13px; }
+    .card { border-color:#dfe3e8; border-radius:5px; padding:15px; box-shadow:none; }
+    .memory-add input, .memory-add select, .artifact-form input, .artifact-form select, .artifact-form textarea { border-color:#d7dce3; border-radius:4px; }
+    .memory-add input:focus, .artifact-form input:focus, .artifact-form select:focus, .artifact-form textarea:focus { border-color:#8da8cf; }
+    .action { border:1px solid #315a9e; border-radius:4px; padding:7px 10px; background:#315a9e; font-size:12px; font-weight:620; text-decoration:none; }
+    .action.secondary { border-color:#d4dce9; color:#315a9e; background:#f7f9fc; }
+    .memory-card, .skill-card, .artifact-card { border-color:#dfe3e8; border-radius:4px; padding:12px; box-shadow:none; }
+    .memory-controls { display:grid; grid-template-columns:minmax(0,1fr) 150px; gap:8px; margin:0 0 12px; }
+    .memory-controls input, .memory-controls select { width:100%; min-width:0; border:1px solid #d7dce3; border-radius:4px; padding:8px 9px; background:#fff; color:var(--ink); }
+    .memory-controls input:focus, .memory-controls select:focus { outline:0; border-color:#8da8cf; }
+    .memory-summary { margin:0 0 11px; color:#838a94; font-size:11px; }
+    .memory-actions { display:flex; flex:none; gap:6px; align-items:center; }
+    .memory-action { border:1px solid #d6dce6; border-radius:4px; padding:5px 7px; background:#fff; color:#41516a; font-size:11px; }
+    .memory-action:hover { border-color:#9eb4d4; color:#244778; background:#f5f8fc; }
+    .memory-action.reject, .memory-action.forget { color:#99515b; background:#fdf6f7; }
+    .context-grid { display:grid; grid-template-columns:minmax(0,.78fr) minmax(280px,1.22fr); gap:14px; }
+    .context-summary { display:grid; gap:12px; }
+    .context-stat { padding:13px; border:1px solid #dfe3e8; border-radius:4px; background:#fbfcfd; }
+    .context-stat-value { margin-top:3px; color:#273d60; font-size:20px; font-weight:650; letter-spacing:-.04em; }
+    .context-stat-label { color:#7c848e; font-size:11px; }
+    .artifact-card:hover, .artifact-card.active { border-color:#9eb4d4; background:#f4f7fb; }
+    .skill-learning { margin:0 0 16px; }
+    .skill-learning h3 { margin:0 0 4px; font-size:14px; font-weight:650; }
+    .skill-learning p { margin:0 0 12px; color:#6d7580; font-size:12px; }
+    .skill-proposal-layout { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(240px,.8fr); gap:14px; margin-top:14px; }
+    .skill-proposal-editor textarea { width:100%; min-height:280px; resize:vertical; border:1px solid #d7dce3; border-radius:4px; padding:10px; background:#fff; color:var(--ink); font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .skill-proposal-editor textarea:focus { outline:0; border-color:#8da8cf; }
+    .skill-proposal-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:9px; }
+    .skill-proposal-card { width:100%; border:1px solid #dfe3e8; border-radius:4px; padding:12px; background:#fff; color:var(--ink); text-align:left; }
+    .skill-proposal-card:hover, .skill-proposal-card.active { border-color:#9eb4d4; background:#f4f7fb; }
+    .operations-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,.8fr); gap:14px; }
+    .operation-profile { display:flex; flex-wrap:wrap; gap:9px; align-items:end; }
+    .operation-profile label { display:grid; gap:4px; min-width:220px; color:#707985; font-size:11px; }
+    .operation-profile select { border:1px solid #d7dce3; border-radius:4px; padding:8px 9px; background:#fff; color:var(--ink); }
+    .operation-card { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border:1px solid #dfe3e8; border-radius:4px; padding:12px; background:#fff; }
+    .operation-card + .operation-card { margin-top:8px; }
+    .operation-state { flex:none; border-radius:3px; padding:2px 6px; background:#edf7f3; color:#1d715b; font-size:10px; font-weight:650; text-transform:uppercase; }
+    .operation-state.muted { background:#f2f3f5; color:#77808b; }
+    .activity-card { border-bottom:1px solid #e7e9ed; padding:9px 0; }
+    .activity-card:first-child { padding-top:0; }
+    .memory-value, .skill-name, .artifact-title { font-weight:620; }
+    .memory-meta, .skill-meta, .artifact-meta { color:#7b838e; font-size:11px; }
+    .forget { border-radius:4px; background:#faf1f2; }
+    .skill-state { border-radius:3px; padding:2px 6px; font-size:10px; }
+    .artifact-preview { border-color:#dfe3e8; border-radius:4px; background:#fbfcfd; color:#39404a; font-size:11px; }
+    .empty { border-color:#d7dce3; border-radius:4px; background:#fbfcfd; font-size:13px; }
+    .toast { border-radius:4px; background:#273444; box-shadow:0 12px 30px #1f29371f; }
+    @media (max-width:760px) { :root{--rail:0px} .app{display:block}.rail{z-index:2; width:100%; height:auto; position:static; padding:10px; flex-direction:row; align-items:center; gap:10px; border-right:0; border-bottom:1px solid var(--line)}.brand{padding:0}.new-session{width:34px; min-height:34px; padding:0; justify-content:center; font-size:0}.new-session::before{content:'+';font-size:18px}.nav{display:flex;grid-auto-flow:column}.nav-button{padding:8px;gap:0}.nav-button>span:last-child{display:none}.sessions,.rail-footer{display:none}main{margin:0;width:100%}.topbar{padding:0 16px}.title-action{display:none}.transcript,.composer-area{padding-left:16px;padding-right:16px}.workspace-view{padding:26px 16px}.workspace-head{display:block}.workspace-head .action{margin-top:14px}.message{max-width:96%}.artifact-layout,.mission-layout,.context-grid,.skill-proposal-layout,.operations-grid{grid-template-columns:1fr}.form-row,.memory-controls{grid-template-columns:1fr} }
+  </style>
 </head>
 <body>
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-logo">
-                <div class="logo-icon">🤖</div>
-                <span class="logo-text">Picobot</span>
-            </div>
-        </div>
-        
-        <nav class="sidebar-nav">
-            <button class="nav-item active" onclick="switchMainTab('chat')">
-                <i data-lucide="message-circle"></i>
-                <span>Chat</span>
-            </button>
-            <button class="nav-item" onclick="switchMainTab('tools')">
-                <i data-lucide="wrench"></i>
-                <span>Tools</span>
-            </button>
-            <button class="nav-item" onclick="switchMainTab('agents')">
-                <i data-lucide="brain"></i>
-                <span>Agents</span>
-            </button>
-            <button class="nav-item" onclick="switchMainTab('integrations')">
-                <i data-lucide="plug"></i>
-                <span>Integrations</span>
-            </button>
-            
-            <div style="flex: 1;"></div>
-            
-            <button class="nav-item" onclick="openSettings()">
-                <i data-lucide="settings"></i>
-                <span>Settings</span>
-            </button>
-        </nav>
+  <div class="app">
+    <aside class="rail">
+      <div class="brand"><span class="mark" aria-hidden="true">P</span><span>Pico</span></div>
+      <button class="new-session" id="new-session">+ New session</button>
+      <nav class="nav" aria-label="Workbench">
+        <button class="nav-button active" data-view="chat"><span class="nav-icon nav-chat" aria-hidden="true"></span><span>Chat</span></button>
+        <button class="nav-button" data-view="artifacts"><span class="nav-icon nav-artifacts" aria-hidden="true"></span><span>Artifacts</span></button>
+        <button class="nav-button" data-view="memory"><span class="nav-icon nav-memory" aria-hidden="true"></span><span>Memory</span></button>
+        <button class="nav-button" data-view="context"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Context</span></button>
+        <button class="nav-button" data-view="missions"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Missions</span></button>
+        <button class="nav-button" data-view="operations"><span class="nav-icon nav-skills" aria-hidden="true"></span><span>Operations</span></button>
+        <button class="nav-button" data-view="skills"><span class="nav-icon nav-skills" aria-hidden="true"></span><span>Skills</span></button>
+      </nav>
+      <section class="sessions">
+        <div class="section-label"><span>Sessions</span><span id="session-count"></span></div>
+        <div id="session-list"></div>
+      </section>
+      <div class="rail-footer"><div class="runtime"><span class="dot" id="runtime-dot"></span><span id="runtime-status">Connecting</span></div><div style="margin-top:5px">Local personal workbench</div></div>
     </aside>
-
-    <!-- Main Content -->
-    <main class="main">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-title" id="page-title">Chat</div>
-            <div class="header-actions">
-                <div class="status-indicator">
-                    <div class="status-dot" id="status-dot"></div>
-                    <span id="status-text">Connecting...</span>
-                </div>
-            </div>
-        </header>
-        
-        <!-- Chat View -->
-        <div id="view-chat" class="view">
-            <div class="chat-area" id="chat-container">
-                <div class="message bot">
-                    <div class="message-avatar bot">🤖</div>
-                    <div class="message-content">
-                        <div class="message-bubble">
-                            Welcome to Picobot! I'm ready to help you with coding, research, and more.
-                            <br><br>
-                            Type <code>/</code> for available commands or click <b>Settings</b> to configure your agent.
-                        </div>
-                        <div class="message-time">Just now</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="input-area">
-                <div class="slash-menu" id="slash-menu">
-                    <div class="slash-menu-header">Commands</div>
-                    <div class="slash-item" onclick="fillInput('/search ')">
-                        <span class="slash-item-badge">/search</span>
-                        <span>Search the web</span>
-                    </div>
-                    <div class="slash-item" onclick="fillInput('/exec ')">
-                        <span class="slash-item-badge">/exec</span>
-                        <span>Run shell command</span>
-                    </div>
-                    <div class="slash-item" onclick="fillInput('/analyze ')">
-                        <span class="slash-item-badge">/analyze</span>
-                        <span>Analyze repository</span>
-                    </div>
-                    <div class="slash-item" onclick="fillInput('/new')">
-                        <span class="slash-item-badge">/new</span>
-                        <span>Start new session</span>
-                    </div>
-                </div>
-                
-                <form class="input-container" id="input-form">
-                    <div class="input-wrapper">
-                        <input type="text" class="message-input" id="message-input" placeholder="Ask anything..." autocomplete="off">
-                    </div>
-                    <button type="submit" class="send-btn">
-                        <i data-lucide="send" style="width:16px;height:16px;"></i>
-                    </button>
-                </form>
-            </div>
-        </div>
-        
-        <!-- Tools View -->
-        <div id="view-tools" class="view" style="display:none;padding:24px;overflow-y:auto;">
-            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">Available Tools</h2>
-            
-            <div class="tool-card">
-                <div class="tool-icon">💻</div>
-                <div class="tool-info">
-                    <h4>Computer Control</h4>
-                    <p>Execute shell commands and scripts</p>
-                </div>
-            </div>
-            <div class="tool-card">
-                <div class="tool-icon">🌐</div>
-                <div class="tool-info">
-                    <h4>Web Research</h4>
-                    <p>Search and browse the web</p>
-                </div>
-            </div>
-            <div class="tool-card">
-                <div class="tool-icon">📁</div>
-                <div class="tool-info">
-                    <h4>File Operations</h4>
-                    <p>Read, write, and edit files</p>
-                </div>
-            </div>
-            <div class="tool-card">
-                <div class="tool-icon">⏰</div>
-                <div class="tool-info">
-                    <h4>Scheduler</h4>
-                    <p>Schedule and manage tasks</p>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Agents View -->
-        <div id="view-agents" class="view" style="display:none;padding:24px;overflow-y:auto;">
-            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">AI Agents</h2>
-            <div class="stat-card" style="max-width:400px;">
-                <div class="stat-label">Active Model</div>
-                <div class="stat-value" id="active-model">Loading...</div>
-            </div>
-            <div style="margin-top:20px;">
-                <div class="form-group">
-                    <label class="form-label">Model String</label>
-                    <input type="text" class="form-input" id="model-input" placeholder="e.g. gpt-4o" style="max-width:400px;">
-                </div>
-                <button class="btn btn-primary" onclick="saveModel()">Update Model</button>
-            </div>
-        </div>
-        
-        <!-- Integrations View -->
-        <div id="view-integrations" class="view" style="display:none;padding:24px;overflow-y:auto;">
-            <h2 style="font-size:20px;font-weight:600;margin-bottom:20px;">MCP Integrations</h2>
-            <div class="stat-card" style="max-width:400px;">
-                <div class="stat-label">Connected Servers</div>
-                <div class="stat-value" id="mcp-count">0</div>
-            </div>
-        </div>
+    <main>
+      <header class="topbar"><div><div class="eyebrow" id="view-label">Personal workbench</div><div class="title-line"><h1 id="page-title">New session</h1><input class="session-title-input" id="session-title-input" aria-label="Session title" maxlength="72" hidden><button class="title-action" id="rename-session" type="button">Rename</button><button class="title-action primary" id="save-session-title" type="button" hidden>Save</button><button class="title-action" id="cancel-session-title" type="button" hidden>Cancel</button></div></div><div class="connection"><span class="dot" id="connection-dot"></span><span id="connection-text">Connecting…</span></div></header>
+      <section class="view chat-view active" id="view-chat">
+        <div class="transcript" id="transcript"></div>
+        <div class="composer-area"><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
+      </section>
+      <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep plans, briefs, drafts, and checklists as local versioned work products.</p></div></div><div class="artifact-layout"><div class="card"><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option></select></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><a class="action secondary" id="download-artifact" hidden>Download</a></div></form></div><div><div class="skills-list" id="artifact-list"></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></section>
+      <section class="view workspace-view" id="view-memory"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Your durable context</div><h2>Memory, under your control</h2><p>Explicit facts only. Forgetting changes lifecycle without erasing provenance.</p></div></div><div class="card"><form class="memory-add" id="memory-form"><input id="memory-input" autocomplete="off" placeholder="Save a fact or a learning candidate"><select id="memory-create-status" aria-label="New memory state"><option value="confirmed">Remember now</option><option value="proposed">Propose for review</option></select><button class="action">Save</button></form><div class="memory-controls"><input id="memory-search" autocomplete="off" placeholder="Search memory"><select id="memory-status" aria-label="Memory lifecycle filter"><option value="">All lifecycle states</option><option value="confirmed">Confirmed</option><option value="proposed">Proposed</option><option value="rejected">Rejected</option><option value="forgotten">Forgotten</option></select></div><div class="memory-summary" id="memory-summary"></div><div class="memory-list" id="memory-list"></div></div></div></section>
+      <section class="view workspace-view" id="view-context"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Current session evidence</div><h2>Context used</h2><p>Inspect the latest model turn. Pico shows the bounded chat history and the memory references it actually supplied.</p></div></div><div class="context-grid"><div class="context-summary" id="context-summary"></div><div class="card"><div class="section-label" style="padding:0 0 9px"><span>Memory references</span></div><div class="memory-list" id="context-memory-list"></div></div></div></div></section>
+      <section class="view workspace-view" id="view-missions"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable coordination</div><h2>Missions</h2><p>Keep the outcome, current step, blocker, and important decisions visible. A mission does not grant Pico any new authority.</p></div></div><div class="mission-layout"><div class="card"><form class="artifact-form mission-form" id="mission-form"><input id="mission-title" maxlength="160" autocomplete="off" placeholder="Mission title"><textarea id="mission-objective" maxlength="8000" placeholder="What outcome are you trying to achieve?"></textarea><input id="mission-step" maxlength="2000" autocomplete="off" placeholder="Current next step (optional)"><button class="action">Create mission</button></form></div><div><div class="memory-controls"><select id="mission-state" aria-label="Mission state filter"><option value="">All mission states</option><option value="draft">Draft</option><option value="active">Active</option><option value="blocked">Blocked</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></div><div class="skills-list" id="mission-list"></div><div class="card mission-detail" id="mission-detail">Select a mission to see its current step, checkpoints, and linked local evidence.</div></div></div></div></section>
+      <section class="view workspace-view" id="view-operations"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Capability control</div><h2>Operations</h2><p>Choose the minimum capability profile for this session. Pico records tool outcomes, not private tool arguments or hidden reasoning.</p></div></div><div class="card"><div class="operation-profile"><label>Session profile<select id="operation-profile" aria-label="Session capability profile"></select></label><button class="action" id="save-operation-profile" type="button">Use this profile</button></div><p class="memory-summary" id="operation-profile-description"></p></div><div class="operations-grid" style="margin-top:14px"><div class="card"><div class="section-label" style="padding:0 0 9px"><span>Capabilities</span></div><div id="operation-capabilities"></div></div><div style="display:grid;gap:14px"><div class="card"><div class="section-label" style="padding:0 0 9px"><span>Shared browser tab</span></div><div id="operation-browser"></div></div><div class="card"><div class="section-label" style="padding:0 0 9px"><span>Needs your approval</span></div><div id="operation-actions"></div></div><div class="card"><div class="section-label" style="padding:0 0 9px"><span>Recent tool activity</span></div><div id="operation-activity"></div></div></div></div></div></section>
+      <section class="view workspace-view" id="view-skills"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Capability catalog</div><h2>Skills Pico can inspect</h2><p>Availability is read from the active workspace. This view does not grant new permissions.</p></div><button class="action secondary" id="refresh-skills">Refresh</button></div><div class="card skill-learning"><h3>Learn from this completed session</h3><p>Create a reviewable skill draft. Pico does not install or activate it until you edit and approve it.</p><form class="artifact-form" id="skill-proposal-form"><div class="form-row"><input id="skill-proposal-name" maxlength="63" autocomplete="off" placeholder="Skill name, e.g. website-ops-brief"><input id="skill-proposal-description" maxlength="280" autocomplete="off" placeholder="When should Pico use this skill?"></div><textarea id="skill-proposal-guidance" placeholder="Write the repeatable workflow Pico should follow. This becomes a draft for you to review."></textarea><div class="skill-proposal-actions"><button class="action">Create review draft</button></div></form></div><div class="skill-proposal-layout"><div class="card skill-proposal-editor"><div class="section-label" style="padding:0 0 9px"><span>Draft under review</span><span id="skill-proposal-status"></span></div><textarea id="skill-proposal-content" placeholder="Choose or create a proposal to review its SKILL.md draft." disabled></textarea><div class="skill-proposal-actions"><button class="action secondary" id="save-skill-proposal" type="button" hidden>Save draft</button><button class="action" id="approve-skill-proposal" type="button" hidden>Approve and install</button><button class="memory-action reject" id="reject-skill-proposal" type="button" hidden>Reject</button></div></div><div><div class="section-label" style="padding:0 0 9px"><span>Learning proposals</span></div><div class="skills-list" id="skill-proposal-list"></div></div></div><div class="section-label" style="padding:18px 0 9px"><span>Installed skills</span></div><div class="skills-list" id="skills-list"></div></div></section>
     </main>
-    
-    <!-- Settings Modal -->
-    <div class="modal-overlay" id="settings-modal">
-        <div class="modal">
-            <div class="modal-header">
-                <div class="modal-title">Settings</div>
-                <button class="modal-close" onclick="closeSettings()">
-                    <i data-lucide="x" style="width:20px;height:20px;"></i>
-                </button>
-            </div>
-            
-            <div class="modal-content">
-                <div class="modal-sidebar">
-                    <button class="modal-nav-item active" onclick="switchPanel('dashboard')">
-                        <span>📊</span> Dashboard
-                    </button>
-                    <button class="modal-nav-item" onclick="switchPanel('persona')">
-                        <span>🧠</span> AI Personality
-                    </button>
-                    <button class="modal-nav-item" onclick="switchPanel('models')">
-                        <span>🤖</span> Models
-                    </button>
-<button class="modal-nav-item" onclick="switchPanel('security')">
-                    <button class="modal-nav-item" onclick="switchPanel('dax')">
-                    <button class="modal-nav-item" onclick="switchPanel('skills')">
-                    </div>
-                </div>
-            </div>
-                
-                <div class="modal-body">
-                    <!-- Dashboard Panel -->
-                    <div id="panel-dashboard" class="panel active">
-                        <h3 class="panel-title">System Overview</h3>
-                        <div class="stats-grid">
-                            <div class="stat-card">
-                                <div class="stat-label">Active Model</div>
-                                <div class="stat-value" style="font-size:16px;" id="summary-model">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Autonomy</div>
-                                <div class="stat-value" style="font-size:16px;" id="summary-autonomy">-</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">MCP Servers</div>
-                                <div class="stat-value" style="font-size:16px;" id="summary-mcp">0</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Persona Panel -->
-                    <div id="panel-persona" class="panel">
-                        <h3 class="panel-title">AI Personality (SOUL.md)</h3>
-                        <div class="form-group">
-                            <label class="form-label">System Prompt</label>
-                            <textarea class="form-input form-textarea" id="system-prompt-input" placeholder="Enter your agent's personality and instructions..."></textarea>
-                        </div>
-                    </div>
-                    
-                    <!-- Models Panel -->
-                    <div id="panel-models" class="panel">
-                        <h3 class="panel-title">Model Configuration</h3>
-                        <div class="form-group">
-                            <label class="form-label">Model String</label>
-                            <input type="text" class="form-input" id="settings-model-input" placeholder="e.g. gpt-4o, claude-3">
-                        </div>
-                    </div>
-                    
-                    <!-- Security Panel -->
-                    <div id="panel-security" class="panel">
-                        <h3 class="panel-title">Security</h3>
-                        <div class="form-group">
-                            <label>Allowed Users</label>
-                            <input type="text" class="input" placeholder="User IDs (comma separated)" id="allowed-users">
-                        </div>
-                    </div>
-                    <div id="panel-dax" class="panel">
-                        <h3 class="panel-title">DAX Status</h3>
-                        <div class="dax-status-grid">
-                            <div class="stat-card">
-                                <div class="stat-label">Status</div>
-                                <div class="badge success" id="dax-status">Active</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Active Runs</div>
-                                <div class="stat-value" id="dax-runs">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Pending Approvals</div>
-                                <div class="stat-value" id="dax-approvals">0</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="stat-label">Completed Today</div>
-                                <div class="stat-value" id="dax-completed">0</div>
-                            </div>
-                        </div>
-                        <button class="btn btn-primary" onclick="refreshDaxStatus()" style="margin-top:12px;">
-                            <i data-lucide="refresh-cw"></i> Refresh
-                        </button>
-                        <div class="dax-runs-list" id="dax-runs-list" style="margin-top:16px;">
-                            <!-- Runs will be populated here -->
-                        </div>
-                    </div>
-                    <div id="panel-skills" class="panel">
-                        <h3 class="panel-title">Skills</h3>
-                        <div id="skills-list">
-                            <p style="color:#737373;">Loading skills...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="modal-footer">
-                <div></div>
-                <div style="display:flex;gap:12px;">
-                    <button class="btn btn-ghost" onclick="closeSettings()">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveSettings()">Save Changes</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
-        
-        marked.setOptions({
-            highlight: function(code, lang) {
-                if (hljs.getLanguage(lang)) {
-                    return hljs.highlight(code, { language: lang }).value;
-                }
-                return hljs.highlightAuto(code).value;
-            },
-            breaks: true,
-            gfm: true
-        });
-        
-        // Config
-        const CONFIG = {
-            wsPort: 18791,
-            apiPort: 18792,
-            maxReconnectDelay: 30000,
-            reconnectAttempts: 0
-        };
-        
-        let socket = null;
-        let reconnectTimeout = null;
-        let isConnecting = false;
-        let currentProgress = null;
-        
-        // Elements
-        const chatContainer = document.getElementById('chat-container');
-        const inputForm = document.getElementById('input-form');
-        const messageInput = document.getElementById('message-input');
-        const slashMenu = document.getElementById('slash-menu');
-        
-        // Connection
-        function connect() {
-            if (isConnecting) return;
-            isConnecting = true;
-            
-            const host = window.location.hostname || 'localhost';
-            const wsUrl = `ws://${host}:${CONFIG.wsPort}`;
-            
-            socket = new WebSocket(wsUrl);
-            
-            socket.onopen = () => {
-                setStatus(true);
-                CONFIG.reconnectAttempts = 0;
-                isConnecting = false;
-            };
-            
-            socket.onclose = () => {
-                setStatus(false);
-                isConnecting = false;
-                scheduleReconnect();
-            };
-            
-            socket.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'message') {
-                        if (data.metadata && data.metadata._progress) {
-                            appendProgress(data.content);
-                        } else {
-                            removeProgress();
-                            appendMessage('bot', data.content);
-                        }
-                    }
-                } catch (e) {
-                    console.error(e);
-                }
-            };
-        }
-        
-        function scheduleReconnect() {
-            const delay = Math.min(1000 * Math.pow(2, CONFIG.reconnectAttempts), CONFIG.maxReconnectDelay);
-            CONFIG.reconnectAttempts++;
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(connect, delay);
-        }
-        
-        function setStatus(connected) {
-            const dot = document.getElementById('status-dot');
-            const text = document.getElementById('status-text');
-            
-            if (connected) {
-                dot.classList.add('connected');
-                text.textContent = 'Connected';
-            } else {
-                dot.classList.remove('connected');
-                text.textContent = 'Disconnected';
-            }
-        }
-        
-        // Messages
-        function appendMessage(sender, text) {
-            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const html = marked.parse(text);
-            
-            const msg = document.createElement('div');
-            msg.className = `message ${sender}`;
-            msg.innerHTML = `
-                <div class="message-avatar ${sender}">${sender === 'bot' ? '🤖' : 'You'}</div>
-                <div class="message-content">
-                    <div class="message-bubble prose">${html}</div>
-                    <div class="message-time">${time}</div>
-                </div>
-            `;
-            
-            chatContainer.appendChild(msg);
-            msg.querySelectorAll('pre code').forEach(block => hljs.highlightElement(block));
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
-        
-        function appendProgress(text) {
-            const msg = document.createElement('div');
-            msg.className = 'message bot';
-            msg.innerHTML = `
-                <div class="message-avatar bot">🤖</div>
-                <div class="message-content">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <span>${text}</span>
-                    </div>
-                </div>
-            `;
-            chatContainer.appendChild(msg);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            currentProgress = msg;
-        }
-        
-        function removeProgress() {
-            if (currentProgress) {
-                currentProgress.remove();
-                currentProgress = null;
-            }
-        }
-        
-        // Sending
-        function sendToServer(text) {
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'message',
-                    content: text,
-                    chat_id: 'web-session',
-                    sender_id: 'web-user',
-                    metadata: {}
-                }));
-            }
-        }
-        
-        // Input handling
-        messageInput.addEventListener('input', (e) => {
-            if (e.target.value === '/') {
-                slashMenu.classList.add('visible');
-            } else if (!e.target.value.startsWith('/')) {
-                slashMenu.classList.remove('visible');
-            }
-        });
-        
-        inputForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const text = messageInput.value.trim();
-            if (!text) return;
-            
-            appendMessage('user', text);
-            sendToServer(text);
-            messageInput.value = '';
-            slashMenu.classList.remove('visible');
-        });
-        
-        window.fillInput = function(text) {
-            messageInput.value = text;
-            messageInput.focus();
-            slashMenu.classList.remove('visible');
-        };
-        
-        // Main navigation
-        window.switchMainTab = function(tab) {
-            document.querySelectorAll('.sidebar-nav .nav-item').forEach(el => el.classList.remove('active'));
-            event.target.closest('.nav-item').classList.add('active');
-            
-            document.querySelectorAll('.view').forEach(el => el.style.display = 'none');
-            document.getElementById('view-' + tab).style.display = 'block';
-            
-            const titles = { chat: 'Chat', tools: 'Tools', agents: 'Agents', integrations: 'Integrations' };
-            document.getElementById('page-title').textContent = titles[tab] || tab;
-        };
-        
-        // Settings modal
-        window.openSettings = function() {
-            document.getElementById('settings-modal').classList.add('visible');
-            loadDashboardData();
-        };
-        
-        window.closeSettings = function() {
-            document.getElementById('settings-modal').classList.remove('visible');
-        };
-        
-        window.switchPanel = function(panel) {
-            document.querySelectorAll('.modal-nav-item').forEach(el => el.classList.remove('active'));
-            event.target.closest('.modal-nav-item').classList.add('active');
-            
-            document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
-            document.getElementById('panel-' + panel).classList.add('active');
-        };
-        
-        async function loadDashboardData() {
-            try {
-                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/settings');
-                if (res.ok) {
-                    const data = await res.json();
-                    
-                    document.getElementById('active-model').textContent = data.model || 'Not set';
-                    document.getElementById('settings-model-input').value = data.model || '';
-                    document.getElementById('summary-model').textContent = data.model || '-';
-                    document.getElementById('summary-autonomy').textContent = data.dax?.enabled ? 'Enabled' : 'Disabled';
-                    document.getElementById('summary-mcp').textContent = (data.mcp_servers || []).length;
-                    document.getElementById('mcp-count').textContent = (data.mcp_servers || []).length;
-                    document.getElementById('system-prompt-input').value = data.system_prompt || '';
-                    
-                    const daxStatus = document.getElementById('dax-status');
-                    if (data.dax?.enabled) {
-                        daxStatus.textContent = 'Active';
-                        daxStatus.className = 'badge success';
-                    } else {
-                        daxStatus.textContent = 'Disabled';
-                        daxStatus.className = 'badge';
-                    }
-                }
-                loadSkills();
-            } catch (e) {
-                console.error('Failed to load settings:', e);
-            }
-        }
-        
-        async function loadSkills() {
-            try {
-                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/skills');
-                if (res.ok) {
-                    const data = await res.json();
-                    const skills = data.skills || [];
-                    const list = document.getElementById('skills-list');
-                    if (skills.length === 0) {
-                        list.innerHTML = '<p style="color:#737373;">No skills available</p>';
-                    } else {
-                        list.innerHTML = skills.map(s => `
-                            <div class="tool-card">
-                                <div class="tool-icon" style="background:#6366f1;">
-                                    <i data-lucide="zap"></i>
-                                </div>
-                                <div>
-                                    <div style="font-weight:600;">${s.name}</div>
-                                    <div style="font-size:13px;color:#737373;">${s.source}</div>
-                                </div>
-                            </div>
-                        `).join('');
-                        lucide.createIcons();
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load skills:', e);
-            }
-        }
-        
-        window.refreshDaxStatus = async function() {
-            try {
-                const res = await fetch('http://' + (window.location.hostname || 'localhost') + ':' + CONFIG.apiPort + '/api/dax/status');
-                if (res.ok) {
-                    const data = await res.json();
-                    
-                    const runs = data.runs || [];
-                    const approvals = data.pendingApprovals || [];
-                    
-                    document.getElementById('dax-runs').textContent = runs.length;
-                    document.getElementById('dax-approvals').textContent = approvals.length;
-                    document.getElementById('dax-completed').textContent = runs.filter(r => r.status === 'completed').length;
-                    
-                    const runsList = document.getElementById('dax-runs-list');
-                    if (runs.length === 0) {
-                        runsList.innerHTML = '<p style="color:#737373;">No active runs</p>';
-                    } else {
-                        runsList.innerHTML = runs.map(run => `
-                            <div class="run-item">
-                                <div class="run-header">
-                                    <span class="run-id">${run.runId || run.id || 'N/A'}</span>
-                                    <span class="run-status ${run.status}">${run.status || 'unknown'}</span>
-                                </div>
-                                <p>${run.workflowClass || 'Workflow'}</p>
-                            </div>
-                        `).join('');
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load DAX status:', e);
-                document.getElementById('dax-runs-list').innerHTML = '<p style="color:#ef4444;">Failed to load DAX status</p>';
-            }
-        }
-        
-        window.saveSettings = async function() {
-            const model = document.getElementById('settings-model-input').value.trim();
-            const systemPrompt = document.getElementById('system-prompt-input').value.trim();
-            
-            if (model) sendToServer('/model ' + model);
-            if (systemPrompt) sendToServer('/system ' + systemPrompt);
-            
-            closeSettings();
-            appendMessage('bot', '✅ Settings saved and applied!');
-        };
-        
-        window.saveModel = function() {
-            const model = document.getElementById('model-input').value.trim();
-            if (model) {
-                sendToServer('/model ' + model);
-            }
-        };
-        
-        // Connect on load
-        connect();
-    </script>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script>
+    const CONFIG = { wsPort: __PICO_WS_PORT__, apiPort: __PICO_API_PORT__ };
+    const CLIENT_KEY = 'pico.web.client-id';
+    const SESSION_KEY = 'pico.web.session-id';
+    let socket = null, reconnectTimer = null, connected = false, currentView = 'chat', progress = null, latestAssistantContent = '', activeArtifactId = null, activeSkillProposalId = null, activeMissionId = null, currentSessionTitle = 'New session', memorySearchTimer = null;
+    let clientId = getStoredId(CLIENT_KEY), sessionId = getStoredId(SESSION_KEY);
+    const $ = (id) => document.getElementById(id);
+    function makeId() { return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, ''); }
+    function getStoredId(key) { let value = localStorage.getItem(key); if (!value || !/^[A-Za-z0-9_-]{16,96}$/.test(value)) { value = makeId(); localStorage.setItem(key, value); } return value; }
+    function escapeHtml(value) { const element = document.createElement('div'); element.textContent = value || ''; return element.innerHTML; }
+    function formatTime(value) { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? '' : date.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}); }
+    function api(path, options = {}) { const separator = path.includes('?') ? '&' : '?'; return fetch(`http://${window.location.hostname || '127.0.0.1'}:${CONFIG.apiPort}${path}${separator}client_id=${encodeURIComponent(clientId)}`, options); }
+    function toast(message) { $('toast').textContent = message; $('toast').classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $('toast').classList.remove('show'), 3200); }
+    function setConnected(value) { connected = value; $('connection-dot').classList.toggle('ready', value); $('runtime-dot').classList.toggle('ready', value); $('connection-text').textContent = value ? 'Connected locally' : 'Reconnecting…'; $('runtime-status').textContent = value ? 'Pico is ready' : 'Connecting'; $('send').disabled = !value; }
+    function setSessionTitle(title) { currentSessionTitle = title || 'New session'; $('page-title').textContent = currentSessionTitle; $('session-title-input').value = currentSessionTitle; }
+    function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
+    function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); reconnectTimer = setTimeout(connect, 1000); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
+    function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); loadTranscript(); return; } if (data.type === 'message') { removeProgress(); appendMessage('assistant', data.content); loadSessions(); if (currentView === 'context') loadSessionContext(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); } }
+    function setSession(nextSession) { sessionId = nextSession; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); }
+    function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Start a piece of work.</h2><p>Pico keeps this conversation separate, and personal memory stays visible and editable.</p></div>`; }
+    function appendMessage(role, content, timestamp = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${escapeHtml(content)}</div><div class="message-time">${formatTime(timestamp)}</div></div>`; $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
+    function showProgress() { removeProgress(); progress = document.createElement('div'); progress.className = 'progress'; progress.innerHTML = '<span class="spinner"></span> Pico is working'; $('transcript').appendChild(progress); $('transcript').scrollTop = $('transcript').scrollHeight; }
+    function removeProgress() { if (progress) { progress.remove(); progress = null; } }
+    async function loadTranscript() { try { const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}`); if (response.status === 400) { renderWelcome(); return; } if (!response.ok) throw new Error(); const data = await response.json(); $('transcript').innerHTML = ''; if (!data.messages.length) renderWelcome(); else data.messages.forEach((message) => appendMessage(message.role, message.content, message.timestamp)); } catch { renderWelcome(); } }
+    async function loadSessions() { try { const response = await api('/api/sessions'); if (!response.ok) return; const data = await response.json(); const sessions = data.sessions || []; $('session-count').textContent = sessions.length || ''; const list = $('session-list'); list.innerHTML = ''; if (!sessions.some((item) => item.id === sessionId)) sessions.unshift({id:sessionId, title:'New session', message_count:0}); sessions.forEach((item) => { const button = document.createElement('button'); button.className = `session-button ${item.id === sessionId ? 'active' : ''}`; button.innerHTML = `<div class="session-title">${escapeHtml(item.title)}</div><div class="session-meta">${item.message_count || 0} messages${item.updated_at ? ` · ${escapeHtml(formatTime(item.updated_at))}` : ''}</div>`; button.onclick = () => setSession(item.id); list.appendChild(button); }); setSessionTitle((sessions.find((item) => item.id === sessionId) || {title:'New session'}).title); } catch {} }
+    async function saveSessionTitle() { const title = $('session-title-input').value.trim(); if (!title) { toast('A session title cannot be empty.'); return; } const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/title`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title})}); if (!response.ok) { toast('Pico could not rename that session.'); return; } const data = await response.json(); setSessionTitle(data.title); setSessionTitleEditing(false); toast('Session renamed.'); loadSessions(); }
+    async function loadMemory() { const list = $('memory-list'), summary = $('memory-summary'); list.innerHTML = '<div class="empty">Loading your memory…</div>'; summary.textContent = ''; try { const search = $('memory-search').value.trim(), status = $('memory-status').value; const params = new URLSearchParams(); if (search) params.set('search', search); if (status) params.set('status', status); const response = await api(`/api/memory?${params.toString()}`); if (!response.ok) throw new Error(); const data = await response.json(); const items = data.memory || []; summary.textContent = `${items.length} ${items.length === 1 ? 'memory' : 'memories'} shown${status ? ` · ${status}` : ''}${search ? ` · matching “${search}”` : ''}`; if (!items.length) { list.innerHTML = '<div class="empty">Nothing matches this view. Pico only recalls confirmed, unexpired memory for a model turn.</div>'; return; } list.innerHTML = ''; items.forEach((item) => { const card = document.createElement('article'); card.className = 'memory-card'; const actions = item.status === 'proposed' ? '<div class="memory-actions"><button class="memory-action" data-transition="confirmed">Confirm</button><button class="memory-action reject" data-transition="rejected">Reject</button></div>' : item.status === 'confirmed' ? '<div class="memory-actions"><button class="memory-action forget" data-transition="forgotten">Forget</button></div>' : ''; const useMeta = item.usage_count ? ` · used ${item.usage_count}×${item.last_used_at ? ` · last ${escapeHtml(formatTime(item.last_used_at))}` : ''}` : ' · not yet used'; card.innerHTML = `<div class="memory-copy"><div class="memory-value">${escapeHtml(item.value)}</div><div class="memory-meta">${escapeHtml(item.kind)} · ${escapeHtml(item.scope)} · ${escapeHtml(item.status)} · ${escapeHtml(item.source_type)}${useMeta}</div></div>${actions}`; card.querySelectorAll('[data-transition]').forEach((button) => button.onclick = () => transitionMemory(item.id, button.dataset.transition)); list.appendChild(card); }); } catch { summary.textContent = ''; list.innerHTML = '<div class="empty">Memory is unavailable right now.</div>'; } }
+    async function addMemory(event) { event.preventDefault(); const input = $('memory-input'), value = input.value.trim(), status = $('memory-create-status').value; if (!value) return; const response = await api('/api/memory', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value, status})}); if (!response.ok) { toast('Pico could not save that memory.'); return; } input.value = ''; toast(status === 'proposed' ? 'Learning candidate proposed for review.' : 'Memory saved.'); loadMemory(); }
+    async function transitionMemory(id, status) { const response = await api(`/api/memory/${encodeURIComponent(id)}/transition`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status})}); if (!response.ok) { toast('Pico could not update that memory.'); return; } toast(status === 'confirmed' ? 'Memory confirmed.' : status === 'rejected' ? 'Memory rejected.' : 'Memory forgotten.'); loadMemory(); if (currentView === 'context') loadSessionContext(); }
+    function showMissionDetail(data) {
+      const mission = data.mission;
+      const terminal = ['completed', 'cancelled'].includes(mission.state);
+      const checkpoints = data.checkpoints || [];
+      const events = data.events || [];
+      const evidence = data.evidence || {};
+      const detail = $('mission-detail');
+      const nextActions = mission.state === 'draft'
+        ? '<button class="action" data-mission-transition="active">Start mission</button><button class="memory-action reject" data-mission-transition="cancelled">Cancel</button>'
+        : mission.state === 'active'
+          ? '<button class="memory-action" data-mission-transition="blocked">Mark blocked</button><button class="memory-action" data-mission-transition="completed">Complete</button><button class="memory-action reject" data-mission-transition="cancelled">Cancel</button>'
+          : mission.state === 'blocked'
+            ? '<button class="action" data-mission-transition="active">Resume</button><button class="memory-action reject" data-mission-transition="cancelled">Cancel</button>'
+            : '';
+      const checkpointList = checkpoints.length
+        ? checkpoints.map((item) => `<div class="mission-checkpoint"><div class="memory-value">${escapeHtml(item.summary)}</div><div class="memory-meta">${escapeHtml(item.kind)} · ${escapeHtml(formatTime(item.created_at))}</div></div>`).join('')
+        : '<div class="empty">No checkpoint yet. Add only a useful decision, note, evidence reference, or handoff.</div>';
+      const timeline = events.length
+        ? events.map((item) => `<div class="mission-checkpoint"><div class="memory-value">${escapeHtml(item.summary)}</div><div class="memory-meta">${escapeHtml(formatTime(item.created_at))}</div></div>`).join('')
+        : '<div class="empty">No lifecycle record yet.</div>';
+      detail.innerHTML = `<h3>${escapeHtml(mission.title)}</h3><p>${escapeHtml(mission.objective)}</p><div class="memory-meta">${escapeHtml(mission.state)} · updated ${escapeHtml(formatTime(mission.updated_at))} · ${Number(evidence.artifact_count) || 0} artifacts · ${Number(evidence.activity_count) || 0} tool events</div>${mission.blocked_reason ? `<p><strong>Blocked:</strong> ${escapeHtml(mission.blocked_reason)}</p>` : ''}<label class="memory-meta" for="mission-current-step">Current step</label><textarea id="mission-current-step" maxlength="2000" ${terminal ? 'disabled' : ''}>${escapeHtml(mission.current_step || '')}</textarea>${terminal ? '' : '<div class="mission-actions"><button class="memory-action" id="save-mission-step" type="button">Save step</button></div>'}<div class="mission-actions">${nextActions}</div>${mission.state === 'active' ? '<textarea id="mission-block-reason" maxlength="2000" placeholder="Why is this blocked? Required only when you mark it blocked."></textarea>' : ''}<div class="mission-checkpoints"><div class="section-label" style="padding:0"><span>Checkpoints</span><span>${checkpoints.length}</span></div>${terminal ? '' : '<div class="mission-actions"><select id="mission-checkpoint-kind" aria-label="Checkpoint kind"><option value="note">Note</option><option value="decision">Decision</option><option value="evidence">Evidence</option><option value="handoff">Handoff</option></select><input id="mission-checkpoint-summary" maxlength="2000" placeholder="What changed or matters next?"><button class="memory-action" id="add-mission-checkpoint" type="button">Add</button></div>'}${checkpointList}</div><div class="mission-checkpoints"><div class="section-label" style="padding:0"><span>Timeline</span><span>${events.length}</span></div>${timeline}</div>`;
+      detail.querySelectorAll('[data-mission-transition]').forEach((button) => {
+        button.onclick = () => transitionMission(mission.id, button.dataset.missionTransition);
+      });
+      if (!terminal) $('save-mission-step').onclick = () => saveMissionStep(mission.id);
+      if (!terminal) $('add-mission-checkpoint').onclick = () => addMissionCheckpoint(mission.id);
+    }
+    async function openMission(id) { const response = await api(`/api/missions/${encodeURIComponent(id)}`); if (!response.ok) { toast('Pico could not load that mission.'); return; } activeMissionId = id; showMissionDetail(await response.json()); }
+    async function loadMissions() { const list = $('mission-list'); list.innerHTML = '<div class="empty">Loading missions…</div>'; try { const state = $('mission-state').value, params = new URLSearchParams({session_id:sessionId}); if (state) params.set('state', state); const response = await api(`/api/missions?${params.toString()}`); if (!response.ok) throw new Error(); const data = await response.json(), missions = data.missions || []; if (!missions.length) { list.innerHTML = '<div class="empty">No mission in this session yet. Create one when the work has an outcome and a next step.</div>'; $('mission-detail').textContent = 'Select a mission to see its current step, checkpoints, and linked local evidence.'; activeMissionId = null; return; } list.innerHTML = ''; missions.forEach((mission) => { const card = document.createElement('button'); card.className = `mission-card ${mission.id === activeMissionId ? 'active' : ''}`; card.innerHTML = `<div class="artifact-title">${escapeHtml(mission.title)}</div><div class="artifact-meta">${escapeHtml(mission.state)}${mission.current_step ? ` · ${escapeHtml(mission.current_step)}` : ''}</div>`; card.onclick = () => openMission(mission.id); list.appendChild(card); }); const selected = missions.some((item) => item.id === activeMissionId) ? activeMissionId : missions[0].id; openMission(selected); } catch { list.innerHTML = '<div class="empty">Missions are unavailable right now.</div>'; } }
+    async function createMission(event) { event.preventDefault(); const title = $('mission-title').value.trim(), objective = $('mission-objective').value.trim(), current_step = $('mission-step').value.trim(); if (!title || !objective) { toast('A mission needs a title and an outcome.'); return; } const response = await api('/api/missions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId, title, objective, current_step})}); if (!response.ok) { toast('Pico could not create that mission. Start from a saved session and check the fields.'); return; } const data = await response.json(); activeMissionId = data.mission.id; $('mission-title').value = ''; $('mission-objective').value = ''; $('mission-step').value = ''; toast('Mission created as a draft. Start it when you are ready.'); loadMissions(); }
+    async function transitionMission(id, state) { const blocked_reason = state === 'blocked' ? $('mission-block-reason')?.value.trim() : undefined; if (state === 'blocked' && !blocked_reason) { toast('State the blocker before marking this mission blocked.'); return; } const response = await api(`/api/missions/${encodeURIComponent(id)}/transition`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({state, blocked_reason})}); if (!response.ok) { toast('Pico could not update that mission state.'); return; } toast(`Mission marked ${state}.`); activeMissionId = id; loadMissions(); }
+    async function saveMissionStep(id) { const response = await api(`/api/missions/${encodeURIComponent(id)}/step`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({current_step:$('mission-current-step').value.trim()})}); if (!response.ok) { toast('Pico could not save the current step.'); return; } toast('Current step saved.'); activeMissionId = id; loadMissions(); }
+    async function addMissionCheckpoint(id) { const summary = $('mission-checkpoint-summary').value.trim(), kind = $('mission-checkpoint-kind').value; if (!summary) { toast('Write a useful checkpoint first.'); return; } const response = await api(`/api/missions/${encodeURIComponent(id)}/checkpoints`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({kind, summary})}); if (!response.ok) { toast('Pico could not add that checkpoint.'); return; } toast('Checkpoint added.'); activeMissionId = id; loadMissions(); }
+    async function loadSessionContext() { const summary = $('context-summary'), list = $('context-memory-list'); summary.innerHTML = '<div class="empty">Loading the latest context record…</div>'; list.innerHTML = ''; try { const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/context`); if (response.status === 400) { summary.innerHTML = '<div class="empty">This session has not reached a model turn yet.</div>'; return; } if (!response.ok) throw new Error(); const data = await response.json(); if (!data.recorded_at) { summary.innerHTML = '<div class="empty">No context record yet. Send a message and Pico will show the bounded context used for that model turn.</div>'; return; } const memories = data.memory || []; summary.innerHTML = `<article class="context-stat"><div class="context-stat-label">Latest model turn</div><div class="context-stat-value">${escapeHtml(formatTime(data.recorded_at) || 'Recorded')}</div></article><article class="context-stat"><div class="context-stat-label">Chat history supplied</div><div class="context-stat-value">${Number(data.history_message_count) || 0}</div></article><article class="context-stat"><div class="context-stat-label">Memory references supplied</div><div class="context-stat-value">${memories.length}</div></article>`; if (!memories.length) { list.innerHTML = '<div class="empty">No personal memory was relevant to this turn.</div>'; return; } memories.forEach((item) => { const card = document.createElement('article'); card.className = 'memory-card'; card.innerHTML = `<div class="memory-copy"><div class="memory-value">${escapeHtml(item.value)}</div><div class="memory-meta">${escapeHtml(item.kind)} · ${escapeHtml(item.status)} · memory:${escapeHtml(item.id.slice(0, 8))}</div></div>`; list.appendChild(card); }); } catch { summary.innerHTML = '<div class="empty">Context is unavailable right now.</div>'; } }
+    async function resolveOperationAction(id, decision) { const response = await api(`/api/actions/${encodeURIComponent(id)}/${decision}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId})}); if (!response.ok) { toast('Pico could not record that action decision.'); return; } toast(decision === 'approve' ? 'Action approved for its exact future executor.' : 'Action rejected.'); loadOperations(); }
+    async function loadOperations() { const caps = $('operation-capabilities'), activity = $('operation-activity'), actions = $('operation-actions'), browser = $('operation-browser'); caps.innerHTML = '<div class="empty">Checking local capability state…</div>'; activity.innerHTML = ''; actions.innerHTML = ''; browser.innerHTML = ''; try { const response = await api(`/api/operations?session_id=${encodeURIComponent(sessionId)}`); if (!response.ok) throw new Error(); const data = await response.json(), profile = data.profile; const select = $('operation-profile'); select.innerHTML = ''; (data.profiles || []).forEach((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.label; option.selected = item.id === profile.id; select.appendChild(option); }); $('operation-profile-description').textContent = profile.description; const capabilities = data.capabilities || []; caps.innerHTML = ''; capabilities.forEach((item) => { const card = document.createElement('article'); card.className = 'operation-card'; const state = item.state === 'ready' ? 'Ready' : item.state === 'needs_setup' ? 'Needs setup' : 'Not in this profile'; card.innerHTML = `<div><div class="memory-value">${escapeHtml(item.label)}</div><div class="memory-meta">${escapeHtml(item.toolset)} · ${escapeHtml(item.risk)} · approval: ${escapeHtml(item.approval)}${item.setup_hint ? ` · ${escapeHtml(item.setup_hint)}` : ''}</div></div><span class="operation-state ${item.state === 'ready' ? '' : 'muted'}">${state}</span>`; caps.appendChild(card); }); if (!capabilities.length) caps.innerHTML = '<div class="empty">No capabilities are registered for this runtime.</div>'; const tab = data.shared_browser_tab; if (!tab) { browser.innerHTML = '<div class="memory-meta" style="margin-bottom:9px">Create a five-minute code, then paste it into the local Pico Browser Bridge popup on the one tab you choose.</div><button class="action secondary" id="create-browser-pairing" type="button">Create session code</button>'; $('create-browser-pairing').onclick = createBrowserPairing; } else { browser.innerHTML = `<div class="memory-value">${escapeHtml(tab.title)}</div><div class="memory-meta">${escapeHtml(tab.domain)} · shared ${escapeHtml(formatTime(tab.shared_at))} · refreshed ${escapeHtml(formatTime(tab.updated_at))}</div><div class="memory-actions" style="margin-top:10px"><button class="memory-action reject" id="revoke-browser-share" type="button">Stop sharing</button></div>`; $('revoke-browser-share').onclick = revokeBrowserShare; } const proposed = (data.actions || []).filter((item) => item.status === 'proposed'); if (!proposed.length) actions.innerHTML = '<div class="empty">No external action is awaiting approval.</div>'; else proposed.forEach((item) => { const card = document.createElement('article'); card.className = 'operation-card'; card.innerHTML = `<div><div class="memory-value">${escapeHtml(item.summary)}</div><div class="memory-meta">${escapeHtml(item.target)} · expires ${escapeHtml(formatTime(item.expires_at))}</div><div class="memory-actions"><button class="memory-action" data-approve>Approve once</button><button class="memory-action reject" data-reject>Reject</button></div></div><span class="operation-state muted">Review</span>`; card.querySelector('[data-approve]').onclick = () => resolveOperationAction(item.id, 'approve'); card.querySelector('[data-reject]').onclick = () => resolveOperationAction(item.id, 'reject'); actions.appendChild(card); }); const events = data.activity || []; if (!events.length) activity.innerHTML = '<div class="empty">No tool activity in this session yet.</div>'; else events.forEach((event) => { const card = document.createElement('article'); card.className = 'activity-card'; card.innerHTML = `<div class="memory-value">${escapeHtml(event.tool_name)}</div><div class="memory-meta">${escapeHtml(event.outcome)} · ${escapeHtml(event.risk)} · ${escapeHtml(formatTime(event.created_at))}</div>`; activity.appendChild(card); }); } catch { caps.innerHTML = '<div class="empty">Operations are unavailable right now.</div>'; activity.innerHTML = ''; actions.innerHTML = ''; browser.innerHTML = ''; } }
+    async function createBrowserPairing() { const response = await api('/api/browser-bridge/tickets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId})}); if (!response.ok) { toast('Pico could not create a browser session code.'); return; } const data = await response.json(); $('operation-browser').innerHTML = `<div class="memory-meta">Paste this one-time code into the local Pico Browser Bridge popup. It expires in five minutes.</div><div class="memory-value" style="margin:9px 0;word-break:break-all">${escapeHtml(data.pairing_code)}</div><button class="memory-action" id="refresh-browser-pairing" type="button">Create another code</button>`; $('refresh-browser-pairing').onclick = createBrowserPairing; }
+    async function revokeBrowserShare() { const response = await api('/api/browser-bridge/revoke', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId})}); if (!response.ok) { toast('Pico could not stop that browser share.'); return; } toast('Browser sharing stopped for this session.'); loadOperations(); }
+    async function saveOperationProfile() { const profile = $('operation-profile').value; const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/profile`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile})}); if (!response.ok) { toast('Pico could not update this session profile.'); return; } toast('Session profile updated. New messages use its allowed tools.'); loadOperations(); }
+    async function loadArtifacts() { const list = $('artifact-list'); list.innerHTML = '<div class="empty">Loading artifacts…</div>'; try { const response = await api('/api/artifacts'); if (!response.ok) throw new Error(); const data = await response.json(); if (!data.artifacts.length) { list.innerHTML = '<div class="empty">No artifacts yet. Save a useful result from this session.</div>'; return; } list.innerHTML = ''; data.artifacts.forEach((artifact) => { const card = document.createElement('button'); card.className = `artifact-card ${artifact.id === activeArtifactId ? 'active' : ''}`; card.innerHTML = `<div class="artifact-title">${escapeHtml(artifact.title)}</div><div class="artifact-meta">${escapeHtml(artifact.kind)} · v${artifact.revision} · ${escapeHtml(formatTime(artifact.updated_at))}</div>`; card.onclick = () => openArtifact(artifact.id); list.appendChild(card); }); } catch { list.innerHTML = '<div class="empty">Artifacts are unavailable right now.</div>'; } }
+    function setArtifactDownload(id) { const link = $('download-artifact'); link.href = `http://${window.location.hostname || '127.0.0.1'}:${CONFIG.apiPort}/api/artifacts/${encodeURIComponent(id)}/download?client_id=${encodeURIComponent(clientId)}`; link.hidden = false; }
+    async function openArtifact(id) { try { const response = await api(`/api/artifacts/${encodeURIComponent(id)}`); if (!response.ok) throw new Error(); const data = await response.json(), artifact = data.artifact; activeArtifactId = artifact.id; $('artifact-title').value = artifact.title; $('artifact-kind').value = artifact.kind; $('artifact-content').value = data.content; $('artifact-preview').textContent = `${artifact.title} · ${artifact.kind} · revision ${artifact.revision}\n\n${data.content}`; $('revise-artifact').hidden = false; setArtifactDownload(artifact.id); loadArtifacts(); } catch { toast('Pico could not open that artifact.'); } }
+    async function saveArtifact(event) { event.preventDefault(); const title = $('artifact-title').value.trim(), content = $('artifact-content').value; if (!title || !content) { toast('An artifact needs a title and content.'); return; } const response = await api('/api/artifacts', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, content, kind:$('artifact-kind').value, session_id:sessionId})}); if (!response.ok) { toast('Pico could not save that artifact.'); return; } const data = await response.json(); activeArtifactId = data.artifact.id; $('artifact-preview').textContent = `${data.artifact.title} · ${data.artifact.kind} · revision 1\n\n${content}`; $('revise-artifact').hidden = false; setArtifactDownload(activeArtifactId); toast('Artifact saved locally.'); loadArtifacts(); }
+    async function reviseArtifact() { if (!activeArtifactId) return; const content = $('artifact-content').value; const response = await api(`/api/artifacts/${encodeURIComponent(activeArtifactId)}/revisions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content})}); if (!response.ok) { toast('Pico could not save that revision.'); return; } const data = await response.json(); $('artifact-preview').textContent = `${data.artifact.title} · ${data.artifact.kind} · revision ${data.artifact.revision}\n\n${content}`; setArtifactDownload(activeArtifactId); toast(`Revision ${data.artifact.revision} saved locally.`); loadArtifacts(); }
+    function showSkillProposal(proposal) { activeSkillProposalId = proposal.id; $('skill-proposal-content').value = proposal.content; $('skill-proposal-content').disabled = proposal.status !== 'proposed'; $('skill-proposal-status').textContent = proposal.status === 'proposed' ? 'Review required' : proposal.status === 'approved' ? 'Installed' : 'Rejected'; $('save-skill-proposal').hidden = proposal.status !== 'proposed'; $('approve-skill-proposal').hidden = proposal.status !== 'proposed'; $('reject-skill-proposal').hidden = proposal.status !== 'proposed'; }
+    async function loadSkillProposals() { const list = $('skill-proposal-list'); list.innerHTML = '<div class="empty">Loading learning proposals…</div>'; try { const response = await api(`/api/skill-proposals?session_id=${encodeURIComponent(sessionId)}`); if (!response.ok) throw new Error(); const data = await response.json(); const proposals = data.proposals || []; if (!proposals.length) { list.innerHTML = '<div class="empty">No learning proposals from this session yet.</div>'; if (!activeSkillProposalId) { $('skill-proposal-content').value = ''; $('skill-proposal-content').disabled = true; $('skill-proposal-status').textContent = ''; } return; } list.innerHTML = ''; proposals.forEach((proposal) => { const card = document.createElement('button'); card.className = `skill-proposal-card ${proposal.id === activeSkillProposalId ? 'active' : ''}`; card.innerHTML = `<div class="skill-name">${escapeHtml(proposal.name)}</div><div class="skill-meta">${escapeHtml(proposal.description)}</div><div class="skill-meta">${escapeHtml(proposal.status)} · ${escapeHtml(formatTime(proposal.updated_at))}</div>`; card.onclick = () => { showSkillProposal(proposal); loadSkillProposals(); }; list.appendChild(card); }); if (!proposals.some((proposal) => proposal.id === activeSkillProposalId)) showSkillProposal(proposals[0]); } catch { list.innerHTML = '<div class="empty">Learning proposals are unavailable right now.</div>'; } }
+    async function loadSkills() { const list = $('skills-list'); list.innerHTML = '<div class="empty">Inspecting the active workspace…</div>'; try { const response = await api('/api/skills'); if (!response.ok) throw new Error(); const data = await response.json(); if (!data.skills.length) list.innerHTML = '<div class="empty">No skills are installed in this Pico workspace yet.</div>'; else { list.innerHTML = ''; data.skills.forEach((skill) => { const card = document.createElement('article'); card.className = 'skill-card'; card.innerHTML = `<div class="skill-copy"><div class="skill-name">${escapeHtml(skill.name)}</div><div class="skill-meta">${escapeHtml(skill.description || skill.source)} · ${escapeHtml(skill.source)}</div>${skill.requires ? `<div class="skill-meta">Needs: ${escapeHtml(skill.requires)}</div>` : ''}</div><span class="skill-state ${skill.available ? '' : 'unavailable'}">${skill.available ? 'Available' : 'Needs setup'}</span>`; list.appendChild(card); }); } } catch { list.innerHTML = '<div class="empty">Skills are unavailable right now.</div>'; } loadSkillProposals(); }
+    async function createSkillProposal(event) { event.preventDefault(); const name = $('skill-proposal-name').value.trim(), description = $('skill-proposal-description').value.trim(), guidance = $('skill-proposal-guidance').value.trim(); if (!name || !description) { toast('A skill name and purpose are required.'); return; } const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/skill-proposals`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, description, guidance})}); if (!response.ok) { toast('Pico could not create that learning draft. Start from a saved session and check the skill name.'); return; } const data = await response.json(); $('skill-proposal-guidance').value = ''; showSkillProposal(data.proposal); toast('Learning draft created. Review it before approval.'); loadSkillProposals(); }
+    async function reviseSkillProposal() { if (!activeSkillProposalId) return; const response = await api(`/api/skill-proposals/${encodeURIComponent(activeSkillProposalId)}/revise`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({content:$('skill-proposal-content').value})}); if (!response.ok) { toast('Pico could not save that learning draft.'); return; } const data = await response.json(); showSkillProposal(data.proposal); toast('Learning draft saved.'); loadSkillProposals(); }
+    async function transitionSkillProposal(operation) { if (!activeSkillProposalId) return; const response = await api(`/api/skill-proposals/${encodeURIComponent(activeSkillProposalId)}/${operation}`, {method:'POST'}); if (!response.ok) { toast(operation === 'approve' ? 'Pico did not install that skill. It may already exist.' : 'Pico could not update that proposal.'); return; } const data = await response.json(); showSkillProposal(data.proposal); toast(operation === 'approve' ? 'Skill installed locally. Start a new session to use it.' : 'Learning proposal rejected.'); loadSkillProposals(); if (operation === 'approve') loadSkills(); }
+    function showView(name) { currentView = name; document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'memory' ? 'Your durable context' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'memory' ? 'Memory' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : 'Skills'); if (name === 'memory') loadMemory(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'skills') loadSkills(); if (name === 'chat') loadSessions(); }
+    $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
+    document.querySelectorAll('.nav-button').forEach((button) => button.onclick = () => showView(button.dataset.view));
+    $('rename-session').onclick = () => setSessionTitleEditing(true); $('save-session-title').onclick = saveSessionTitle; $('cancel-session-title').onclick = () => { $('session-title-input').value = currentSessionTitle; setSessionTitleEditing(false); }; $('session-title-input').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); saveSessionTitle(); } else if (event.key === 'Escape') { $('session-title-input').value = currentSessionTitle; setSessionTitleEditing(false); } };
+    $('refresh-skills').onclick = loadSkills; $('save-operation-profile').onclick = saveOperationProfile; $('skill-proposal-form').onsubmit = createSkillProposal; $('save-skill-proposal').onclick = reviseSkillProposal; $('approve-skill-proposal').onclick = () => transitionSkillProposal('approve'); $('reject-skill-proposal').onclick = () => transitionSkillProposal('reject'); $('memory-form').onsubmit = addMemory; $('memory-status').onchange = loadMemory; $('memory-search').oninput = () => { clearTimeout(memorySearchTimer); memorySearchTimer = setTimeout(loadMemory, 200); }; $('mission-form').onsubmit = createMission; $('mission-state').onchange = () => { activeMissionId = null; loadMissions(); };
+    $('artifact-form').onsubmit = saveArtifact; $('revise-artifact').onclick = reviseArtifact; $('save-latest').onclick = () => { if (!latestAssistantContent) { toast('There is no Pico reply in this page session yet.'); return; } $('artifact-content').value = latestAssistantContent; if (!$('artifact-title').value) $('artifact-title').value = 'Pico response'; };
+    $('composer').onsubmit = (event) => { event.preventDefault(); const input = $('message-input'), content = input.value.trim(); if (!content || !connected) return; appendMessage('user', content); input.value = ''; input.style.height = 'auto'; showProgress(); socket.send(JSON.stringify({type:'message', content})); };
+    $('message-input').onkeydown = (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('composer').requestSubmit(); } };
+    $('message-input').oninput = (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`; };
+    renderWelcome(); setConnected(false); connect();
+  </script>
 </body>
 </html>

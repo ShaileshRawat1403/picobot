@@ -8,15 +8,16 @@ import os
 import re
 import sys
 from contextlib import AsyncExitStack
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
 from picobot.agent.context import ContextBuilder
-from picobot.agent.memory import MemoryConsolidator
 from picobot.agent.subagent import SubagentManager
 from picobot.agent.tools.calendar import CalendarTool
+from picobot.agent.tools.browser import BrowserReadSharedTabTool
 from picobot.agent.tools.cron import CronTool
 from picobot.agent.tools.dax import DaxTool
 from picobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -25,16 +26,16 @@ from picobot.agent.tools.registry import ToolRegistry
 from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
-from picobot.agent.vector_memory import VectorMemory
 from picobot.bus.analytics import get_analytics
 from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
+from picobot.operations import CapabilityRegistry, ToolActivityStore
 from picobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from picobot.config.schema import ChannelsConfig, DaxConfig, ExecToolConfig, WebSearchConfig
+    from picobot.config.schema import ChannelsConfig, DaxConfig, ExecToolConfig, SkillConfig, WebSearchConfig
     from picobot.cron.service import CronService
 
 
@@ -51,6 +52,7 @@ class AgentLoop:
     """
 
     _TOOL_RESULT_MAX_CHARS = 16_000
+    _MAX_SESSION_HISTORY_MESSAGES = 40
 
     def __init__(
         self,
@@ -91,6 +93,8 @@ class AgentLoop:
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
         self.sessions = session_manager or SessionManager(workspace)
+        self.capabilities = CapabilityRegistry()
+        self.tool_activity = ToolActivityStore(workspace)
         self.tools = ToolRegistry()
         self.subagents = SubagentManager(
             provider=provider,
@@ -111,17 +115,7 @@ class AgentLoop:
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
         self._last_error: dict[str, str] | None = None
-        self.memory_consolidator = MemoryConsolidator(
-            workspace=workspace,
-            provider=provider,
-            model=self.model,
-            sessions=self.sessions,
-            context_window_tokens=context_window_tokens,
-            build_messages=self.context.build_messages,
-            get_tool_definitions=self.tools.get_definitions,
-        )
         self._dax_service = None
-        self.vector_memory = VectorMemory(workspace)
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
@@ -139,6 +133,7 @@ class AgentLoop:
         )
         self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
+        self.tools.register(BrowserReadSharedTabTool(workspace=self.workspace))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
@@ -153,12 +148,8 @@ class AgentLoop:
 
         self.tools.register(CalendarTool())
 
-        from picobot.agent.tools.vector_memory import create_vector_memory_tools
         from picobot.agent.tools.skills import ListSkillsTool, GetSkillTool
         from picobot.agent.skills import SkillsLoader
-
-        for tool in create_vector_memory_tools(self.vector_memory):
-            self.tools.register(tool)
 
         skills_loader = SkillsLoader(self.workspace, skill_config=self.skill_config)
         self.tools.register(ListSkillsTool(skills_loader))
@@ -212,7 +203,7 @@ class AgentLoop:
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron"):
+        for name in ("message", "spawn", "cron", "browser_read_shared_tab"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
@@ -240,6 +231,8 @@ class AgentLoop:
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
+        allowed_tools: set[str] | None = None,
+        activity_context: dict[str, str] | None = None,
         on_progress: Callable[..., Awaitable[None]] | None = None,
     ) -> tuple[str | None, list[str], list[dict], dict[str, Any]]:
         """Run the agent iteration loop."""
@@ -252,7 +245,7 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
 
-            tool_defs = self.tools.get_definitions()
+            tool_defs = self.tools.get_definitions(allowed_tools)
 
             response = await self.provider.chat_with_retry(
                 messages=messages,
@@ -280,7 +273,27 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    result = await self.tools.execute(
+                        tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                    )
+                    if activity_context:
+                        capability = self.capabilities.capability_for_tool(tool_call.name)
+                        outcome = "success"
+                        if result.startswith("Error:"):
+                            outcome = (
+                                "blocked"
+                                if "not permitted by this session" in result
+                                else "error"
+                            )
+                        self.tool_activity.record(
+                            owner_id=activity_context["owner_id"],
+                            session_key=activity_context["session_key"],
+                            profile_id=activity_context["profile_id"],
+                            capability_id=capability.id if capability else None,
+                            tool_name=tool_call.name,
+                            risk=capability.risk if capability else "unknown",
+                            outcome=outcome,
+                        )
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -515,19 +528,30 @@ class AgentLoop:
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
-            await self.memory_consolidator.maybe_consolidate_by_tokens(session)
+            profile = self._session_profile(session)
+            allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
+            owner_id = self._owner_id(channel, msg.sender_id)
             self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            history = session.get_history(max_messages=0)
+            history = self._history_for_prompt(session)
             messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
                 channel=channel,
                 chat_id=chat_id,
+                owner_id=owner_id,
+                system_prompt=self._context_snapshot(session),
             )
-            final_content, _, all_msgs, _ = await self._run_agent_loop(messages)
+            final_content, _, all_msgs, _ = await self._run_agent_loop(
+                messages,
+                allowed_tools=allowed_tools,
+                activity_context={
+                    "owner_id": owner_id,
+                    "session_key": session.key,
+                    "profile_id": profile.id,
+                },
+            )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
-            await self.memory_consolidator.maybe_consolidate_by_tokens(session)
             return OutboundMessage(
                 channel=channel,
                 chat_id=chat_id,
@@ -539,31 +563,21 @@ class AgentLoop:
 
         key = session_key or msg.session_key
         session = self.sessions.get_or_create(key)
+        owner_id = self._owner_id(msg.channel, msg.sender_id)
+        profile = self._session_profile(session)
+        allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
 
         # Slash commands
         cmd = msg.content.strip().lower()
         if cmd == "/new":
-            try:
-                if not await self.memory_consolidator.archive_unconsolidated(session):
-                    return OutboundMessage(
-                        channel=msg.channel,
-                        chat_id=msg.chat_id,
-                        content="Memory archival failed, session not cleared. Please try again.",
-                    )
-            except Exception:
-                logger.exception("/new archival failed for {}", session.key)
-                return OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
-                    content="Memory archival failed, session not cleared. Please try again.",
-                )
-
             session.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="New session started."
             )
+        if cmd.startswith("/remember") or cmd.startswith("/memory"):
+            return self._handle_memory_command(msg, owner_id)
         if cmd.startswith("/resolve"):
             return await self._handle_resolve_command(msg, cmd, session)
         if cmd == "/help":
@@ -573,6 +587,8 @@ class AgentLoop:
                 "/resolve approve|deny [run_id] [approval_id] — Resolve DAX approval",
                 "/status — Show runtime status",
                 "/model — Show active model routing",
+                "/remember <fact> — Save a personal memory",
+                "/memory list|search|why|forget — Manage personal memory",
                 "/last_error — Show the most recent LLM error",
                 "/stop — Stop the current task",
                 "/restart — Restart the bot",
@@ -620,6 +636,8 @@ class AgentLoop:
             soul_path = self.workspace / "SOUL.md"
             try:
                 soul_path.write_text(system_prompt, encoding="utf-8")
+                session.metadata.pop("pico_system_prompt", None)
+                self.sessions.save(session)
                 return OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,
@@ -647,20 +665,28 @@ class AgentLoop:
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines)
             )
-        await self.memory_consolidator.maybe_consolidate_by_tokens(session)
-
         self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        history = session.get_history(max_messages=0)
+        history = self._history_for_prompt(session)
+        recalled_memory = self.context.personal_memory.recall(owner_id, msg.content)
+        self.context.personal_memory.record_use(
+            owner_id,
+            [item.id for item in recalled_memory],
+            session_key=session.key,
+        )
+        self._record_turn_context(session, history, recalled_memory)
         initial_messages = self.context.build_messages(
             history=history,
             current_message=msg.content,
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
+            owner_id=owner_id,
+            system_prompt=self._context_snapshot(session),
+            recalled_memory=recalled_memory,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -678,6 +704,12 @@ class AgentLoop:
 
         final_content, _, all_msgs, response_meta = await self._run_agent_loop(
             initial_messages,
+            allowed_tools=allowed_tools,
+            activity_context={
+                "owner_id": owner_id,
+                "session_key": session.key,
+                "profile_id": profile.id,
+            },
             on_progress=on_progress or _bus_progress,
         )
 
@@ -686,7 +718,6 @@ class AgentLoop:
 
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
-        await self.memory_consolidator.maybe_consolidate_by_tokens(session)
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
@@ -700,6 +731,170 @@ class AgentLoop:
             chat_id=msg.chat_id,
             content=final_content,
             metadata=meta,
+        )
+
+    @staticmethod
+    def _owner_id(channel: str, sender_id: str) -> str:
+        """Scope personal memory to a channel identity, never the chat alone."""
+        return f"{channel}:{sender_id or 'anonymous'}"
+
+    def _context_snapshot(self, session: Session) -> str:
+        """Keep the system prompt stable for the lifetime of a session."""
+        snapshot = session.metadata.get("pico_system_prompt")
+        if isinstance(snapshot, str) and snapshot.strip():
+            return snapshot
+        profile = self._session_profile(session)
+        snapshot = self.context.build_system_prompt() + (
+            "\n\n# Session capability profile\n\n"
+            f"Active profile: {profile.label}. {profile.description}\n"
+            "Use only tool definitions available in this session. Do not claim access to other tools."
+        )
+        session.metadata["pico_system_prompt"] = snapshot
+        return snapshot
+
+    def _session_profile(self, session: Session):
+        """Resolve a server-owned profile and persist a safe default if needed."""
+        profile = self.capabilities.resolve(session.metadata.get("pico_operation_profile"))
+        if session.metadata.get("pico_operation_profile") != profile.id:
+            session.metadata["pico_operation_profile"] = profile.id
+        return profile
+
+    def _history_for_prompt(self, session: Session) -> list[dict[str, Any]]:
+        """Bound raw transcript context; durable facts live in personal memory."""
+        return session.get_history(max_messages=self._MAX_SESSION_HISTORY_MESSAGES)
+
+    @staticmethod
+    def _record_turn_context(session: Session, history: list[dict[str, Any]], memories) -> None:
+        """Persist an inspectable record of context used for one model turn.
+
+        Values remain in the memory store. The session records only opaque
+        memory ids, the history size, and a timestamp so the Workbench can
+        explain context without maintaining a second hidden memory store.
+        """
+        session.metadata["pico_last_context"] = {
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "history_message_count": len(history),
+            "memory_ids": [item.id for item in memories],
+        }
+
+    def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
+        """Handle explicit, user-controlled personal-memory operations."""
+        raw = msg.content.strip()
+        lower = raw.lower()
+        store = self.context.personal_memory
+
+        try:
+            if lower == "/remember" or lower == "/memory":
+                return self._memory_usage(msg)
+
+            if lower.startswith("/remember "):
+                item = store.remember(owner_id, raw[len("/remember "):])
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=(
+                        f"Remembered ({item.kind}; id {item.id[:8]}). "
+                        "Use `/memory why <id>` to inspect it or `/memory forget <id>` to retire it."
+                    ),
+                )
+
+            parts = raw.split(maxsplit=2)
+            if len(parts) < 2:
+                return self._memory_usage(msg)
+            action = parts[1].lower()
+            argument = parts[2].strip() if len(parts) == 3 else ""
+
+            if action == "propose":
+                if not argument:
+                    return self._memory_usage(msg)
+                item = store.propose(
+                    owner_id,
+                    argument,
+                    source_type="explicit_user_proposal",
+                )
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=(
+                        f"Learning candidate {item.id[:8]} proposed for review. "
+                        f"Use `/memory confirm {item.id[:8]}` to make it recallable."
+                    ),
+                )
+
+            if action == "list":
+                status = argument.lower() or None
+                items = store.list(owner_id, status=status, limit=20)
+                if not items:
+                    return OutboundMessage(
+                        channel=msg.channel, chat_id=msg.chat_id, content="No personal memories found."
+                    )
+                lines = ["Personal memory:"]
+                lines.extend(
+                    f"- [{item.status}] {item.id[:8]} ({item.kind}): {item.value}"
+                    for item in items
+                )
+                return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines))
+
+            if action == "search":
+                if not argument:
+                    return self._memory_usage(msg)
+                items = store.recall(owner_id, argument, limit=8)
+                if not items:
+                    return OutboundMessage(
+                        channel=msg.channel, chat_id=msg.chat_id, content="No confirmed memories matched that search."
+                    )
+                lines = ["Confirmed personal memory:"]
+                lines.extend(f"- {item.id[:8]} ({item.kind}): {item.value}" for item in items)
+                return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines))
+
+            if action in {"why", "confirm", "reject", "forget"}:
+                if not argument:
+                    return self._memory_usage(msg)
+                item_id = store.resolve_id(owner_id, argument)
+                if action == "why":
+                    item = store.get(owner_id, item_id)
+                    lifecycle = ", ".join(
+                        f"{event['event_type']}→{event['status']}" for event in store.history(owner_id, item_id)
+                    )
+                    lines = [
+                        f"Memory {item.id[:8]}",
+                        f"Status: {item.status}",
+                        f"Kind/scope: {item.kind}/{item.scope}",
+                        f"Source: {item.source_type}" + (f" ({item.source_ref})" if item.source_ref else ""),
+                        f"Confidence: {item.confidence:.0%}",
+                        f"Created: {item.created_at}",
+                        f"Lifecycle: {lifecycle}",
+                        f"Value: {item.value}",
+                    ]
+                    return OutboundMessage(
+                        channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines)
+                    )
+                target_status = {"confirm": "confirmed", "reject": "rejected", "forget": "forgotten"}[action]
+                item = store.transition(owner_id, item_id, target_status)
+                return OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=f"Memory {item.id[:8]} is now {item.status}.",
+                )
+
+            return self._memory_usage(msg)
+        except (KeyError, ValueError) as exc:
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=f"Memory: {exc}")
+
+    @staticmethod
+    def _memory_usage(msg: InboundMessage) -> OutboundMessage:
+        return OutboundMessage(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            content=(
+                "Memory controls:\n"
+                "/remember <fact>\n"
+                "/memory propose <candidate>\n"
+                "/memory list [confirmed|proposed|rejected|forgotten]\n"
+                "/memory search <words>\n"
+                "/memory why <id>\n"
+                "/memory confirm|reject|forget <id>"
+            ),
         )
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
@@ -721,10 +916,9 @@ class AgentLoop:
                 if isinstance(content, str) and content.startswith(
                     ContextBuilder._RUNTIME_CONTEXT_TAG
                 ):
-                    # Strip the runtime-context prefix, keep only the user text.
-                    parts = content.split("\n\n", 1)
-                    if len(parts) > 1 and parts[1].strip():
-                        entry["content"] = parts[1]
+                    clean_content = ContextBuilder.strip_runtime_context(content)
+                    if clean_content.strip():
+                        entry["content"] = clean_content
                     else:
                         continue
                 if isinstance(content, list):

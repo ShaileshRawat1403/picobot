@@ -31,13 +31,22 @@ class ToolRegistry:
         """Check if a tool is registered."""
         return name in self._tools
 
-    def get_definitions(self) -> list[dict[str, Any]]:
-        """Get all tool definitions in OpenAI format."""
-        return [tool.to_schema() for tool in self._tools.values()]
+    def get_definitions(self, allowed_names: set[str] | None = None) -> list[dict[str, Any]]:
+        """Get provider definitions, optionally restricted to a session profile."""
+        return [
+            tool.to_schema()
+            for name, tool in self._tools.items()
+            if allowed_names is None or name in allowed_names
+        ]
 
-    async def execute(self, name: str, params: dict[str, Any]) -> str:
-        """Execute a tool by name with given parameters."""
+    async def execute(
+        self, name: str, params: dict[str, Any], allowed_names: set[str] | None = None
+    ) -> str:
+        """Execute a tool by name, refusing tools outside a session profile."""
         _HINT = "\n\n[Analyze the error above and try a different approach.]"
+
+        if allowed_names is not None and name not in allowed_names:
+            return f"Error: Tool '{name}' is not permitted by this session's capability profile." + _HINT
 
         tool = self._tools.get(name)
         if not tool:

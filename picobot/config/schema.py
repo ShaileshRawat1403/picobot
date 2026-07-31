@@ -220,7 +220,7 @@ class WebConfig(Base):
     """Web channel configuration."""
 
     enabled: bool = False
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 18791
     allow_from: list[str] = Field(default_factory=lambda: ["*"])  # Default to allow all
 

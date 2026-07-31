@@ -75,7 +75,7 @@ class TestFallbackProvider:
         assert len(primary.calls) == 1
         assert len(fallback.calls) == 1
         assert primary.calls[0]["model"] == "gemini-2.5-pro"
-        assert fallback.calls[0]["model"] == "openai-codex/gpt-5.1-codex"
+        assert fallback.calls[0]["model"] == "openai-codex/gpt-5.3-codex"
 
     def test_skips_fallback_when_primary_succeeds(self):
         primary = DummyProvider(
@@ -132,5 +132,5 @@ class TestProviderBootstrap:
         assert isinstance(provider, FallbackProvider)
         assert provider.primary is primary
         assert provider.primary_model == "gemini-2.5-pro"
-        assert provider.fallback_model == "openai-codex/gpt-5.1-codex"
+        assert provider.fallback_model == "openai-codex/gpt-5.3-codex"
         assert len(fallback_instances) == 1

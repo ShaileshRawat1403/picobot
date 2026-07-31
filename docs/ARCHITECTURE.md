@@ -88,9 +88,12 @@ The core AI engine that processes messages and generates responses.
 - Manages system prompts
 
 #### Memory Store
-- Persistent session storage
-- Memory consolidation
-- Context window management
+- Local SQLite source of truth for personal facts and preferences
+- Per-channel-identity ownership and explicit lifecycle states
+  (`proposed`, `confirmed`, `rejected`, `forgotten`)
+- Lexical FTS5 recall only for confirmed, unexpired facts
+- Lifecycle trail for "why do you remember this?" inspection
+- Legacy Markdown/vector stores are not part of active recall
 
 #### Skills Loader
 - Dynamic skill discovery
@@ -168,18 +171,14 @@ Picobot evaluates every message against a **Capability Ladder** to determine the
 ```
 Session Start
       ↓
-Load Memory/Context
+Create stable system-prompt snapshot
       ↓
 Message Loop
-  ├─ Process Input
+  ├─ Retrieve a small relevant personal-memory slice beside the current input
   ├─ Generate Response
   └─ Execute Tools
       ↓
-Memory Consolidation (periodic)
-      ↓
-Session End
-      ↓
-Archive to Persistent Storage
+Explicit memory writes and reviewable lifecycle changes
 ```
 
 ## Database Schema

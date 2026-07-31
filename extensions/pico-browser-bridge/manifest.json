@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Pico Browser Bridge",
+  "version": "0.1.0",
+  "description": "Explicitly share one current tab with a local Pico session.",
+  "action": {
+    "default_title": "Pico Browser Bridge",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": [
+    "http://127.0.0.1:18792/*",
+    "http://localhost:18792/*"
+  ]
+}

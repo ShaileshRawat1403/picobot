@@ -114,6 +114,68 @@ Now chat with your bot on Telegram!
 | `picobot status`         | Check what's running    |
 | `picobot doctor`         | Diagnose issues         |
 
+## Personal Memory
+
+Pico's active personal memory is local to its workspace in SQLite. It stores
+confirmed facts with their source, lifecycle, and owner scope; it does not use
+random embedding fallbacks or treat raw chat history as durable truth.
+
+Use the channel controls to manage it directly:
+
+```text
+/remember I prefer short status updates
+/memory list
+/memory search status updates
+/memory why <memory-id>
+/memory forget <memory-id>
+```
+
+Only confirmed, unexpired memories can be recalled. Inferred information is
+reserved for a later review workflow and will not silently change your profile.
+Legacy `MEMORY.md`, `HISTORY.md`, and `vectors.pkl` files are left untouched,
+but are no longer used by Pico's active recall path.
+
+### Credentials
+
+Keep provider secrets in a profile-local `.env` beside Pico's `config.json`,
+not in the JSON config. For example:
+
+```text
+OPENAI_API_KEY=...
+```
+
+The profile directory is ignored by Git. `config.json` retains only the chosen
+model, provider, workspace, and other non-secret settings.
+
+### Local browser UI
+
+The browser UI is a real Pico channel: it uses the same agent loop and local
+personal memory as the CLI. Keep it bound to localhost for personal use:
+
+```bash
+cd /Users/Shailesh/MYAIAGENTS/picobot
+python3 -m picobot web --host 127.0.0.1 --port 18791 --config .picobot/config.json
+```
+
+Then open <http://127.0.0.1:18792>. The WebSocket listens on `18791`; the page
+is served on `18792`. Each browser connection receives only replies for its
+own server-bound chat session.
+
+### Isolated Pico test
+
+Test Pico without using your normal workspace or Soothsayer connection:
+
+```bash
+cd /Users/Shailesh/MYAIAGENTS/picobot
+python3 -m picobot onboard \
+  --config /private/tmp/pico-test/config.json \
+  --workspace /private/tmp/pico-test/workspace
+```
+
+Add a test-only provider key to that newly created config, then use the same
+two options with `agent` and `memory`. This is a standalone Pico test; it does
+not launch a DAX or Soothsayer connection.
+
 ---
 
 ## Setting Up Telegram
