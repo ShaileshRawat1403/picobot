@@ -31,9 +31,10 @@ parts that are useful to Pico are real runtime mechanisms:
 ## Explicit exclusions
 
 Pico will **not** copy Hermes's billing, cloud account picker, remote gateway,
-SSH executor, desktop shell, broad messaging matrix, unrestricted host tools,
-or web-based secret editor. Provider secrets remain profile-local environment
-values and are never returned to the browser.
+SSH executor, desktop shell, broad messaging matrix, or unrestricted host
+tools. Provider setup may accept a new credential through a local write-only
+form, but a secret is never returned to the browser, logged, displayed in
+part, or embedded in exported configuration.
 
 Pico will not expose hidden model reasoning. It may show model identity,
 latency/usage when actually available, tool outcomes, and compaction status.
@@ -55,6 +56,32 @@ latency/usage when actually available, tool outcomes, and compaction status.
    restrained web surface. No settings-only mockups.
 
 ## Runtime policy model
+
+### Provider setup and connection integrity
+
+Pico must let its owner prepare a provider without requiring them to edit
+configuration files for every normal change. It will not become a broad key
+vault or an arbitrary remote proxy.
+
+The initial provider flow supports:
+
+| Capability | Behaviour |
+| --- | --- |
+| Provider inventory | Show Pico-supported providers as `not configured`, `configured`, `ready`, or `error`. |
+| API-key setup | Accept a replacement key through a one-time, write-only local form and store it in Pico's profile-local secret store. The UI receives only the resulting status. |
+| Existing account/OAuth flow | Show and launch only OAuth flows Pico truly implements; no simulated “connected” account. |
+| Test connection | Use a bounded health/model request and retain a safe error summary, never a request header or response body containing a secret. |
+| Model selection | List provider-reported models when discovery is supported; otherwise allow a validated explicit model name. |
+| Custom endpoint | Add a named OpenAI-compatible endpoint with URL, default model, optional write-only credential, bounded test, and explicit “use for new sessions” choice. |
+
+Provider configuration is global to the local Pico profile. It does not alter a
+past session; model/session policy controls what later turns use. Pico will
+initially offer only providers already supported by its provider layer, rather
+than copying Hermes's long catalog as disconnected UI rows.
+
+For custom endpoints, Pico accepts HTTPS URLs and explicit local loopback
+addresses. Discovery and testing use short timeouts. The browser never gains a
+general request-proxy capability.
 
 ### Global policy
 
@@ -143,6 +170,22 @@ feature for a later slice, after import/export validation exists.
 
 ## Delivery plan / SOW
 
+### RP0 — Provider setup and health
+
+**Outcome:** an owner can securely prepare and verify the actual model
+providers Pico will use.
+
+- Add a server-owned provider inventory/status API with no secret readback.
+- Add write-only API-key replacement and removal operations backed by Pico's
+  profile-local secret storage.
+- Expose existing OAuth/account setup only where Pico implements the complete
+  flow; otherwise show the correct setup path rather than a fake control.
+- Add bounded connection tests and provider/model discovery where supported.
+- Add validated custom OpenAI-compatible endpoint records, with HTTPS/loopback
+  URL constraints and no browser-side proxy.
+- Test secret redaction, invalid endpoint rejection, failed probe, successful
+  model selection, and that a client cannot retrieve a saved key.
+
 ### RP1 — Runtime policy foundation
 
 **Outcome:** one durable source of truth for global and session runtime policy.
@@ -186,11 +229,12 @@ workflow.
 
 **Outcome:** the owner can inspect and change the preceding real behaviour.
 
-Add these areas to the Pico web workbench only after RP1–RP3 APIs pass:
+Add these areas to the Pico web workbench only after the corresponding API
+slice passes:
 
 ```text
 Settings
-├── Model & response       primary model, supported reasoning, response mode
+├── Providers & models     setup status, test, custom endpoint, primary model
 ├── Memory & context       context budget, latest compaction, memory policy
 ├── Skills & MCP           server health, enabled tools, profile permissions
 ├── Workspace              local path/status, export and backup later
@@ -201,24 +245,26 @@ No remote gateway, SSH, billing, or secret-input panel is included.
 
 ## Order of execution
 
-Start with **RP1**, then **RP2**. This directly improves every individual Pico
-session and makes the self-improvement claim inspectable. Start **RP3** only
-after a real personal workflow names the first MCP server Pico must use.
-RP4 follows each backend slice incrementally; it is not a separate cosmetic
-dashboard project.
+Start with **RP0**, then **RP1**, then **RP2**. This gives you a dependable
+provider setup path before Pico persists model policy or introduces a context
+auxiliary. Start **RP3** only after a real personal workflow names the first
+MCP server Pico must use. RP4 follows each backend slice incrementally; it is
+not a separate cosmetic dashboard project.
 
 ## Acceptance criteria
 
 1. Pico never presents a model, auxiliary role, MCP server, or tool as ready
    unless the active runtime has validated it.
-2. A browser client cannot read or mutate another owner's policy, context
+2. Provider credentials are write-only: no browser API, export, activity event,
+   or error response returns a secret or a partial secret.
+3. A browser client cannot read or mutate another owner's policy, context
    record, or MCP activity.
-3. Model and response choices apply only to later turns and leave a durable,
+4. Model and response choices apply only to later turns and leave a durable,
    non-secret evidence record.
-4. Context compaction preserves original messages, artifacts, and mission
+5. Context compaction preserves original messages, artifacts, and mission
    evidence; its output is clearly marked as a reference handoff.
-5. No compaction or learning flow silently creates confirmed memory.
-6. Disabled, untested, unavailable, or profile-forbidden MCP tools are never
+6. No compaction or learning flow silently creates confirmed memory.
+7. Disabled, untested, unavailable, or profile-forbidden MCP tools are never
    added to the model's callable tool surface.
-7. Full Pico tests and focused negative tests for each new API pass before the
+8. Full Pico tests and focused negative tests for each new API pass before the
    corresponding web control ships.
