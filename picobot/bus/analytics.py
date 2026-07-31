@@ -19,14 +19,56 @@ class Analytics:
         self.analytics_file.parent.mkdir(parents=True, exist_ok=True)
         self._load()
 
+    @staticmethod
+    def _empty_data() -> dict[str, Any]:
+        return {"events": [], "daily": {}}
+
+    @staticmethod
+    def _count(value: object) -> int:
+        """Keep persisted counters safe when older files contain bad values."""
+        return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+    @classmethod
+    def _daily_record(cls, value: object) -> dict[str, Any]:
+        """Restore JSON channel arrays to the in-memory set used by ``track``."""
+        raw = value if isinstance(value, dict) else {}
+        raw_channels = raw.get("channels", [])
+        if isinstance(raw_channels, str):
+            raw_channels = [raw_channels]
+        channels = {
+            channel.strip()
+            for channel in raw_channels
+            if isinstance(channel, str) and channel.strip()
+        } if isinstance(raw_channels, (list, tuple, set)) else set()
+        return {
+            "messages": cls._count(raw.get("messages")),
+            "tool_calls": cls._count(raw.get("tool_calls")),
+            "errors": cls._count(raw.get("errors")),
+            "channels": channels,
+        }
+
+    @classmethod
+    def _normalize_data(cls, value: object) -> dict[str, Any]:
+        """Normalize the JSON-on-disk format into Pico's runtime data shape."""
+        raw = value if isinstance(value, dict) else {}
+        events = raw.get("events")
+        daily = raw.get("daily")
+        return {
+            "events": events if isinstance(events, list) else [],
+            "daily": {
+                str(date_key): cls._daily_record(record)
+                for date_key, record in daily.items()
+            } if isinstance(daily, dict) else {},
+        }
+
     def _load(self) -> None:
         if self.analytics_file.exists():
             try:
-                self.data = json.loads(self.analytics_file.read_text("utf-8"))
+                self.data = self._normalize_data(json.loads(self.analytics_file.read_text("utf-8")))
             except Exception:
-                self.data = {"events": [], "daily": {}}
+                self.data = self._empty_data()
         else:
-            self.data = {"events": [], "daily": {}}
+            self.data = self._empty_data()
 
     def _save(self) -> None:
         data_to_save = {
@@ -38,7 +80,7 @@ class Analytics:
                 "messages": daily.get("messages", 0),
                 "tool_calls": daily.get("tool_calls", 0),
                 "errors": daily.get("errors", 0),
-                "channels": list(daily.get("channels", set())),
+                "channels": sorted(daily.get("channels", set())),
             }
         self.analytics_file.write_text(json.dumps(data_to_save, indent=2), "utf-8")
 
