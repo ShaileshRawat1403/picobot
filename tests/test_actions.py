@@ -25,8 +25,10 @@ def test_actions_require_exact_owner_session_approval_and_do_not_store_payloads(
     assert action.status == "proposed"
     assert store.list("web:browser:owner-a", "web:web:owner-a:session-a") == [action]
     assert store.list("web:browser:owner-b", "web:web:owner-a:session-a") == []
-    assert not hasattr(action, "arguments")
-    assert not hasattr(action, "payload")
+    # payload field exists on the dataclass but must be None (never populated for simple stage)
+    # and must NOT appear in the public to_dict() projection
+    assert action.payload is None
+    assert "payload" not in action.to_dict()
 
     with pytest.raises(KeyError, match="not found"):
         store.resolve("web:browser:owner-a", action.id, "web:web:owner-a:other-session", "approve")

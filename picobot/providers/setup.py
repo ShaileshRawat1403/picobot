@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
@@ -20,8 +21,17 @@ class ProviderSetupService:
     to write local profile storage and are never returned, logged, or rendered.
     """
 
+    _last_diagnostics: dict[tuple[str, str], dict[str, Any]] = {}
+
     def __init__(self, config_path: Path | None = None):
         self.config_path = config_path or get_config_path()
+
+    def _diagnostic_key(self, provider_name: str) -> tuple[str, str]:
+        return str(self.config_path), provider_name
+
+    def _clear_diagnostic(self, provider_name: str) -> None:
+        """Discard a probe result that belonged to prior provider settings."""
+        self._last_diagnostics.pop(self._diagnostic_key(provider_name), None)
 
     @staticmethod
     def _provider_names() -> tuple[str, ...]:
@@ -53,6 +63,14 @@ class ProviderSetupService:
         spec = find_by_name(provider_name)
         return spec.label if spec else provider_name.replace("_", " ").title()
 
+    def _default_model(self, provider_name: str, config) -> str | None:
+        if config.agents.defaults.provider == provider_name and config.agents.defaults.model:
+            return config.agents.defaults.model
+        spec = find_by_name(provider_name)
+        if spec and spec.keywords:
+            return spec.keywords[0]
+        return None
+
     def _entry(self, provider_name: str, config) -> dict:
         provider = getattr(config.providers, provider_name)
         kind = self._kind(provider_name)
@@ -74,15 +92,29 @@ class ProviderSetupService:
             status = "not_configured"
             detail = "API key required."
 
+        key_pair = self._diagnostic_key(provider_name)
+        diag = self._last_diagnostics.get(key_pair)
+        failure_category = diag.get("failure_category") if diag else None
+        if diag and diag.get("status") == "ready":
+            status = "ready"
+            detail = diag.get("detail", "Connection verified.")
+        elif diag and diag.get("status") == "error":
+            status = "unavailable"
+            detail = diag.get("detail", "Provider connection failed.")
+
         return {
             "id": provider_name,
             "label": self._label(provider_name),
             "kind": kind,
             "status": status,
             "detail": detail,
+            "setup_hint": detail,
+            "default_model": self._default_model(provider_name, config),
             "has_api_key": has_key,
             "has_endpoint": has_endpoint,
             "is_active": config.agents.defaults.provider == provider_name,
+            "last_diagnostic": diag,
+            "failure_category": failure_category,
         }
 
     def inventory(self) -> dict:
@@ -103,6 +135,7 @@ class ProviderSetupService:
         if not isinstance(api_key, str):
             raise ValueError("Provider API key is required")
         set_profile_provider_secret(provider_name, api_key, self.config_path)
+        self._clear_diagnostic(provider_name)
         return self._entry(provider_name, load_config(self.config_path))
 
     @staticmethod
@@ -136,6 +169,7 @@ class ProviderSetupService:
         config.agents.defaults.provider = "custom"
         config.agents.defaults.model = model.strip()
         save_config(config, self.config_path)
+        self._clear_diagnostic("custom")
         return self.inventory()
 
     def choose_default(self, provider_name: str, model: str) -> dict:
@@ -144,7 +178,7 @@ class ProviderSetupService:
             raise ValueError("Model must contain between 1 and 240 characters")
         config = load_config(self.config_path)
         entry = self._entry(provider_name, config)
-        if entry["status"] != "configured":
+        if entry["status"] not in {"configured", "ready"}:
             raise ValueError("Configure this provider before making it the default")
         config.agents.defaults.provider = provider_name
         config.agents.defaults.model = model.strip()
@@ -152,52 +186,95 @@ class ProviderSetupService:
         return self.inventory()
 
     async def test_connection(self, provider_name: str) -> dict:
-        """Run a bounded, read-only OpenAI-compatible ``/models`` probe where valid."""
+        """Run a bounded, read-only readiness check where valid without modifying configuration."""
         provider_name = self._validate_provider_name(provider_name)
         config = load_config(self.config_path)
         provider = getattr(config.providers, provider_name)
         spec = find_by_name(provider_name)
 
+        key_pair = self._diagnostic_key(provider_name)
+
+        if self._kind(provider_name) == "oauth":
+            res = {
+                "provider": provider_name,
+                "status": "not_available",
+                "failure_category": "unsupported",
+                "detail": "OAuth setup is not available in Pico's web workbench yet.",
+            }
+            self._last_diagnostics[key_pair] = res
+            return res
+
         endpoint = provider.api_base
         if provider_name == "openai":
             endpoint = endpoint or "https://api.openai.com/v1"
+        elif provider_name == "deepseek":
+            endpoint = endpoint or "https://api.deepseek.com/v1"
+        elif provider_name == "groq":
+            endpoint = endpoint or "https://api.groq.com/openai/v1"
         elif spec and spec.is_gateway:
             endpoint = endpoint or spec.default_api_base
         elif provider_name not in {"custom", "vllm", "ollama"}:
-            return {
+            res = {
                 "provider": provider_name,
                 "status": "not_available",
+                "failure_category": "unsupported",
                 "detail": "Pico does not have a safe connection probe for this provider yet.",
             }
+            self._last_diagnostics[key_pair] = res
+            return res
 
         if not endpoint:
-            return {
+            res = {
                 "provider": provider_name,
                 "status": "not_configured",
+                "failure_category": "endpoint_missing",
                 "detail": "Add an endpoint before testing this provider.",
             }
+            self._last_diagnostics[key_pair] = res
+            return res
         if provider_name not in {"ollama", "vllm"} and not provider.api_key:
-            return {
+            res = {
                 "provider": provider_name,
                 "status": "not_configured",
+                "failure_category": "key_missing",
                 "detail": "Add an API key before testing this provider.",
             }
+            self._last_diagnostics[key_pair] = res
+            return res
 
         try:
-            status = await asyncio.to_thread(self._probe_models, endpoint, provider.api_key)
+            status_code = await asyncio.to_thread(self._probe_models, endpoint, provider.api_key)
+            if status_code in {200, 201, 202, 204}:
+                res = {
+                    "provider": provider_name,
+                    "status": "ready",
+                    "failure_category": "connection_verified",
+                    "detail": "Connection verified.",
+                }
+            else:
+                res = {
+                    "provider": provider_name,
+                    "status": "error",
+                    "failure_category": "unreachable",
+                    "detail": "Pico could not reach that provider endpoint.",
+                }
         except PermissionError:
-            return {
+            res = {
                 "provider": provider_name,
                 "status": "error",
+                "failure_category": "auth_failed",
                 "detail": "The provider rejected Pico's credentials.",
             }
         except (OSError, ValueError):
-            return {
+            res = {
                 "provider": provider_name,
                 "status": "error",
+                "failure_category": "unreachable",
                 "detail": "Pico could not reach that provider endpoint.",
             }
-        return {"provider": provider_name, "status": "ready", "detail": "Connection verified."}
+
+        self._last_diagnostics[key_pair] = res
+        return res
 
     @staticmethod
     def _probe_models(endpoint: str, api_key: str) -> int:

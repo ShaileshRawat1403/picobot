@@ -482,22 +482,45 @@ class WebChannel(BaseChannel):
                 try:
                     client_id = self._browser_id_from_query(query)
                     action_path = path.removeprefix("/api/actions/").strip("/")
-                    action_id, _, decision = action_path.partition("/")
+                    action_id, _, operation = action_path.partition("/")
                     payload = self._json_body(body)
                     session_id = self._valid_browser_id(payload.get("session_id"))
-                    if not action_id or decision not in {"approve", "reject"}:
+                    self._require_browser_session(client_id, session_id)
+                    owner_id = self._memory_owner(client_id)
+                    session_key = self._session_key(client_id, session_id)
+
+                    if not action_id or operation not in {"approve", "reject", "cancel", "execute"}:
                         raise ValueError("Action route was not found")
-                    action = self._action_store().resolve(
-                        self._memory_owner(client_id),
-                        action_id,
-                        self._session_key(client_id, session_id),
-                        decision,
-                    )
-                    self._write_response(
-                        writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
-                    )
+
+                    if operation in {"approve", "reject"}:
+                        action = self._action_store().resolve(
+                            owner_id,
+                            action_id,
+                            session_key,
+                            operation,
+                            payload_fingerprint=payload.get("payload_fingerprint"),
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    elif operation == "cancel":
+                        action = self._action_store().cancel(owner_id, action_id, session_key)
+                        self._write_response(
+                            writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    elif operation == "execute":
+                        result = self._mission_executor().execute_action(
+                            owner_id,
+                            session_key,
+                            action_id,
+                            payload_fingerprint=payload.get("payload_fingerprint"),
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"result": result}, ensure_ascii=False).encode()
+                        )
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+
             elif path.startswith("/api/sessions/") and path.endswith("/active-mission"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1111,6 +1134,10 @@ class WebChannel(BaseChannel):
             "events": [item.to_dict() for item in self._mission_store().events(owner_id, mission.id)],
             "runs": safe_runs,
             "evidence": self._mission_evidence(owner_id, mission.session_key, mission.id),
+            "mission_actions": [
+                item.to_dict()
+                for item in self._action_store().list_by_mission(owner_id, mission.id, limit=30)
+            ],
         }
 
     def _browser_get_mission_blueprint(
@@ -1207,6 +1234,11 @@ class WebChannel(BaseChannel):
         from picobot.operations.actions import ProposedActionStore
 
         return ProposedActionStore(self._runtime_config().workspace_path)
+
+    def _mission_executor(self):
+        from picobot.operations.executor import MissionExecutor
+
+        return MissionExecutor(self._runtime_config().workspace_path)
 
     def _browser_bridge_store(self):
         from picobot.operations.browser_bridge import BrowserBridgeStore

@@ -59,23 +59,19 @@ class CapabilityRegistry:
             id="personal-work",
             label="Personal work",
             description="Chat, explicit memory, artifacts, and approved skills. No external tools.",
-            tool_names=("list_skills", "get_skill"),
+            tool_names=("list_skills", "get_skill", "save_mission_artifact_draft"),
         ),
         "research": SessionProfile(
             id="research",
             label="Research",
             description="Personal work plus web search and page fetching. No external writes.",
-            # This is an authority marker, not a tool definition.  It permits
-            # only ready, governed, read-only MCP tools after all other gates
-            # pass.  Mutating MCP tools are intentionally not exposed by any
-            # current session profile.
-            tool_names=("list_skills", "get_skill", "web_search", "web_fetch", "governed_mcp_read"),
+            tool_names=("list_skills", "get_skill", "web_search", "web_fetch", "governed_mcp_read", "save_mission_artifact_draft"),
         ),
         "browser-review": SessionProfile(
             id="browser-review",
             label="Browser review",
             description="Read one browser tab you explicitly share with this session. No browser writes.",
-            tool_names=("list_skills", "get_skill", "browser_read_shared_tab"),
+            tool_names=("list_skills", "get_skill", "browser_read_shared_tab", "save_mission_artifact_draft"),
         ),
     }
     CAPABILITIES = (
@@ -125,6 +121,15 @@ class CapabilityRegistry:
             risk="read",
             approval="none",
             profiles=("research",),
+        ),
+        CapabilitySpec(
+            id="missions.save_artifact_draft",
+            tool_name="save_mission_artifact_draft",
+            toolset="missions",
+            label="Propose draft mission artifact",
+            risk="mutating",
+            approval="explicit",
+            profiles=("personal-work", "research", "browser-review"),
         ),
     )
 

@@ -291,7 +291,7 @@ class RuntimePolicyService:
         from picobot.providers.setup import ProviderSetupService
 
         entry = ProviderSetupService(self.config_path)._entry(provider, self._load())
-        if entry["status"] != "configured":
+        if entry["status"] not in {"configured", "ready"}:
             raise ValueError(
                 f"Provider {provider!r} is not ready to serve turns ({entry['status']}). "
                 "Configure it before selecting it in the runtime policy."

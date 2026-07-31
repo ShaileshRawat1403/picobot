@@ -170,10 +170,18 @@ class AgentLoop:
 
         from picobot.agent.tools.skills import ListSkillsTool, GetSkillTool
         from picobot.agent.skills import SkillsLoader
+        from picobot.agent.tools.mission_artifact import SaveMissionArtifactDraftTool
 
         skills_loader = SkillsLoader(self.workspace, skill_config=self.skill_config)
         self.tools.register(ListSkillsTool(skills_loader))
         self.tools.register(GetSkillTool(skills_loader))
+        self.tools.register(
+            SaveMissionArtifactDraftTool(
+                workspace=self.workspace,
+                action_store=self.proposed_actions,
+                mission_store=self.missions,
+            )
+        )
         self.governed_registry.sync_inventory(skills_loader, self._mcp_servers)
 
     def _init_dax(self) -> None:
@@ -225,12 +233,31 @@ class AgentLoop:
             self._mcp_connecting = False
 
 
-    def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+    def _set_tool_context(
+        self,
+        channel: str,
+        chat_id: str,
+        message_id: str | None = None,
+        *,
+        owner_id: str | None = None,
+        session_key: str | None = None,
+        profile_id: str = "personal-work",
+        queued_run_id: str | None = None,
+        mission_id: str | None = None,
+    ) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron", "browser_read_shared_tab"):
+        for name in ("message", "spawn", "cron", "browser_read_shared_tab", "save_mission_artifact_draft"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
+                if hasattr(tool, "set_turn_context") and owner_id and session_key:
+                    tool.set_turn_context(
+                        owner_id=owner_id,
+                        session_key=session_key,
+                        profile_id=profile_id,
+                        queued_run_id=queued_run_id,
+                        mission_id=mission_id,
+                    )
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
@@ -726,6 +753,18 @@ class AgentLoop:
             pass
         return None
 
+    def _mission_artifact_tool_is_ready(self, owner_id: str, mission) -> bool:
+        """Expose the draft proposal tool only for an actionable mission step.
+
+        This keeps an approval-only tool out of unrelated chats and avoids
+        letting the model guess which of several missions it should affect.
+        The executor rechecks the same conditions immediately before a write.
+        """
+        if mission is None:
+            return False
+        blueprint = self.missions.get_approved_blueprint(owner_id, mission.id)
+        return bool(blueprint and any(step.state == "active" for step in blueprint.steps))
+
     def _blueprint_for_turn(self, owner_id: str, mission, queued_run_id: str | None):
         """Return only blueprint context that still agrees with a queued run.
 
@@ -1003,15 +1042,26 @@ class AgentLoop:
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
             profile = self._session_profile(session)
+            owner_id = self._owner_id(channel, msg.sender_id)
+            active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
             allowed_tools = self.capabilities.allowed_tools(
                 profile.id, self.tools.tool_names, governed_registry=self.governed_registry
             )
-            owner_id = self._owner_id(channel, msg.sender_id)
-            self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
+            if not self._mission_artifact_tool_is_ready(owner_id, active_mission):
+                allowed_tools.discard("save_mission_artifact_draft")
+            self._set_tool_context(
+                channel,
+                chat_id,
+                msg.metadata.get("message_id"),
+                owner_id=owner_id,
+                session_key=session.key,
+                profile_id=profile.id,
+                queued_run_id=queued_run_id,
+                mission_id=active_mission.id if active_mission else None,
+            )
             history = await self._history_for_prompt(
                 session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
             )
-            active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
             active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
             messages = self.context.build_messages(
                 history=history,
@@ -1055,9 +1105,12 @@ class AgentLoop:
         session = self.sessions.get_or_create(key)
         owner_id = self._owner_id(msg.channel, msg.sender_id)
         profile = self._session_profile(session)
+        active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
         allowed_tools = self.capabilities.allowed_tools(
             profile.id, self.tools.tool_names, governed_registry=self.governed_registry
         )
+        if not self._mission_artifact_tool_is_ready(owner_id, active_mission):
+            allowed_tools.discard("save_mission_artifact_draft")
 
         # Slash commands
         cmd = msg.content.strip().lower()
@@ -1157,7 +1210,16 @@ class AgentLoop:
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines)
             )
-        self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
+        self._set_tool_context(
+            msg.channel,
+            msg.chat_id,
+            msg.metadata.get("message_id"),
+            owner_id=owner_id,
+            session_key=session.key,
+            profile_id=profile.id,
+            queued_run_id=queued_run_id,
+            mission_id=active_mission.id if active_mission else None,
+        )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
@@ -1172,7 +1234,6 @@ class AgentLoop:
             session_key=session.key,
         )
         self._record_turn_context(session, history, recalled_memory)
-        active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
         active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
         initial_messages = self.context.build_messages(
             history=history,

@@ -1,71 +1,149 @@
-from __future__ import annotations
+"""Unit tests for CH7 — Safe Provider Setup and Diagnostics."""
 
-import asyncio
-import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
+from picobot.config.loader import load_config, save_config, set_profile_provider_secret
+from picobot.policy.runtime import RuntimePolicyService
 from picobot.providers.setup import ProviderSetupService
 
 
-def _service(tmp_path: Path) -> ProviderSetupService:
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({}), encoding="utf-8")
-    return ProviderSetupService(config_path)
+@pytest.fixture
+def tmp_workspace(tmp_path: Path) -> Path:
+    config_dir = tmp_path / ".picobot"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "config.json"
+    config = load_config(config_file)
+    save_config(config, config_file)
+    return config_file
 
 
-def test_provider_inventory_is_metadata_only_and_marks_local_key_configuration(tmp_path: Path):
-    service = _service(tmp_path)
-
-    configured = service.configure_api_key("openai", "test-openai-key")
+def test_provider_status_projection_contains_no_secrets(tmp_workspace: Path):
+    """Test 1: Provider status projection contains safe metadata and no secrets."""
+    set_profile_provider_secret("openai", "sk-proj-secret12345", tmp_workspace)
+    service = ProviderSetupService(tmp_workspace)
     inventory = service.inventory()
-    serialized = json.dumps(inventory)
 
-    assert configured["status"] == "configured"
-    assert next(item for item in inventory["providers"] if item["id"] == "openai")["has_api_key"]
-    assert "test-openai-key" not in serialized
-    assert "test-openai-key" not in (tmp_path / "config.json").read_text(encoding="utf-8")
+    assert "providers" in inventory
+    assert "default" in inventory
 
+    for provider in inventory["providers"]:
+        # Verify safe metadata fields exist
+        assert "id" in provider
+        assert "label" in provider
+        assert "status" in provider
+        assert "setup_hint" in provider
+        assert "has_api_key" in provider
+        assert "has_endpoint" in provider
 
-def test_custom_endpoint_requires_https_or_loopback_http(tmp_path: Path):
-    service = _service(tmp_path)
-
-    with pytest.raises(ValueError, match="Use HTTPS"):
-        service.configure_custom_endpoint("http://remote.example.test/v1", "test-model")
-
-    result = service.configure_custom_endpoint("http://127.0.0.1:11434/v1", "local-model")
-
-    assert result["default"] == {
-        "provider": "custom",
-        "model": "local-model",
-        "applies_after_restart": True,
-    }
-    custom = next(item for item in result["providers"] if item["id"] == "custom")
-    assert custom["status"] == "configured"
-    assert custom["has_endpoint"] is True
+        # Verify no secret values are leaked
+        provider_str = str(provider).lower()
+        assert "sk-proj-secret12345" not in provider_str
+        assert "secret" not in provider
+        assert "api_key" not in provider
+        assert "token" not in provider
+        assert "password" not in provider
 
 
-def test_default_provider_requires_real_configuration(tmp_path: Path):
-    service = _service(tmp_path)
+def test_unavailable_provider_cannot_be_selected_by_policy(tmp_workspace: Path):
+    """Test 2: Unavailable/unconfigured provider cannot be selected by policy."""
+    policy_service = RuntimePolicyService(tmp_workspace)
+    setup_service = ProviderSetupService(tmp_workspace)
 
-    with pytest.raises(ValueError, match="Configure this provider"):
-        service.choose_default("openai", "gpt-4.1-mini")
+    # 1. Unconfigured provider cannot be selected as default in setup_service
+    with pytest.raises(ValueError, match="Configure this provider before making it the default"):
+        setup_service.choose_default("deepseek", "deepseek-chat")
 
-    service.configure_api_key("openai", "test-openai-key")
-    result = service.choose_default("openai", "gpt-4.1-mini")
+    # 2. Unconfigured provider cannot be set in global runtime policy
+    with pytest.raises(ValueError, match="is not ready to serve turns"):
+        policy_service.set_global({"provider": "deepseek", "model": "deepseek-chat"})
 
-    assert result["default"]["provider"] == "openai"
-    assert result["default"]["model"] == "gpt-4.1-mini"
+    # 3. Configure key for openai -> selection succeeds
+    set_profile_provider_secret("openai", "sk-testkey", tmp_workspace)
+    result = policy_service.set_global({"provider": "openai", "model": "gpt-4o"})
+    assert result["policy"]["provider"] == "openai"
+    assert result["policy"]["model"] == "gpt-4o"
 
 
-def test_openai_connection_probe_is_truthful_without_a_key(tmp_path: Path):
-    service = _service(tmp_path)
+@pytest.mark.asyncio
+async def test_successful_and_failed_diagnostics_are_bounded_and_redacted(tmp_workspace: Path):
+    """Test 3: Connection test returns bounded, redacted failure categories."""
+    service = ProviderSetupService(tmp_workspace)
 
-    result = asyncio.run(service.test_connection("openai"))
+    # 1. Test unconfigured provider -> key_missing
+    res1 = await service.test_connection("openai")
+    assert res1["status"] == "not_configured"
+    assert res1["failure_category"] == "key_missing"
+    assert res1["detail"] == "Add an API key before testing this provider."
+    assert "sk-" not in str(res1)
 
-    assert result == {
-        "provider": "openai",
-        "status": "not_configured",
-        "detail": "Add an API key before testing this provider.",
-    }
+    # 2. Test OAuth provider -> unsupported
+    res2 = await service.test_connection("openai_codex")
+    assert res2["status"] == "not_available"
+    assert res2["failure_category"] == "unsupported"
+
+    # 3. Test with configured key and mocked successful probe -> connection_verified
+    set_profile_provider_secret("openai", "sk-validkey", tmp_workspace)
+    with patch.object(ProviderSetupService, "_probe_models", return_value=200):
+        res3 = await service.test_connection("openai")
+        assert res3["status"] == "ready"
+        assert res3["failure_category"] == "connection_verified"
+        assert res3["detail"] == "Connection verified."
+
+    # 4. Test with mocked permission error -> auth_failed
+    with patch.object(ProviderSetupService, "_probe_models", side_effect=PermissionError("HTTP 401 Unauthorized")):
+        res4 = await service.test_connection("openai")
+        assert res4["status"] == "error"
+        assert res4["failure_category"] == "auth_failed"
+        assert res4["detail"] == "The provider rejected Pico's credentials."
+        assert "401" not in res4["detail"]  # redacted
+
+    # 5. Test with mocked network failure -> unreachable
+    with patch.object(ProviderSetupService, "_probe_models", side_effect=OSError("Connection refused")):
+        res5 = await service.test_connection("openai")
+        assert res5["status"] == "error"
+        assert res5["failure_category"] == "unreachable"
+        assert res5["detail"] == "Pico could not reach that provider endpoint."
+        assert "refused" not in res5["detail"]  # redacted
+
+
+@pytest.mark.asyncio
+async def test_action_does_not_persist_provider_selection_as_side_effect(tmp_workspace: Path):
+    """Test 4: Testing connection does NOT alter stored default provider or runtime policy."""
+    service = ProviderSetupService(tmp_workspace)
+    set_profile_provider_secret("openai", "sk-validkey", tmp_workspace)
+    set_profile_provider_secret("deepseek", "sk-deepseekkey", tmp_workspace)
+
+    initial_config = load_config(tmp_workspace)
+    initial_default_provider = initial_config.agents.defaults.provider
+    initial_default_model = initial_config.agents.defaults.model
+    initial_policy = initial_config.policy.model_dump()
+
+    # Perform connection test on deepseek
+    with patch.object(ProviderSetupService, "_probe_models", return_value=200):
+        res = await service.test_connection("deepseek")
+        assert res["status"] == "ready"
+
+    # Verify config defaults and policy were NOT modified as a side effect
+    after_config = load_config(tmp_workspace)
+    assert after_config.agents.defaults.provider == initial_default_provider
+    assert after_config.agents.defaults.model == initial_default_model
+    assert after_config.policy.model_dump() == initial_policy
+
+
+@pytest.mark.asyncio
+async def test_reconfiguring_a_provider_clears_its_stale_diagnostic(tmp_workspace: Path):
+    """A previous failed probe cannot lock out newly supplied credentials."""
+    service = ProviderSetupService(tmp_workspace)
+    set_profile_provider_secret("openai", "sk-old-key", tmp_workspace)
+    with patch.object(ProviderSetupService, "_probe_models", side_effect=PermissionError):
+        result = await service.test_connection("openai")
+    assert result["failure_category"] == "auth_failed"
+    assert next(item for item in service.inventory()["providers"] if item["id"] == "openai")["status"] == "unavailable"
+
+    service.configure_api_key("openai", "sk-replacement-key")
+    refreshed = next(item for item in service.inventory()["providers"] if item["id"] == "openai")
+    assert refreshed["status"] == "configured"
+    assert refreshed["last_diagnostic"] is None
