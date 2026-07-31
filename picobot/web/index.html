@@ -57,6 +57,17 @@
     .send { width:38px; height:38px; border:0; border-radius:11px; background:var(--pico); color:#fff; font-size:16px; }
     .send:disabled { opacity:.45; cursor:not-allowed; }
     .composer-hint { width:min(860px,100%); margin:8px auto 0; color:#9a9bad; font-size:11px; }
+    .run-status { width:min(860px,100%); margin:0 auto 6px; display:flex; align-items:center; gap:8px; color:#9a9bad; font-size:11px; }
+    .run-status[hidden] { display:none; }
+    .run-status .run-status-label { text-transform:uppercase; letter-spacing:.06em; font-size:10px; color:#999bad; }
+    .run-status .run-status-dot { width:8px; height:8px; flex:none; border-radius:50%; background:#c9c9d6; }
+    .run-status.active .run-status-dot { background:var(--pico); animation:pulse 1.1s ease-in-out infinite; }
+    .run-status.active .run-status-label { color:var(--pico); }
+    .run-status-text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .stop-button { margin-left:auto; flex:none; border:1px solid #d9d9e7; border-radius:10px; padding:4px 11px; background:#fff; color:var(--ink); font-size:11px; cursor:pointer; }
+    .stop-button:hover { border-color:#e0a1ab; color:#c94a5c; }
+    .stop-button:disabled { opacity:.5; cursor:not-allowed; }
+    @keyframes pulse { 50% { opacity:.35; } }
     .workspace-view { overflow:auto; padding:36px 40px; align-items:flex-start; justify-content:center; }
     .workspace { width:min(900px,100%); }
     .workspace-head { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; margin-bottom:24px; }
@@ -159,6 +170,15 @@
     .composer:focus-within { border-color:#8da8cf; box-shadow:0 0 0 3px #315a9e12; }
     .send { width:34px; height:34px; border-radius:4px; background:#315a9e; font-size:15px; }
     .composer-hint { width:min(900px,100%); color:#969ca5; font-size:10px; }
+    .run-status { width:min(900px,100%); margin:0 auto 6px; color:#969ca5; font-size:10px; }
+    .run-status[hidden] { display:none; }
+    .run-status .run-status-label { text-transform:uppercase; letter-spacing:.06em; font-size:9px; color:#969ca5; }
+    .run-status .run-status-dot { width:7px; height:7px; flex:none; border-radius:50%; background:#c3ccd8; }
+    .run-status.active .run-status-dot { background:#315a9e; animation:pulse 1.1s ease-in-out infinite; }
+    .run-status.active .run-status-label { color:#315a9e; }
+    .run-status-text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .stop-button { margin-left:auto; flex:none; border:1px solid #d7dce3; border-radius:4px; padding:3px 10px; background:#fff; color:#38465b; font-size:10px; cursor:pointer; }
+    .stop-button:hover { border-color:#d7a4ab; color:#a33a49; }
     .utility-bar { min-height:40px; display:flex; align-items:center; gap:2px; padding:5px 20px; border-top:1px solid #e1e4e8; background:#fafbfc; color:#7c838d; font-size:11px; }
     .utility-action { display:flex; align-items:center; gap:6px; min-height:28px; border:0; border-radius:4px; padding:4px 8px; background:transparent; color:#6f7782; font-size:11px; text-align:left; }
     .utility-action:hover { background:#edf2f8; color:#284a7e; }
@@ -293,7 +313,7 @@
           </div>
         </div>
         <div class="transcript" id="transcript"></div>
-        <div class="composer-area"><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
+        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="stop-button" id="stop-run" type="button">Stop</button></div><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
       </section>
       <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep plans, briefs, drafts, and checklists as local versioned work products.</p></div></div><div class="artifact-layout"><div class="card"><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option></select></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><a class="action secondary" id="download-artifact" hidden>Download</a></div></form></div><div><div class="skills-list" id="artifact-list"></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></section>
       <section class="view workspace-view" id="view-memory"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Your durable context</div><h2>Memory, under your control</h2><p>Explicit facts only. Forgetting changes lifecycle without erasing provenance.</p></div></div><div class="card"><form class="memory-add" id="memory-form"><input id="memory-input" autocomplete="off" placeholder="Save a fact or a learning candidate"><select id="memory-create-status" aria-label="New memory state"><option value="confirmed">Remember now</option><option value="proposed">Propose for review</option></select><button class="action">Save</button></form><div class="memory-controls"><input id="memory-search" autocomplete="off" placeholder="Search memory"><select id="memory-status" aria-label="Memory lifecycle filter"><option value="">All lifecycle states</option><option value="confirmed">Confirmed</option><option value="proposed">Proposed</option><option value="rejected">Rejected</option><option value="forgotten">Forgotten</option></select></div><div class="memory-summary" id="memory-summary"></div><div class="memory-list" id="memory-list"></div></div></div></section>
@@ -317,7 +337,7 @@
     const CONFIG = { wsPort: __PICO_WS_PORT__, apiPort: __PICO_API_PORT__ };
     const CLIENT_KEY = 'pico.web.client-id';
     const SESSION_KEY = 'pico.web.session-id';
-    let socket = null, reconnectTimer = null, connected = false, currentView = 'chat', progress = null, latestAssistantContent = '', activeArtifactId = null, activeSkillProposalId = null, activeMissionId = null, currentSessionTitle = 'New session', memorySearchTimer = null;
+    let socket = null, reconnectTimer = null, connected = false, currentView = 'chat', progress = null, latestAssistantContent = '', activeArtifactId = null, activeSkillProposalId = null, activeMissionId = null, currentSessionTitle = 'New session', memorySearchTimer = null, runPollTimer = null, runStartPollsRemaining = 0;
     let clientId = getStoredId(CLIENT_KEY), sessionId = getStoredId(SESSION_KEY);
     const $ = (id) => document.getElementById(id);
     function makeId() { return (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, ''); }
@@ -330,12 +350,48 @@
     function setSessionTitle(title) { currentSessionTitle = title || 'New session'; $('page-title').textContent = currentSessionTitle; $('session-title-input').value = currentSessionTitle; if ($('cockpit-session-title')) $('cockpit-session-title').textContent = currentSessionTitle; }
     function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); reconnectTimer = setTimeout(connect, 1000); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
-    function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); return; } if (data.type === 'message') { removeProgress(); appendMessage('assistant', data.content); loadSessions(); if (currentView === 'context') loadSessionContext(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); } }
-    function setSession(nextSession) { sessionId = nextSession; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); }
+    function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); return; } if (data.type === 'message') { removeProgress(); appendMessage('assistant', data.content); loadSessions(); if (currentView === 'context') loadSessionContext(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); pollRuns(); } }
+    function setSession(nextSession) { sessionId = nextSession; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); }
     function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Start a piece of work.</h2><p>Pico keeps this conversation separate, and personal memory stays visible and editable.</p></div>`; }
     function appendMessage(role, content, timestamp = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${escapeHtml(content)}</div><div class="message-time">${formatTime(timestamp)}</div></div>`; $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
     function showProgress() { removeProgress(); progress = document.createElement('div'); progress.className = 'progress'; progress.innerHTML = '<span class="spinner"></span> Pico is working'; $('transcript').appendChild(progress); $('transcript').scrollTop = $('transcript').scrollHeight; }
     function removeProgress() { if (progress) { progress.remove(); progress = null; } }
+    const RUN_LABELS = { queued:'Queued', running:'Running', waiting_for_approval:'Waiting for approval', completed:'Completed', failed:'Failed', cancelled:'Stopped' };
+    const RUN_ACTIVE = new Set(['queued', 'running', 'waiting_for_approval']);
+    function formatElapsed(ms) { if (!ms || ms < 0 || Number.isNaN(ms)) return ''; if (ms < 1000) return `${Math.round(ms)}ms`; return `${(ms / 1000).toFixed(1)}s`; }
+    function renderRunStatus(receipt) {
+      const status = $('run-status'), text = $('run-status-text'), stop = $('stop-run');
+      if (!receipt || !receipt.state) { status.hidden = true; return; }
+      const active = RUN_ACTIVE.has(receipt.state);
+      const bits = [RUN_LABELS[receipt.state] || receipt.state];
+      if (receipt.provider && receipt.model) bits.push(`${receipt.provider}/${receipt.model}`);
+      else if (receipt.provider) bits.push(receipt.provider);
+      if (receipt.state === 'completed' && receipt.usage && receipt.usage.total_tokens) bits.push(`${receipt.usage.total_tokens.toLocaleString()} tokens`);
+      if (receipt.tool_activity_count) bits.push(`${receipt.tool_activity_count} tool${receipt.tool_activity_count === 1 ? '' : 's'}`);
+      if (receipt.artifact_count) bits.push(`${receipt.artifact_count} artifact${receipt.artifact_count === 1 ? '' : 's'}`);
+      if (receipt.approvals_count) bits.push(`${receipt.approvals_count} approval${receipt.approvals_count === 1 ? '' : 's'}`);
+      if (receipt.state === 'failed' && receipt.error_summary) bits.push(receipt.error_summary);
+      if (receipt.state === 'cancelled') bits.push('by you');
+      const ms = active && receipt.started_at ? Date.now() - Date.parse(receipt.started_at) : receipt.elapsed_ms;
+      if (active && ms >= 0) bits.push(formatElapsed(ms));
+      text.textContent = bits.join(' · ');
+      status.classList.toggle('active', active);
+      status.hidden = false;
+      stop.hidden = !active;
+    }
+    async function pollRuns(waitForStart = false) {
+      if (waitForStart) runStartPollsRemaining = 12;
+      clearTimeout(runPollTimer); runPollTimer = null;
+      let data;
+      try {
+        const response = await api(`/api/runs?session_id=${encodeURIComponent(sessionId)}`);
+        if (!response.ok) return;
+        data = await response.json();
+      } catch { return; }
+      if (data.active) { runStartPollsRemaining = 0; renderRunStatus(data.active); runPollTimer = setTimeout(pollRuns, 1000); return; }
+      renderRunStatus((data.runs || [])[0] || null);
+      if (runStartPollsRemaining > 0) { runStartPollsRemaining -= 1; runPollTimer = setTimeout(pollRuns, 250); }
+    }
     async function loadTranscript() { try { const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}`); if (response.status === 400) { renderWelcome(); return; } if (!response.ok) throw new Error(); const data = await response.json(); $('transcript').innerHTML = ''; if (!data.messages.length) renderWelcome(); else data.messages.forEach((message) => appendMessage(message.role, message.content, message.timestamp)); } catch { renderWelcome(); } }
     async function loadSessions() { try { const response = await api('/api/sessions'); if (!response.ok) return; const data = await response.json(); const sessions = data.sessions || []; $('session-count').textContent = sessions.length || ''; const list = $('session-list'); list.innerHTML = ''; if (!sessions.some((item) => item.id === sessionId)) sessions.unshift({id:sessionId, title:'New session', message_count:0}); sessions.forEach((item) => { const button = document.createElement('button'); button.className = `session-button ${item.id === sessionId ? 'active' : ''}`; button.innerHTML = `<div class="session-title">${escapeHtml(item.title)}</div><div class="session-meta">${item.message_count || 0} messages${item.updated_at ? ` · ${escapeHtml(formatTime(item.updated_at))}` : ''}</div>`; button.onclick = () => setSession(item.id); list.appendChild(button); }); const current = sessions.find((item) => item.id === sessionId) || {title:'New session', message_count:0}; setSessionTitle(current.title); $('utility-session-value').textContent = `${current.message_count || 0} messages`; } catch {} }
     async function saveSessionTitle() { const title = $('session-title-input').value.trim(); if (!title) { toast('A session title cannot be empty.'); return; } const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/title`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title})}); if (!response.ok) { toast('Pico could not rename that session.'); return; } const data = await response.json(); setSessionTitle(data.title); setSessionTitleEditing(false); toast('Session renamed.'); loadSessions(); }
@@ -486,7 +542,8 @@
     $('rename-session').onclick = () => setSessionTitleEditing(true); $('save-session-title').onclick = saveSessionTitle; $('cancel-session-title').onclick = () => { $('session-title-input').value = currentSessionTitle; setSessionTitleEditing(false); }; $('session-title-input').onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); saveSessionTitle(); } else if (event.key === 'Escape') { $('session-title-input').value = currentSessionTitle; setSessionTitleEditing(false); } };
     $('refresh-skills').onclick = loadSkills; $('save-operation-profile').onclick = saveOperationProfile; $('save-custom-endpoint').onclick = saveCustomEndpoint; $('test-custom-endpoint').onclick = testCustomEndpoint; $('skill-proposal-form').onsubmit = createSkillProposal; $('save-skill-proposal').onclick = reviseSkillProposal; $('approve-skill-proposal').onclick = () => transitionSkillProposal('approve'); $('reject-skill-proposal').onclick = () => transitionSkillProposal('reject'); $('memory-form').onsubmit = addMemory; $('memory-status').onchange = loadMemory; $('memory-search').oninput = () => { clearTimeout(memorySearchTimer); memorySearchTimer = setTimeout(loadMemory, 200); }; $('mission-form').onsubmit = createMission; $('mission-state').onchange = () => { activeMissionId = null; loadMissions(); };
     $('artifact-form').onsubmit = saveArtifact; $('revise-artifact').onclick = reviseArtifact; $('save-latest').onclick = () => { if (!latestAssistantContent) { toast('There is no Pico reply in this page session yet.'); return; } $('artifact-content').value = latestAssistantContent; if (!$('artifact-title').value) $('artifact-title').value = 'Pico response'; };
-    $('composer').onsubmit = (event) => { event.preventDefault(); const input = $('message-input'), content = input.value.trim(); if (!content || !connected) return; appendMessage('user', content); input.value = ''; input.style.height = 'auto'; showProgress(); socket.send(JSON.stringify({type:'message', content})); };
+    $('composer').onsubmit = (event) => { event.preventDefault(); const input = $('message-input'), content = input.value.trim(); if (!content || !connected) return; appendMessage('user', content); input.value = ''; input.style.height = 'auto'; showProgress(); socket.send(JSON.stringify({type:'message', content})); pollRuns(true); };
+    $('stop-run').onclick = () => { if (!connected) return; $('stop-run').disabled = true; toast('Stopping this run…'); socket.send(JSON.stringify({type:'message', content:'/stop'})); };
     $('message-input').onkeydown = (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('composer').requestSubmit(); } };
     $('message-input').oninput = (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`; };
     renderWelcome(); setConnected(false); connect();

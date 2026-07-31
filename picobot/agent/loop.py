@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -16,6 +17,7 @@ from loguru import logger
 
 from picobot.agent.context import ContextBuilder
 from picobot.agent.subagent import SubagentManager
+from picobot.artifacts.store import ArtifactStore
 from picobot.agent.tools.calendar import CalendarTool
 from picobot.agent.tools.browser import BrowserReadSharedTabTool
 from picobot.agent.tools.cron import CronTool
@@ -31,7 +33,8 @@ from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider
-from picobot.operations import CapabilityRegistry, ToolActivityStore
+from picobot.operations import CapabilityRegistry, ProposedActionStore, ToolActivityStore
+from picobot.runs import RunRecord, RunStore
 from picobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
@@ -95,6 +98,10 @@ class AgentLoop:
         self.sessions = session_manager or SessionManager(workspace)
         self.capabilities = CapabilityRegistry()
         self.tool_activity = ToolActivityStore(workspace)
+        self.proposed_actions = ProposedActionStore(workspace)
+        self.artifacts = ArtifactStore(workspace)
+        self.runs = RunStore(workspace)
+        self._queued_run_ids: dict[int, str] = {}
         self.tools = ToolRegistry()
         self.subagents = SubagentManager(
             provider=provider,
@@ -241,6 +248,8 @@ class AgentLoop:
         final_content = None
         tools_used: list[str] = []
         response_meta: dict[str, Any] = {}
+        total_usage: dict[str, int] = {}
+        failed = False
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -252,6 +261,13 @@ class AgentLoop:
                 tools=tool_defs,
                 model=self.model,
             )
+
+            # Trusted usage only: summed from the provider response and bounded
+            # to the three known integer counters. Everything else is ignored.
+            for key, value in (response.usage or {}).items():
+                if key in {"prompt_tokens", "completion_tokens", "total_tokens"}:
+                    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                        total_usage[key] = total_usage.get(key, 0) + value
 
             if response.has_tool_calls:
                 if on_progress:
@@ -307,6 +323,7 @@ class AgentLoop:
                 # poison the context and cause permanent 400 loops (#1303).
                 if response.finish_reason == "error":
                     logger.error("LLM returned error: {}", (clean or "")[:200])
+                    failed = True
                     self._last_error = {
                         "provider": response.provider_name or "unknown",
                         "model": response.model_name or self.model,
@@ -329,6 +346,10 @@ class AgentLoop:
                 f"I reached the maximum number of tool call iterations ({self.max_iterations}) "
                 "without completing the task. You can try breaking the task into smaller steps."
             )
+
+        # Internal run-ledger facts, popped by _run_turn before outbound metadata.
+        response_meta["_usage"] = total_usage
+        response_meta["_failed"] = failed
 
         return final_content, tools_used, messages, response_meta
 
@@ -355,10 +376,19 @@ class AgentLoop:
             elif cmd == "/restart":
                 await self._handle_restart(msg)
             else:
+                # A normal chat turn gets a durable queued record before it
+                # waits for the processing lock. Commands do not execute the
+                # model loop and retain their existing command semantics.
+                if not cmd.startswith("/"):
+                    try:
+                        self._queued_run_ids[id(msg)] = self._queue_run(msg).id
+                    except Exception:
+                        logger.exception("Could not queue run for session {}", msg.session_key)
                 task = asyncio.create_task(self._dispatch(msg))
                 self._active_tasks.setdefault(msg.session_key, []).append(task)
                 task.add_done_callback(
-                    lambda t, k=msg.session_key: (
+                    lambda t, k=msg.session_key, message_id=id(msg): (
+                        self._queued_run_ids.pop(message_id, None),
                         self._active_tasks.get(k, []) and self._active_tasks[k].remove(t)
                         if t in self._active_tasks.get(k, [])
                         else None
@@ -366,17 +396,40 @@ class AgentLoop:
                 )
 
     async def _handle_stop(self, msg: InboundMessage) -> None:
-        """Cancel all active tasks and subagents for the session."""
-        tasks = self._active_tasks.pop(msg.session_key, [])
-        cancelled = sum(1 for t in tasks if not t.done() and t.cancel())
-        for t in tasks:
+        """Cancel the current task for this session, never its queued backlog."""
+        owner_id = self._run_owner_id(msg)
+        try:
+            current_run = self.runs.get_active(owner_id, msg.session_key)
+        except Exception:
+            current_run = None
+        tasks = self._active_tasks.get(msg.session_key, [])
+        current_task = next((task for task in tasks if not task.done()), None)
+        cancelled = int(current_task is not None and current_task.cancel())
+        if current_task is not None:
             try:
-                await t
+                await current_task
             except (asyncio.CancelledError, Exception):
                 pass
-        sub_cancelled = await self.subagents.cancel_by_session(msg.session_key)
+        sub_cancelled = await self.subagents.cancel_by_session(msg.session_key) if current_task else 0
         total = cancelled + sub_cancelled
-        content = f"Stopped {total} task(s)." if total else "No active task to stop."
+        cancelled_run = None
+        if current_run is not None:
+            try:
+                latest_run = self.runs.get(owner_id, current_run.id)
+                if latest_run.state in {"queued", "running", "waiting_for_approval"}:
+                    latest_run = self.runs.cancel(owner_id, latest_run.id)
+                if latest_run.state == "cancelled":
+                    cancelled_run = latest_run
+            except Exception:
+                logger.warning("Could not cancel run record for session {}", msg.session_key)
+        if cancelled_run:
+            content = (
+                f"Stopped {total} task(s); run {cancelled_run.id[:8]} cancelled."
+            )
+        elif total:
+            content = f"Stopped {total} task(s)."
+        else:
+            content = "No active task to stop."
         await self.bus.publish_outbound(
             OutboundMessage(
                 channel=msg.channel,
@@ -468,10 +521,12 @@ class AgentLoop:
 
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message under the global lock."""
-        async with self._processing_lock:
-            try:
+        queued_run_id = self._queued_run_ids.pop(id(msg), None)
+        owner_id = self._run_owner_id(msg)
+        try:
+            async with self._processing_lock:
                 self.analytics.track("message", channel=msg.channel, model=self.model)
-                response = await self._process_message(msg)
+                response = await self._process_message(msg, queued_run_id=queued_run_id)
                 if response is not None:
                     await self.bus.publish_outbound(response)
                 elif msg.channel == "cli":
@@ -483,19 +538,21 @@ class AgentLoop:
                             metadata=msg.metadata or {},
                         )
                     )
-            except asyncio.CancelledError:
-                logger.info("Task cancelled for session {}", msg.session_key)
-                raise
-            except Exception:
-                logger.exception("Error processing message for session {}", msg.session_key)
-                self.analytics.track("error", channel=msg.channel, model=self.model)
-                await self.bus.publish_outbound(
-                    OutboundMessage(
-                        channel=msg.channel,
-                        chat_id=msg.chat_id,
-                        content="Sorry, I encountered an error.",
-                    )
+        except asyncio.CancelledError:
+            self._finish_queued_run(owner_id, queued_run_id, cancelled=True)
+            logger.info("Task cancelled for session {}", msg.session_key)
+            raise
+        except Exception:
+            self._finish_queued_run(owner_id, queued_run_id, cancelled=False)
+            logger.exception("Error processing message for session {}", msg.session_key)
+            self.analytics.track("error", channel=msg.channel, model=self.model)
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content="Sorry, I encountered an error.",
                 )
+            )
 
     async def close_mcp(self) -> None:
         """Close MCP connections."""
@@ -513,11 +570,190 @@ class AgentLoop:
             self._dax_service.stop()
         logger.info("Agent loop stopping")
 
+    def _provider_name(self) -> str:
+        """Return a bounded label for the effective provider serving a turn."""
+        provider = getattr(self.provider, "primary", self.provider)
+        for attr in ("name", "provider_name", "display_name"):
+            value = getattr(provider, attr, None)
+            if isinstance(value, str) and value.strip():
+                return " ".join(value.split())[:120]
+        return type(provider).__name__
+
+    def _queue_run(self, msg: InboundMessage) -> RunRecord:
+        """Persist a queued normal-message turn before it waits for execution."""
+        session = self.sessions.get_or_create(self._run_session_key(msg))
+        profile = self._session_profile(session)
+        allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
+        return self.runs.create(
+            owner_id=self._run_owner_id(msg),
+            session_key=session.key,
+            capability_profile=profile.id,
+            policy_revision=self._policy_revision(profile.id, allowed_tools),
+            provider=self._provider_name(),
+            model=self.model,
+        )
+
+    @staticmethod
+    def _run_session_key(msg: InboundMessage) -> str:
+        """Match scheduled/system turn identity to its eventual agent session."""
+        if msg.channel != "system":
+            return msg.session_key
+        channel, chat_id = (
+            msg.chat_id.split(":", 1) if ":" in msg.chat_id else ("cli", msg.chat_id)
+        )
+        return f"{channel}:{chat_id}"
+
+    @staticmethod
+    def _run_owner_id(msg: InboundMessage) -> str:
+        if msg.channel != "system":
+            return AgentLoop._owner_id(msg.channel, msg.sender_id)
+        channel = msg.chat_id.split(":", 1)[0] if ":" in msg.chat_id else "cli"
+        return AgentLoop._owner_id(channel, msg.sender_id)
+
+    def _finish_queued_run(self, owner_id: str, run_id: str | None, *, cancelled: bool) -> None:
+        """Terminalize a queued record if setup failed before the model loop."""
+        if not run_id:
+            return
+        try:
+            run = self.runs.get(owner_id, run_id)
+            if run.state in {"completed", "failed", "cancelled"}:
+                return
+            if cancelled:
+                self.runs.cancel(owner_id, run_id)
+            else:
+                self.runs.fail(owner_id, run_id, error_summary="The turn stopped before completing.")
+        except Exception:
+            logger.warning("Could not terminalize queued run {}", run_id[:8])
+
+    @staticmethod
+    def _policy_revision(profile_id: str, allowed_tools) -> str:
+        """A non-secret signature of the effective profile and tool allow-list."""
+        signature = ",".join(sorted(allowed_tools or []))
+        digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:12]
+        return f"{profile_id}@{digest}"
+
+    @staticmethod
+    def _safe_error_summary(value: str | None) -> str:
+        """Bound and scrub an error summary so receipts never expose secrets."""
+        if not value:
+            return "The model returned an error."
+        secret_markers = ("api_key", "apikey", "authorization", "bearer ", "sk-", "x-api-key", "token=")
+        kept = [
+            line
+            for line in value.splitlines()
+            if not any(marker in line.lower() for marker in secret_markers)
+        ]
+        cleaned = " ".join(" ".join(kept).split())
+        if not cleaned:
+            return "The model returned an error."
+        return cleaned[:300]
+
+    def _run_evidence_counts(self, owner_id: str, session_key: str, run: RunRecord) -> dict[str, int]:
+        """Best-effort observable counts for one run window.
+
+        Only records created at or after the run was queued count. Failures are
+        bounded to zero rather than blocking the run's terminal transition.
+        """
+        approvals = 0
+        try:
+            approvals = sum(
+                1
+                for item in self.proposed_actions.list(owner_id, session_key, limit=100)
+                if item.created_at >= run.created_at and item.status in {"approved", "executed"}
+            )
+        except Exception:
+            logger.warning("Could not count approvals for run {}", run.id[:8])
+        artifacts = 0
+        try:
+            artifacts = sum(
+                1
+                for item in self.artifacts.list(owner_id, session_key=session_key, limit=100)
+                if item.created_at >= run.created_at
+            )
+        except Exception:
+            logger.warning("Could not count artifacts for run {}", run.id[:8])
+        return {"approvals_count": approvals, "artifact_count": artifacts}
+
+    async def _run_turn(
+        self,
+        *,
+        owner_id: str,
+        session: Session,
+        profile,
+        allowed_tools: set[str],
+        messages: list[dict],
+        activity_context: dict[str, str],
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+        mission_id: str | None = None,
+        result_ref: str | None = None,
+        queued_run_id: str | None = None,
+    ) -> tuple[str | None, list[dict], dict[str, Any], RunRecord]:
+        """Create a queued run, execute one turn, and persist the terminal state."""
+        provider = self._provider_name()
+        if queued_run_id:
+            run = self.runs.get(owner_id, queued_run_id)
+        else:
+            run = self.runs.create(
+                owner_id=owner_id,
+                session_key=session.key,
+                capability_profile=profile.id,
+                policy_revision=self._policy_revision(profile.id, allowed_tools),
+                provider=provider,
+                model=self.model,
+                mission_id=mission_id,
+            )
+        run = self.runs.mark_running(owner_id, run.id, provider=provider, model=self.model)
+        try:
+            final_content, tools_used, all_msgs, response_meta = await self._run_agent_loop(
+                messages,
+                allowed_tools=allowed_tools,
+                activity_context=activity_context,
+                on_progress=on_progress,
+            )
+            run_usage = response_meta.pop("_usage", {})
+            run_failed = response_meta.pop("_failed", False)
+            run_meta = {
+                "provider": response_meta.get("served_by") or provider,
+                "model": response_meta.get("served_model") or self.model,
+                "usage": run_usage,
+                "tool_activity_count": len(tools_used),
+                "result_ref": result_ref,
+                **self._run_evidence_counts(owner_id, session.key, run),
+            }
+            if run_failed:
+                final_content = self._safe_error_summary(final_content)
+                run = self.runs.fail(
+                    owner_id,
+                    run.id,
+                    error_summary=self._safe_error_summary(final_content),
+                    **run_meta,
+                )
+            else:
+                run = self.runs.complete(owner_id, run.id, **run_meta)
+        except asyncio.CancelledError:
+            logger.info("Run {} cancelled for session {}", run.id[:8], session.key)
+            try:
+                self.runs.cancel(owner_id, run.id)
+            except Exception:
+                logger.warning("Could not cancel run {} after cancellation", run.id[:8])
+            raise
+        except Exception:
+            logger.exception("Run {} failed for session {}", run.id[:8], session.key)
+            try:
+                self.runs.fail(
+                    owner_id, run.id, error_summary="The turn stopped before completing."
+                )
+            except Exception:
+                logger.warning("Could not fail run {} after an internal error", run.id[:8])
+            raise
+        return final_content, all_msgs, response_meta, run
+
     async def _process_message(
         self,
         msg: InboundMessage,
         session_key: str | None = None,
         on_progress: Callable[[str], Awaitable[None]] | None = None,
+        queued_run_id: str | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
         # System messages: parse origin from chat_id ("channel:chat_id")
@@ -541,14 +777,18 @@ class AgentLoop:
                 owner_id=owner_id,
                 system_prompt=self._context_snapshot(session),
             )
-            final_content, _, all_msgs, _ = await self._run_agent_loop(
-                messages,
+            final_content, all_msgs, _, run = await self._run_turn(
+                owner_id=owner_id,
+                session=session,
+                profile=profile,
                 allowed_tools=allowed_tools,
+                messages=messages,
                 activity_context={
                     "owner_id": owner_id,
                     "session_key": session.key,
                     "profile_id": profile.id,
                 },
+                queued_run_id=queued_run_id,
             )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
@@ -556,6 +796,7 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
                 content=final_content or "Background task completed.",
+                metadata={"run_id": run.id, "run_receipt": run.turn_receipt()},
             )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
@@ -702,15 +943,21 @@ class AgentLoop:
                 )
             )
 
-        final_content, _, all_msgs, response_meta = await self._run_agent_loop(
-            initial_messages,
+        message_id = msg.metadata.get("message_id")
+        final_content, all_msgs, response_meta, run = await self._run_turn(
+            owner_id=owner_id,
+            session=session,
+            profile=profile,
             allowed_tools=allowed_tools,
+            messages=initial_messages,
             activity_context={
                 "owner_id": owner_id,
                 "session_key": session.key,
                 "profile_id": profile.id,
             },
             on_progress=on_progress or _bus_progress,
+            result_ref=f"message:{message_id}" if isinstance(message_id, str) else None,
+            queued_run_id=queued_run_id,
         )
 
         if final_content is None:
@@ -726,6 +973,8 @@ class AgentLoop:
         logger.info("Response to {}:{}: {}", msg.channel, msg.sender_id, preview)
         meta = dict(msg.metadata or {})
         meta.update(response_meta)
+        meta["run_id"] = run.id
+        meta["run_receipt"] = run.turn_receipt()
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,

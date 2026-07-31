@@ -262,6 +262,16 @@ class WebChannel(BaseChannel):
                         raise ValueError("Mission route was not found")
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/runs":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = self._single_query_value(query, "session_id")
+                    response = json.dumps(
+                        self._browser_runs(client_id, session_id), ensure_ascii=False
+                    ).encode()
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/sessions":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -880,6 +890,28 @@ class WebChannel(BaseChannel):
         from picobot.missions import MissionStore
 
         return MissionStore(self._runtime_config().workspace_path)
+
+    def _run_store(self):
+        from picobot.runs import RunStore
+
+        return RunStore(self._runtime_config().workspace_path)
+
+    def _browser_runs(self, client_id: str, session_id: str | None) -> dict[str, Any]:
+        """Return safe turn receipts; never transcripts, args, or reasoning."""
+        owner_id = self._memory_owner(client_id)
+        store = self._run_store()
+        session_key = None
+        if session_id is not None:
+            session_key = self._session_key(client_id, self._valid_browser_id(session_id))
+        runs = store.list(owner_id, session_key=session_key, limit=20)
+        active = None
+        if session_key:
+            active_run = store.get_active(owner_id, session_key)
+            active = active_run.turn_receipt() if active_run else None
+        return {
+            "runs": [run.turn_receipt() for run in runs],
+            "active": active,
+        }
 
     def _mission_evidence(self, owner_id: str, session_key: str, mission_id: str) -> dict[str, int]:
         """Return counts only; linked records remain in their own stores."""
