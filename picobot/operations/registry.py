@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,11 @@ class CapabilityRegistry:
             id="research",
             label="Research",
             description="Personal work plus web search and page fetching. No external writes.",
-            tool_names=("list_skills", "get_skill", "web_search", "web_fetch"),
+            # This is an authority marker, not a tool definition.  It permits
+            # only ready, governed, read-only MCP tools after all other gates
+            # pass.  Mutating MCP tools are intentionally not exposed by any
+            # current session profile.
+            tool_names=("list_skills", "get_skill", "web_search", "web_fetch", "governed_mcp_read"),
         ),
         "browser-review": SessionProfile(
             id="browser-review",
@@ -132,10 +136,22 @@ class CapabilityRegistry:
     def resolve(self, stored_profile: object) -> SessionProfile:
         return self.PROFILES.get(stored_profile, self.PROFILES[self.DEFAULT_PROFILE])
 
-    def allowed_tools(self, profile_id: object, registered_tools: Iterable[str]) -> set[str]:
+    def allowed_tools(
+        self,
+        profile_id: object,
+        registered_tools: Iterable[str],
+        governed_registry: Any | None = None,
+    ) -> set[str]:
         profile = self.profile(profile_id)
         registered = set(registered_tools)
-        return {name for name in profile.tool_names if name in registered}
+        if governed_registry is None:
+            return {name for name in profile.tool_names if name in registered}
+        return governed_registry.filter_allowed_tools(
+            session_profile_id=profile.id,
+            candidate_tools=registered,
+            session_profile_tool_names=profile.tool_names,
+        )
+
 
     def capability_for_tool(self, tool_name: str) -> CapabilitySpec | None:
         return next((item for item in self.CAPABILITIES if item.tool_name == tool_name), None)

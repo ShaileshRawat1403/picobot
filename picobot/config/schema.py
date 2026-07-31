@@ -416,6 +416,12 @@ class ExecToolConfig(Base):
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
+    enabled: bool = True
+    # Every server must declare its authority class.  Current Pico profiles
+    # expose only governed read tools; mutating MCPs remain registered for
+    # inspection but cannot be offered to a model until a future profile adds
+    # an explicit mutation capability and proposal binding.
+    risk: Literal["read", "mutating"] = "read"
     type: Literal["stdio", "sse", "streamableHttp"] | None = None  # auto-detected if omitted
     command: str = ""  # Stdio: command to run (e.g. "npx")
     args: list[str] = Field(default_factory=list)  # Stdio: command arguments

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from picobot.agent.tools.base import Tool
 from picobot.bus.dax_auth import get_admin_numbers, get_default_url, is_authorized

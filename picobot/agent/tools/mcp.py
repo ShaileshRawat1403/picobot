@@ -72,15 +72,28 @@ class MCPToolWrapper(Tool):
 
 
 async def connect_mcp_servers(
-    mcp_servers: dict, registry: ToolRegistry, stack: AsyncExitStack
+    mcp_servers: dict,
+    registry: ToolRegistry,
+    stack: AsyncExitStack,
+    governed_registry: Any | None = None,
 ) -> None:
     """Connect to configured MCP servers and register their tools."""
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.sse import sse_client
     from mcp.client.stdio import stdio_client
     from mcp.client.streamable_http import streamable_http_client
+    from picobot.operations.governed_registry import sanitize_diagnostic
 
     for name, cfg in mcp_servers.items():
+        entry_id = f"mcp:{name}"
+        if governed_registry:
+            entry = governed_registry.get(entry_id)
+            if entry and not entry.enabled:
+                governed_registry.update_entry(
+                    entry_id, readiness="disabled", safe_diagnostic="Server disabled", discovered_tools=()
+                )
+                continue
+
         try:
             transport_type = cfg.type
             if not transport_type:
@@ -93,6 +106,10 @@ async def connect_mcp_servers(
                     )
                 else:
                     logger.warning("MCP server '{}': no command or url configured, skipping", name)
+                    if governed_registry:
+                        governed_registry.update_entry(
+                            entry_id, readiness="failed", safe_diagnostic="No command or url configured", discovered_tools=()
+                        )
                     continue
 
             if transport_type == "stdio":
@@ -132,17 +149,38 @@ async def connect_mcp_servers(
                 )
             else:
                 logger.warning("MCP server '{}': unknown transport type '{}'", name, transport_type)
+                if governed_registry:
+                    governed_registry.update_entry(
+                        entry_id, readiness="failed", safe_diagnostic=f"Unknown transport: {transport_type}", discovered_tools=()
+                    )
                 continue
 
             session = await stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
 
             tools = await session.list_tools()
+            discovered_names = []
             for tool_def in tools.tools:
                 wrapper = MCPToolWrapper(session, name, tool_def, tool_timeout=cfg.tool_timeout)
                 registry.register(wrapper)
+                discovered_names.append(wrapper.name)
                 logger.debug("MCP: registered tool '{}' from server '{}'", wrapper.name, name)
+
+            if governed_registry:
+                governed_registry.update_entry(
+                    entry_id,
+                    readiness="ready",
+                    safe_diagnostic=f"Connected ({len(tools.tools)} tools discovered)",
+                    discovered_tools=discovered_names,
+                )
 
             logger.info("MCP server '{}': connected, {} tools registered", name, len(tools.tools))
         except Exception as e:
             logger.error("MCP server '{}': failed to connect: {}", name, e)
+            if governed_registry:
+                governed_registry.update_entry(
+                    entry_id,
+                    readiness="failed",
+                    safe_diagnostic=f"Failed to connect: {sanitize_diagnostic(str(e))}",
+                    discovered_tools=(),
+                )

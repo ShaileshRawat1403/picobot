@@ -40,6 +40,7 @@ class RunRecord:
     usage: dict[str, int] = field(default_factory=dict)
     error_summary: str | None = None
     result_ref: str | None = None
+    blueprint_step_id: str | None = None
     tool_activity_count: int = 0
     approvals_count: int = 0
     artifact_count: int = 0
@@ -68,6 +69,7 @@ class RunRecord:
             "usage": self.usage or None,
             "error_summary": self.error_summary,
             "result_ref": self.result_ref,
+            "blueprint_step_id": self.blueprint_step_id,
             "tool_activity_count": self.tool_activity_count,
             "approvals_count": self.approvals_count,
             "artifact_count": self.artifact_count,
@@ -140,8 +142,16 @@ class RunStore:
                     ON runs(owner_id, session_key, updated_at DESC);
                 CREATE INDEX IF NOT EXISTS runs_owner_state_updated_idx
                     ON runs(owner_id, state, updated_at DESC);
+                CREATE INDEX IF NOT EXISTS runs_owner_mission_updated_idx
+                    ON runs(owner_id, mission_id, updated_at DESC);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+            }
+            if "blueprint_step_id" not in columns:
+                connection.execute("ALTER TABLE runs ADD COLUMN blueprint_step_id TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -234,6 +244,7 @@ class RunStore:
         session_key: str,
         capability_profile: str,
         mission_id: str | None = None,
+        blueprint_step_id: str | None = None,
         policy_revision: str | None = None,
         provider: str | None = None,
         model: str | None = None,
@@ -246,6 +257,9 @@ class RunStore:
         mission_id = self._bounded_text(
             mission_id, "mission", self._MAX_IDENTIFIER_LENGTH, required=False
         )
+        blueprint_step_id = self._bounded_text(
+            blueprint_step_id, "blueprint step", self._MAX_IDENTIFIER_LENGTH, required=False
+        )
         policy_revision = self._bounded_text(
             policy_revision, "policy revision", self._MAX_POLICY_REVISION_LENGTH, required=False
         )
@@ -257,6 +271,7 @@ class RunStore:
             owner_id=owner_id,
             session_key=session_key,
             mission_id=mission_id,
+            blueprint_step_id=blueprint_step_id,
             provider=provider,
             model=model,
             capability_profile=capability_profile,
@@ -278,17 +293,18 @@ class RunStore:
             connection.execute(
                 """
                 INSERT INTO runs (
-                    id, owner_id, session_key, mission_id, provider, model,
+                    id, owner_id, session_key, mission_id, blueprint_step_id, provider, model,
                     capability_profile, policy_revision, state, created_at, updated_at,
                     started_at, ended_at, elapsed_ms, usage, error_summary, result_ref,
                     tool_activity_count, approvals_count, artifact_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.id,
                     run.owner_id,
                     run.session_key,
                     run.mission_id,
+                    run.blueprint_step_id,
                     run.provider,
                     run.model,
                     run.capability_profile,
@@ -343,6 +359,24 @@ class RunStore:
         params.append(limit)
         with self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
+        return [self._run(row) for row in rows]
+
+    def list_by_mission(
+        self, owner_id: str, mission_id: str, limit: int = 100
+    ) -> list[RunRecord]:
+        """Return runs linked to one mission, newest first."""
+        owner_id = self._required_identifier(owner_id, "owner")
+        mission_id = self._required_identifier(mission_id, "mission")
+        limit = self._validate_limit(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM runs
+                WHERE owner_id = ? AND mission_id = ?
+                ORDER BY updated_at DESC, id DESC LIMIT ?
+                """,
+                (owner_id, mission_id, limit),
+            ).fetchall()
         return [self._run(row) for row in rows]
 
     def list_active(self, owner_id: str, session_key: str) -> list[RunRecord]:

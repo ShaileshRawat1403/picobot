@@ -34,8 +34,9 @@ from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.context.compactor import CompactionService, ProviderContextSummarizer
 from picobot.context.planner import estimate_tokens
+from picobot.missions import MissionStore
 from picobot.providers.base import LLMProvider
-from picobot.operations import CapabilityRegistry, ProposedActionStore, ToolActivityStore
+from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
 from picobot.session.manager import Session, SessionManager
 
@@ -106,12 +107,15 @@ class AgentLoop:
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
         self.sessions = session_manager or SessionManager(workspace)
         self.capabilities = CapabilityRegistry()
+        self.governed_registry = GovernedRegistryStore(workspace)
         self.tool_activity = ToolActivityStore(workspace)
         self.proposed_actions = ProposedActionStore(workspace)
         self.artifacts = ArtifactStore(workspace)
         self.runs = RunStore(workspace)
+        self.missions = MissionStore(workspace)
         self._queued_run_ids: dict[int, str] = {}
         self.tools = ToolRegistry()
+
         self.subagents = SubagentManager(
             provider=provider,
             workspace=workspace,
@@ -170,6 +174,7 @@ class AgentLoop:
         skills_loader = SkillsLoader(self.workspace, skill_config=self.skill_config)
         self.tools.register(ListSkillsTool(skills_loader))
         self.tools.register(GetSkillTool(skills_loader))
+        self.governed_registry.sync_inventory(skills_loader, self._mcp_servers)
 
     def _init_dax(self) -> None:
         """Initialize DAX polling service and tool."""
@@ -204,7 +209,9 @@ class AgentLoop:
         try:
             self._mcp_stack = AsyncExitStack()
             await self._mcp_stack.__aenter__()
-            await connect_mcp_servers(self._mcp_servers, self.tools, self._mcp_stack)
+            await connect_mcp_servers(
+                self._mcp_servers, self.tools, self._mcp_stack, governed_registry=self.governed_registry
+            )
             self._mcp_connected = True
         except BaseException as e:
             logger.error("Failed to connect MCP servers (will retry next message): {}", e)
@@ -216,6 +223,7 @@ class AgentLoop:
                 self._mcp_stack = None
         finally:
             self._mcp_connecting = False
+
 
     def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
         """Update context for all tools that need routing info."""
@@ -302,25 +310,61 @@ class AgentLoop:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(
-                        tool_call.name, tool_call.arguments, allowed_names=allowed_tools
-                    )
+
+                    capability = self.capabilities.capability_for_tool(tool_call.name)
+                    governed_entry = self.governed_registry.get_entry_for_tool(tool_call.name)
+                    tool_risk = governed_entry.risk if governed_entry else (capability.risk if capability else "read")
+                    capability_id = capability.id if capability else (governed_entry.id if governed_entry else None)
+
+                    # ``allowed_tools`` is calculated at submission time, but
+                    # re-check the durable profile/registry boundary at
+                    # execution time.  This prevents a future caller from
+                    # passing an arbitrary allow-list to this lower-level
+                    # loop and making a governed tool callable.
+                    is_permitted = tool_call.name in (allowed_tools or set())
                     if activity_context:
-                        capability = self.capabilities.capability_for_tool(tool_call.name)
+                        profile = self.capabilities.resolve(activity_context.get("profile_id"))
+                        is_permitted = is_permitted and self.governed_registry.is_tool_allowed(
+                            tool_call.name,
+                            profile.id,
+                            profile.tool_names,
+                        )
+
+                    if not is_permitted:
+                        result = "Error: Tool is not permitted by this session"
+                    elif tool_risk == "mutating":
+                        is_approved = False
+                        if activity_context:
+                            actions = self.proposed_actions.list(
+                                activity_context["owner_id"], activity_context["session_key"]
+                            )
+                            is_approved = any(a.tool_name == tool_call.name and a.status == "approved" for a in actions)
+                        if not is_approved:
+                            result = "Error: Action requires owner approval in Operations before execution"
+                        else:
+                            result = await self.tools.execute(
+                                tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                            )
+                    else:
+                        result = await self.tools.execute(
+                            tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                        )
+
+                    if activity_context:
                         outcome = "success"
                         if result.startswith("Error:"):
                             outcome = (
                                 "blocked"
-                                if "not permitted by this session" in result
+                                if "not permitted by this session" in result or "requires owner approval" in result
                                 else "error"
                             )
                         self.tool_activity.record(
                             owner_id=activity_context["owner_id"],
                             session_key=activity_context["session_key"],
                             profile_id=activity_context["profile_id"],
-                            capability_id=capability.id if capability else None,
+                            capability_id=capability_id,
                             tool_name=tool_call.name,
-                            risk=capability.risk if capability else "unknown",
+                            risk=tool_risk,
                             outcome=outcome,
                         )
                     messages = self.context.add_tool_result(
@@ -647,19 +691,95 @@ class AgentLoop:
                 )
         return serving, model, policy.reasoning_effort, policy
 
+    def _active_mission_for_session(self, session: Session, owner_id: str):
+        """Return the active mission selected for a session, or None."""
+        mission_id = session.metadata.get("pico_active_mission_id")
+        if not mission_id or not isinstance(mission_id, str):
+            return None
+        try:
+            mission = self.missions.get(owner_id, mission_id)
+            if mission.session_key == session.key and mission.state == "active":
+                return mission
+        except KeyError:
+            pass
+        return None
+
+    def _mission_for_turn(
+        self, session: Session, owner_id: str, queued_run_id: str | None
+    ):
+        """Resolve the mission context from the run submission snapshot.
+
+        A queued turn must not silently inherit a mission selected later in the
+        same chat.  The run ledger is the source of truth once a run exists;
+        direct turns still read the current server-owned selection.
+        """
+        if not queued_run_id:
+            return self._active_mission_for_session(session, owner_id)
+        try:
+            run = self.runs.get(owner_id, queued_run_id)
+            if not run.mission_id or run.session_key != session.key:
+                return None
+            mission = self.missions.get(owner_id, run.mission_id)
+            if mission.session_key == session.key and mission.state == "active":
+                return mission
+        except KeyError:
+            pass
+        return None
+
+    def _blueprint_for_turn(self, owner_id: str, mission, queued_run_id: str | None):
+        """Return only blueprint context that still agrees with a queued run.
+
+        A run records the human-selected step at submission.  If a human
+        advances or replaces the blueprint while that run waits for the
+        processing lock, injecting a different step would misrepresent the
+        run's evidence.  In that case we retain the mission context but omit
+        the stale blueprint block rather than guessing.
+        """
+        if not mission:
+            return None
+        blueprint = self.missions.get_approved_blueprint(owner_id, mission.id)
+        if not queued_run_id or blueprint is None:
+            return blueprint
+        try:
+            run = self.runs.get(owner_id, queued_run_id)
+        except KeyError:
+            return None
+        if run.mission_id != mission.id:
+            return None
+        active_step = next(
+            (step for step in blueprint.steps if step.state in {"active", "blocked"}), None
+        )
+        if active_step is None or active_step.step_id != run.blueprint_step_id:
+            return None
+        return blueprint
+
     def _queue_run(self, msg: InboundMessage) -> RunRecord:
         """Persist a queued normal-message turn before it waits for execution."""
+        owner_id = self._run_owner_id(msg)
         session = self.sessions.get_or_create(self._run_session_key(msg))
+        active_mission = self._active_mission_for_session(session, owner_id)
+        blueprint_step_id = None
+        if active_mission:
+            approved_bp = self.missions.get_approved_blueprint(owner_id, active_mission.id)
+            if approved_bp:
+                active_step = next((s for s in approved_bp.steps if s.state in {"active", "blocked"}), None)
+                if active_step:
+                    blueprint_step_id = active_step.step_id
+
         profile = self._session_profile(session)
-        allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
+        allowed_tools = self.capabilities.allowed_tools(
+            profile.id, self.tools.tool_names, governed_registry=self.governed_registry
+        )
         serving, model, _effort, policy = self._serving_resources(session)
         run = self.runs.create(
-            owner_id=self._run_owner_id(msg),
+            owner_id=owner_id,
             session_key=session.key,
             capability_profile=profile.id,
             policy_revision=self._policy_revision(profile.id, allowed_tools, policy=policy),
             provider=self._provider_label(serving),
             model=model,
+            mission_id=active_mission.id if active_mission else None,
+            blueprint_step_id=blueprint_step_id,
         )
         # The run is submitted now, even when it must wait for the processing
         # lock. Keep its resolved non-secret policy so an edit made while it is
@@ -693,9 +813,13 @@ class AgentLoop:
             if run.state in {"completed", "failed", "cancelled"}:
                 return
             if cancelled:
-                self.runs.cancel(owner_id, run_id)
+                run = self.runs.cancel(owner_id, run_id)
             else:
-                self.runs.fail(owner_id, run_id, error_summary="The turn stopped before completing.")
+                run = self.runs.fail(owner_id, run_id, error_summary="The turn stopped before completing.")
+            if run.mission_id:
+                self.missions.record_run_terminal_event(
+                    owner_id, run.mission_id, run.id, run.state, error_summary=run.error_summary
+                )
         except Exception:
             logger.warning("Could not terminalize queued run {}", run_id[:8])
 
@@ -825,19 +949,41 @@ class AgentLoop:
         except asyncio.CancelledError:
             logger.info("Run {} cancelled for session {}", run.id[:8], session.key)
             try:
-                self.runs.cancel(owner_id, run.id)
+                run = self.runs.cancel(owner_id, run.id)
             except Exception:
                 logger.warning("Could not cancel run {} after cancellation", run.id[:8])
+            if getattr(run, "mission_id", None):
+                try:
+                    self.missions.record_run_terminal_event(
+                        owner_id, run.mission_id, run.id, "cancelled"
+                    )
+                except Exception:
+                    pass
             raise
         except Exception:
             logger.exception("Run {} failed for session {}", run.id[:8], session.key)
             try:
-                self.runs.fail(
+                run = self.runs.fail(
                     owner_id, run.id, error_summary="The turn stopped before completing."
                 )
             except Exception:
                 logger.warning("Could not fail run {} after an internal error", run.id[:8])
+            if getattr(run, "mission_id", None):
+                try:
+                    self.missions.record_run_terminal_event(
+                        owner_id, run.mission_id, run.id, "failed", error_summary=run.error_summary
+                    )
+                except Exception:
+                    pass
             raise
+
+        if getattr(run, "mission_id", None):
+            try:
+                self.missions.record_run_terminal_event(
+                    owner_id, run.mission_id, run.id, run.state, error_summary=run.error_summary
+                )
+            except Exception:
+                pass
         return final_content, all_msgs, response_meta, run
 
     async def _process_message(
@@ -857,12 +1003,16 @@ class AgentLoop:
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
             profile = self._session_profile(session)
-            allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
+            allowed_tools = self.capabilities.allowed_tools(
+                profile.id, self.tools.tool_names, governed_registry=self.governed_registry
+            )
             owner_id = self._owner_id(channel, msg.sender_id)
             self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
             history = await self._history_for_prompt(
                 session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
             )
+            active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
+            active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
             messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
@@ -872,6 +1022,8 @@ class AgentLoop:
                 system_prompt=self._context_snapshot(
                     session, self._policy_for_submitted_turn(session, queued_run_id)
                 ),
+                active_mission=active_mission,
+                active_blueprint=active_blueprint,
             )
             final_content, all_msgs, _, run = await self._run_turn(
                 owner_id=owner_id,
@@ -885,6 +1037,7 @@ class AgentLoop:
                     "profile_id": profile.id,
                 },
                 queued_run_id=queued_run_id,
+                mission_id=active_mission.id if active_mission else None,
             )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
@@ -902,7 +1055,9 @@ class AgentLoop:
         session = self.sessions.get_or_create(key)
         owner_id = self._owner_id(msg.channel, msg.sender_id)
         profile = self._session_profile(session)
-        allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
+        allowed_tools = self.capabilities.allowed_tools(
+            profile.id, self.tools.tool_names, governed_registry=self.governed_registry
+        )
 
         # Slash commands
         cmd = msg.content.strip().lower()
@@ -1017,6 +1172,8 @@ class AgentLoop:
             session_key=session.key,
         )
         self._record_turn_context(session, history, recalled_memory)
+        active_mission = self._mission_for_turn(session, owner_id, queued_run_id)
+        active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
         initial_messages = self.context.build_messages(
             history=history,
             current_message=msg.content,
@@ -1028,6 +1185,8 @@ class AgentLoop:
                 session, self._policy_for_submitted_turn(session, queued_run_id)
             ),
             recalled_memory=recalled_memory,
+            active_mission=active_mission,
+            active_blueprint=active_blueprint,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
@@ -1058,6 +1217,7 @@ class AgentLoop:
             on_progress=on_progress or _bus_progress,
             result_ref=f"message:{message_id}" if isinstance(message_id, str) else None,
             queued_run_id=queued_run_id,
+            mission_id=active_mission.id if active_mission else None,
         )
 
         if final_content is None:

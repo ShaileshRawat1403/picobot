@@ -123,6 +123,62 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
 
         return "\n\n".join(parts) if parts else ""
 
+    @staticmethod
+    def render_mission_context(mission: Any | None) -> str:
+        """Render bounded mission context for reference beside runtime metadata."""
+        if not mission:
+            return ""
+        state = getattr(mission, "state", None)
+        if state != "active":
+            return ""
+        title = str(getattr(mission, "title", ""))[:160]
+        objective = str(getattr(mission, "objective", ""))[:8000]
+        current_step = getattr(mission, "current_step", None)
+        lines = [
+            "[Active Mission Context — for reference only, human-owned state]",
+            f"Title: {title}",
+            f"State: {state}",
+            f"Objective: {objective}",
+        ]
+        if current_step:
+            lines.append(f"Current Step: {str(current_step)[:2000]}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def render_mission_blueprint_context(mission: Any | None, blueprint: Any | None = None) -> str:
+        """Render bounded mission blueprint context when an approved blueprint exists."""
+        if not mission:
+            return ""
+        state = getattr(mission, "state", None)
+        if state != "active":
+            return ""
+
+        if blueprint and getattr(blueprint, "state", None) == "approved":
+            steps = getattr(blueprint, "steps", []) or []
+            active_step = next((s for s in steps if getattr(s, "state", None) in {"active", "blocked"}), None)
+            if active_step:
+                title = str(getattr(mission, "title", ""))[:160]
+                objective = str(getattr(mission, "objective", ""))[:8000]
+                step_title = str(getattr(active_step, "title", ""))[:160]
+                criterion = getattr(active_step, "success_criterion", None)
+                step_state = getattr(active_step, "state", "active")
+                blocked_reason = getattr(active_step, "blocked_reason", None)
+
+                lines = [
+                    "[Active Mission Blueprint Context — for reference only, human-owned state]",
+                    f"Title: {title}",
+                    f"Objective: {objective}",
+                    f"Active Step ID: {str(getattr(active_step, 'step_id', ''))[:64]}",
+                    f"Active Step: {step_title}",
+                    f"Success Criterion: {str(criterion)[:2000] if criterion else 'None'}",
+                    f"Step State: {step_state}",
+                ]
+                if step_state == "blocked" and blocked_reason:
+                    lines.append(f"Blocker State: {str(blocked_reason)[:2000]}")
+                return "\n".join(lines)
+
+        return ContextBuilder.render_mission_context(mission)
+
     def build_messages(
         self,
         history: list[dict[str, Any]],
@@ -134,9 +190,12 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         owner_id: str | None = None,
         system_prompt: str | None = None,
         recalled_memory: list[MemoryItem] | None = None,
+        active_mission: Any | None = None,
+        active_blueprint: Any | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         runtime_ctx = self._build_runtime_context(channel, chat_id)
+        mission_ctx = self.render_mission_blueprint_context(active_mission, active_blueprint)
         memory_ctx = self.personal_memory.render_items(
             recalled_memory
             if recalled_memory is not None
@@ -144,6 +203,8 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         )
         user_content = self._build_user_content(current_message, media)
         metadata_blocks = [runtime_ctx]
+        if mission_ctx:
+            metadata_blocks.append(mission_ctx)
         if memory_ctx:
             metadata_blocks.append(memory_ctx)
         metadata = "\n\n".join(metadata_blocks)

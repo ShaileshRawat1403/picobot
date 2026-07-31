@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -169,7 +170,7 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
     with pytest.raises(ValueError, match="Session was not found"):
         channel._list_browser_missions(client_a, session_id=session_b)
     with pytest.raises(KeyError, match="not found"):
-        channel._browser_mission_detail(client_b, created["id"])
+        channel._browser_mission_detail(client_b, session_b, created["id"])
     with pytest.raises(ValueError, match="Session was not found"):
         channel._create_browser_mission(
             client_a,
@@ -179,8 +180,8 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
             None,
         )
 
-    detail = channel._browser_mission_detail(client_a, created["id"])
-    assert detail["evidence"] == {"artifact_count": 0, "activity_count": 0, "checkpoint_count": 0}
+    detail = channel._browser_mission_detail(client_a, session_a, created["id"])
+    assert detail["evidence"] == {"artifact_count": 0, "activity_count": 0, "checkpoint_count": 0, "run_count": 0}
     assert [event["event_type"] for event in detail["events"]] == ["created"]
 
 
@@ -212,3 +213,32 @@ def test_validation_and_bounds_are_enforced(tmp_path: Path):
         store.add_checkpoint(OWNER_A, mission.id, "note", "x" * 2_001)
     with pytest.raises(ValueError, match="list limit"):
         store.checkpoints(OWNER_A, mission.id, limit=0)
+
+
+def test_existing_mission_database_migrates_for_exact_run_event_deduplication(tmp_path: Path):
+    """CH5's additive column must not strand an existing local workspace."""
+    workspace = tmp_path / "workspace"
+    mission_root = workspace / "missions"
+    mission_root.mkdir(parents=True)
+    path = mission_root / "pico-missions.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE mission_events (
+                id TEXT PRIMARY KEY,
+                mission_id TEXT NOT NULL,
+                owner_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+    store = MissionStore(workspace)
+    with store._connect() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(mission_events)").fetchall()
+        }
+    assert "source_run_id" in columns

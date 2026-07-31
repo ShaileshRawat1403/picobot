@@ -7,11 +7,47 @@ arguments, credentials, and arbitrary metadata belong elsewhere.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+@dataclass(frozen=True)
+class BlueprintStep:
+    """A single ordered step in a mission workflow blueprint."""
+
+    step_id: str
+    title: str
+    success_criterion: str | None
+    state: str  # pending, active, blocked, completed, skipped
+    blocked_reason: str | None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class MissionBlueprint:
+    """A durable, reviewable workflow blueprint for a mission."""
+
+    id: str
+    mission_id: str
+    owner_id: str
+    version: int
+    state: str  # draft, approved, superseded
+    steps: list[BlueprintStep]
+    created_at: str
+    updated_at: str
+    approved_at: str | None = None
+    superseded_at: str | None = None
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data["steps"] = [step.to_dict() if hasattr(step, "to_dict") else step for step in self.steps]
+        return data
 
 
 @dataclass(frozen=True)
@@ -62,10 +98,16 @@ class MissionEvent:
     event_type: str
     summary: str
     created_at: str
+    # Internal event provenance used only to prevent duplicate run receipts.
+    # It deliberately stays out of the public event projection; mission detail
+    # already has a dedicated safe run receipt list.
+    source_run_id: str | None = None
 
     def to_dict(self) -> dict:
         """Return the safe event record without tool arguments or transcripts."""
-        return asdict(self)
+        data = asdict(self)
+        data.pop("source_run_id", None)
+        return data
 
 
 class MissionStore:
@@ -144,10 +186,45 @@ class MissionStore:
                     event_type TEXT NOT NULL,
                     summary TEXT NOT NULL,
                     created_at TEXT NOT NULL,
+                    source_run_id TEXT,
                     FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS mission_events_mission_owner_created_idx
                     ON mission_events(mission_id, owner_id, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS mission_blueprints (
+                    id TEXT PRIMARY KEY,
+                    mission_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    state TEXT NOT NULL,
+                    steps_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    approved_at TEXT,
+                    superseded_at TEXT,
+                    FOREIGN KEY (mission_id) REFERENCES missions(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS mission_blueprints_mission_version_idx
+                    ON mission_blueprints(mission_id, version DESC);
+                CREATE INDEX IF NOT EXISTS mission_blueprints_mission_state_idx
+                    ON mission_blueprints(mission_id, state);
+                """
+            )
+            # Existing Pico workspaces predate run-linked events.  The
+            # additive column keeps their event history valid while giving new
+            # terminal receipts an exact, durable deduplication key.
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(mission_events)").fetchall()
+            }
+            if "source_run_id" not in columns:
+                connection.execute("ALTER TABLE mission_events ADD COLUMN source_run_id TEXT")
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS mission_events_owner_run_idx
+                ON mission_events(mission_id, owner_id, source_run_id)
+                WHERE source_run_id IS NOT NULL
                 """
             )
 
@@ -212,8 +289,8 @@ class MissionStore:
     ) -> None:
         connection.execute(
             """
-            INSERT INTO mission_events(id, mission_id, owner_id, event_type, summary, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO mission_events(id, mission_id, owner_id, event_type, summary, created_at, source_run_id)
+            VALUES (?, ?, ?, ?, ?, ?, NULL)
             """,
             (
                 str(uuid.uuid4()),
@@ -461,3 +538,409 @@ class MissionStore:
                 (mission.id, mission.owner_id, limit),
             ).fetchall()
         return [self._event(row) for row in rows]
+
+    _BLUEPRINT_STATES = {"draft", "approved", "superseded"}
+    _STEP_STATES = {"pending", "active", "blocked", "completed", "skipped"}
+    _MAX_BLUEPRINT_STEPS = 20
+    _MAX_STEP_ID_LENGTH = 64
+    _MAX_STEP_TITLE_LENGTH = 160
+    _MAX_STEP_CRITERION_LENGTH = 2_000
+    _MAX_STEP_BLOCKED_REASON_LENGTH = 2_000
+
+    @classmethod
+    def _blueprint(cls, row: sqlite3.Row) -> MissionBlueprint:
+        data = dict(row)
+        steps_json = data.pop("steps_json", "[]")
+        raw_steps = json.loads(steps_json) if isinstance(steps_json, str) else []
+        steps = [
+            BlueprintStep(**s) if isinstance(s, dict) else s for s in raw_steps
+        ]
+        return MissionBlueprint(steps=steps, **data)
+
+    @classmethod
+    def _validate_and_normalize_steps(cls, raw_steps: object) -> list[BlueprintStep]:
+        if not isinstance(raw_steps, list) or not (1 <= len(raw_steps) <= cls._MAX_BLUEPRINT_STEPS):
+            raise ValueError(f"Blueprint must contain between 1 and {cls._MAX_BLUEPRINT_STEPS} steps")
+
+        seen_ids: set[str] = set()
+        active_or_blocked_count = 0
+        normalized: list[BlueprintStep] = []
+
+        for idx, item in enumerate(raw_steps):
+            if isinstance(item, BlueprintStep):
+                step_id = item.step_id
+                title = item.title
+                criterion = item.success_criterion
+                state = item.state
+                blocked_reason = item.blocked_reason
+            elif isinstance(item, dict):
+                step_id = item.get("step_id") or f"step_{idx + 1}"
+                title = item.get("title")
+                criterion = item.get("success_criterion")
+                state = item.get("state") or "pending"
+                blocked_reason = item.get("blocked_reason")
+            else:
+                raise ValueError("Step must be a dictionary or BlueprintStep instance")
+
+            clean_id = cls._bounded_text(step_id, "step_id", cls._MAX_STEP_ID_LENGTH, required=True)
+            if clean_id in seen_ids:
+                raise ValueError(f"Duplicate step ID: {clean_id}")
+            seen_ids.add(clean_id)
+
+            clean_title = cls._bounded_text(title, "step title", cls._MAX_STEP_TITLE_LENGTH, required=True)
+            clean_criterion = cls._bounded_text(
+                criterion, "step success criterion", cls._MAX_STEP_CRITERION_LENGTH, required=False
+            )
+
+            if state not in cls._STEP_STATES:
+                raise ValueError(f"Invalid step state: {state}")
+
+            clean_blocked_reason = None
+            if state == "blocked":
+                clean_blocked_reason = cls._bounded_text(
+                    blocked_reason, "step blocked reason", cls._MAX_STEP_BLOCKED_REASON_LENGTH, required=True
+                )
+
+            if state in {"active", "blocked"}:
+                active_or_blocked_count += 1
+
+            normalized.append(
+                BlueprintStep(
+                    step_id=clean_id,
+                    title=clean_title,
+                    success_criterion=clean_criterion,
+                    state=state,
+                    blocked_reason=clean_blocked_reason,
+                )
+            )
+
+        if active_or_blocked_count > 1:
+            raise ValueError("At most one step can be active or blocked across the blueprint")
+
+        return normalized
+
+    def save_draft_blueprint(
+        self, owner_id: str, mission_id: str, raw_steps: list[dict | BlueprintStep]
+    ) -> MissionBlueprint:
+        mission = self.get(owner_id, mission_id)
+        if mission.state in self._TERMINAL_STATES:
+            raise ValueError("Cannot modify blueprint for a completed or cancelled mission")
+        if mission.state not in {"draft", "active"}:
+            raise ValueError("Blueprint draft can only be created/edited for draft or active missions")
+
+        steps = self._validate_and_normalize_steps(raw_steps)
+        now = self._now()
+        steps_json = json.dumps([s.to_dict() for s in steps])
+
+        with self._connect() as connection:
+            existing_draft = connection.execute(
+                """
+                SELECT * FROM mission_blueprints
+                WHERE mission_id = ? AND owner_id = ? AND state = 'draft'
+                ORDER BY version DESC LIMIT 1
+                """,
+                (mission.id, mission.owner_id),
+            ).fetchone()
+
+            if existing_draft is not None:
+                blueprint_id = existing_draft["id"]
+                connection.execute(
+                    """
+                    UPDATE mission_blueprints
+                    SET steps_json = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (steps_json, now, blueprint_id),
+                )
+                self._record_event(
+                    connection,
+                    mission,
+                    "blueprint_updated",
+                    f"Draft blueprint v{existing_draft['version']} updated.",
+                )
+            else:
+                highest_version_row = connection.execute(
+                    """
+                    SELECT MAX(version) as max_v FROM mission_blueprints
+                    WHERE mission_id = ? AND owner_id = ?
+                    """,
+                    (mission.id, mission.owner_id),
+                ).fetchone()
+                new_version = (highest_version_row["max_v"] or 0) + 1 if highest_version_row else 1
+                blueprint_id = str(uuid.uuid4())
+                connection.execute(
+                    """
+                    INSERT INTO mission_blueprints(
+                        id, mission_id, owner_id, version, state, steps_json, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, 'draft', ?, ?, ?)
+                    """,
+                    (blueprint_id, mission.id, mission.owner_id, new_version, steps_json, now, now),
+                )
+                self._record_event(
+                    connection,
+                    mission,
+                    "blueprint_created",
+                    f"Draft blueprint v{new_version} created.",
+                )
+
+            row = connection.execute(
+                "SELECT * FROM mission_blueprints WHERE id = ?", (blueprint_id,)
+            ).fetchone()
+            return self._blueprint(row)
+
+    def approve_blueprint(
+        self, owner_id: str, mission_id: str, blueprint_id: str | None = None
+    ) -> MissionBlueprint:
+        mission = self.get(owner_id, mission_id)
+        if mission.state in self._TERMINAL_STATES:
+            raise ValueError("Cannot approve blueprint for a completed or cancelled mission")
+
+        now = self._now()
+        with self._connect() as connection:
+            if blueprint_id:
+                draft_row = connection.execute(
+                    "SELECT * FROM mission_blueprints WHERE id = ? AND mission_id = ? AND owner_id = ?",
+                    (blueprint_id, mission.id, mission.owner_id),
+                ).fetchone()
+            else:
+                draft_row = connection.execute(
+                    """
+                    SELECT * FROM mission_blueprints
+                    WHERE mission_id = ? AND owner_id = ? AND state = 'draft'
+                    ORDER BY version DESC LIMIT 1
+                    """,
+                    (mission.id, mission.owner_id),
+                ).fetchone()
+
+            if draft_row is None or draft_row["state"] != "draft":
+                raise ValueError("No draft blueprint found to approve")
+
+            draft_bp = self._blueprint(draft_row)
+            steps = list(draft_bp.steps)
+
+            # If no step is active/blocked/completed/skipped (all pending), make first step active
+            has_active_or_done = any(s.state != "pending" for s in steps)
+            if not has_active_or_done and steps:
+                steps[0] = BlueprintStep(
+                    step_id=steps[0].step_id,
+                    title=steps[0].title,
+                    success_criterion=steps[0].success_criterion,
+                    state="active",
+                    blocked_reason=None,
+                )
+
+            steps_json = json.dumps([s.to_dict() for s in steps])
+
+            # Supersede any currently approved blueprint for this mission
+            connection.execute(
+                """
+                UPDATE mission_blueprints
+                SET state = 'superseded', superseded_at = ?, updated_at = ?
+                WHERE mission_id = ? AND owner_id = ? AND state = 'approved'
+                """,
+                (now, now, mission.id, mission.owner_id),
+            )
+
+            # Approve this draft blueprint
+            connection.execute(
+                """
+                UPDATE mission_blueprints
+                SET state = 'approved', approved_at = ?, updated_at = ?, steps_json = ?
+                WHERE id = ?
+                """,
+                (now, now, steps_json, draft_bp.id),
+            )
+
+            active_step = next((s for s in steps if s.state == "active"), None)
+            blocked_step = next((s for s in steps if s.state == "blocked"), None)
+            if active_step:
+                new_current_step = active_step.title
+            elif blocked_step:
+                new_current_step = f"[Blocked] {blocked_step.title}"
+            elif all(s.state in {"completed", "skipped"} for s in steps):
+                new_current_step = "All blueprint steps completed"
+            else:
+                new_current_step = mission.current_step
+
+            connection.execute(
+                "UPDATE missions SET current_step = ?, updated_at = ? WHERE id = ?",
+                (new_current_step, now, mission.id),
+            )
+
+            self._record_event(
+                connection,
+                mission,
+                "blueprint_approved",
+                f"Blueprint v{draft_bp.version} approved with {len(steps)} steps.",
+            )
+
+            approved_row = connection.execute(
+                "SELECT * FROM mission_blueprints WHERE id = ?", (draft_bp.id,)
+            ).fetchone()
+            return self._blueprint(approved_row)
+
+    def transition_blueprint_step(
+        self,
+        owner_id: str,
+        mission_id: str,
+        step_id: str,
+        target_state: str,
+        *,
+        blocked_reason: str | None = None,
+    ) -> MissionBlueprint:
+        mission = self.get(owner_id, mission_id)
+        if mission.state in self._TERMINAL_STATES:
+            raise ValueError("Cannot transition step for a completed or cancelled mission")
+
+        if target_state not in self._STEP_STATES:
+            raise ValueError(f"Invalid step state: {target_state}")
+
+        approved_bp = self.get_approved_blueprint(owner_id, mission_id)
+        if approved_bp is None:
+            raise ValueError("No approved blueprint found for mission")
+
+        step_id = self._required_identifier(step_id, "step_id")
+        steps = list(approved_bp.steps)
+        target_idx = next((i for i, s in enumerate(steps) if s.step_id == step_id), None)
+        if target_idx is None:
+            raise ValueError(f"Step '{step_id}' not found in approved blueprint")
+
+        clean_blocked_reason = None
+        if target_state == "blocked":
+            clean_blocked_reason = self._bounded_text(
+                blocked_reason, "step blocked reason", self._MAX_STEP_BLOCKED_REASON_LENGTH, required=True
+            )
+
+        old_step = steps[target_idx]
+        steps[target_idx] = BlueprintStep(
+            step_id=old_step.step_id,
+            title=old_step.title,
+            success_criterion=old_step.success_criterion,
+            state=target_state,
+            blocked_reason=clean_blocked_reason,
+        )
+
+        if target_state in {"active", "blocked"}:
+            for i, s in enumerate(steps):
+                if i != target_idx and s.state in {"active", "blocked"}:
+                    steps[i] = BlueprintStep(
+                        step_id=s.step_id,
+                        title=s.title,
+                        success_criterion=s.success_criterion,
+                        state="pending",
+                        blocked_reason=None,
+                    )
+        elif target_state in {"completed", "skipped"} and old_step.state == "active":
+            next_pending_idx = next((i for i in range(target_idx + 1, len(steps)) if steps[i].state == "pending"), None)
+            if next_pending_idx is not None:
+                next_step = steps[next_pending_idx]
+                steps[next_pending_idx] = BlueprintStep(
+                    step_id=next_step.step_id,
+                    title=next_step.title,
+                    success_criterion=next_step.success_criterion,
+                    state="active",
+                    blocked_reason=None,
+                )
+
+        now = self._now()
+        steps_json = json.dumps([s.to_dict() for s in steps])
+
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE mission_blueprints
+                SET steps_json = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (steps_json, now, approved_bp.id),
+            )
+
+            active_step = next((s for s in steps if s.state == "active"), None)
+            blocked_step = next((s for s in steps if s.state == "blocked"), None)
+            if active_step:
+                new_current_step = active_step.title
+            elif blocked_step:
+                new_current_step = f"[Blocked] {blocked_step.title}"
+            elif all(s.state in {"completed", "skipped"} for s in steps):
+                new_current_step = "All blueprint steps completed"
+            else:
+                new_current_step = mission.current_step
+
+            connection.execute(
+                "UPDATE missions SET current_step = ?, updated_at = ? WHERE id = ?",
+                (new_current_step, now, mission.id),
+            )
+
+            self._record_event(
+                connection,
+                mission,
+                "blueprint_step_transition",
+                f"Blueprint step '{step_id}' transitioned to '{target_state}'.",
+            )
+
+            row = connection.execute(
+                "SELECT * FROM mission_blueprints WHERE id = ?", (approved_bp.id,)
+            ).fetchone()
+            return self._blueprint(row)
+
+    def get_approved_blueprint(self, owner_id: str, mission_id: str) -> MissionBlueprint | None:
+        mission = self.get(owner_id, mission_id)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM mission_blueprints
+                WHERE mission_id = ? AND owner_id = ? AND state = 'approved'
+                ORDER BY version DESC LIMIT 1
+                """,
+                (mission.id, mission.owner_id),
+            ).fetchone()
+        return self._blueprint(row) if row else None
+
+    def get_latest_blueprint(self, owner_id: str, mission_id: str) -> MissionBlueprint | None:
+        mission = self.get(owner_id, mission_id)
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM mission_blueprints
+                WHERE mission_id = ? AND owner_id = ?
+                ORDER BY version DESC LIMIT 1
+                """,
+                (mission.id, mission.owner_id),
+            ).fetchone()
+        return self._blueprint(row) if row else None
+
+    _RUN_TERMINAL_STATES = {"completed", "failed", "cancelled"}
+
+    def record_run_terminal_event(
+        self,
+        owner_id: str,
+        mission_id: str,
+        run_id: str,
+        state: str,
+        error_summary: str | None = None,
+    ) -> MissionEvent | None:
+        """Record a bounded, deduplicated terminal run event for a mission."""
+        if state not in self._RUN_TERMINAL_STATES:
+            return None
+        mission = self.get(owner_id, mission_id)
+        run_id = self._required_identifier(run_id, "run")
+
+        short_run_id = run_id[:8]
+        summary = f"Run {short_run_id} {state}."
+        with self._connect() as connection:
+            event_id = str(uuid.uuid4())
+            now = self._now()
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO mission_events(
+                    id, mission_id, owner_id, event_type, summary, created_at, source_run_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (event_id, mission.id, mission.owner_id, f"run_{state}", summary, now, run_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+            row = connection.execute(
+                "SELECT * FROM mission_events WHERE id = ?", (event_id,)
+            ).fetchone()
+            return self._event(row)

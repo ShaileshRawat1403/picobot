@@ -228,10 +228,14 @@ class WebChannel(BaseChannel):
                     if not mission_id:
                         raise ValueError("Mission route was not found")
                     if method == "GET" and not operation:
+                        session_id = self._single_query_value(query, "session_id")
                         self._write_response(
                             writer,
                             200,
-                            json.dumps(self._browser_mission_detail(client_id, mission_id), ensure_ascii=False).encode(),
+                            json.dumps(
+                                self._browser_mission_detail(client_id, session_id, mission_id),
+                                ensure_ascii=False,
+                            ).encode(),
                         )
                     elif method == "POST" and operation == "transition":
                         payload = self._json_body(body)
@@ -257,6 +261,42 @@ class WebChannel(BaseChannel):
                             writer,
                             201,
                             json.dumps({"checkpoint": checkpoint}, ensure_ascii=False).encode(),
+                        )
+                    elif method == "GET" and operation == "blueprint":
+                        blueprint = self._browser_get_mission_blueprint(
+                            client_id, self._single_query_value(query, "session_id"), mission_id
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"blueprint": blueprint}, ensure_ascii=False).encode()
+                        )
+                    elif method == "POST" and operation in {"blueprint/draft", "blueprint-draft"}:
+                        payload = self._json_body(body)
+                        blueprint = self._browser_save_draft_blueprint(
+                            client_id, payload.get("session_id"), mission_id, payload.get("steps")
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"blueprint": blueprint}, ensure_ascii=False).encode()
+                        )
+                    elif method == "POST" and operation in {"blueprint/approve", "blueprint-approve"}:
+                        payload = self._json_body(body)
+                        blueprint = self._browser_approve_blueprint(
+                            client_id, payload.get("session_id"), mission_id, payload.get("blueprint_id")
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"blueprint": blueprint}, ensure_ascii=False).encode()
+                        )
+                    elif method == "POST" and operation in {"blueprint/step-transition", "blueprint-step-transition"}:
+                        payload = self._json_body(body)
+                        blueprint = self._browser_transition_blueprint_step(
+                            client_id,
+                            payload.get("session_id"),
+                            mission_id,
+                            payload.get("step_id"),
+                            payload.get("target_state"),
+                            blocked_reason=payload.get("blocked_reason"),
+                        )
+                        self._write_response(
+                            writer, 200, json.dumps({"blueprint": blueprint}, ensure_ascii=False).encode()
                         )
                     else:
                         raise ValueError("Mission route was not found")
@@ -315,6 +355,16 @@ class WebChannel(BaseChannel):
                     session_id = self._single_query_value(query, "session_id")
                     response = json.dumps(
                         self._browser_operations(client_id, session_id), ensure_ascii=False
+                    ).encode()
+                    self._write_response(writer, 200, response)
+                except ValueError as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/governance":
+                try:
+                    self._browser_id_from_query(query)
+                    store = self._governed_registry()
+                    response = json.dumps(
+                        {"entries": [entry.to_dict() for entry in store.list_entries()]}, ensure_ascii=False
                     ).encode()
                     self._write_response(writer, 200, response)
                 except ValueError as exc:
@@ -446,6 +496,22 @@ class WebChannel(BaseChannel):
                     self._write_response(
                         writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
                     )
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/sessions/") and path.endswith("/active-mission"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/active-mission").rstrip("/")
+                    if method == "POST":
+                        payload = self._json_body(body)
+                        res = self._set_browser_session_active_mission(
+                            client_id, session_id, payload.get("mission_id")
+                        )
+                    elif method == "GET":
+                        res = self._get_browser_session_active_mission(client_id, session_id)
+                    else:
+                        raise ValueError("Active mission route supports GET or POST only")
+                    self._write_response(writer, 200, json.dumps(res, ensure_ascii=False).encode())
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/profile"):
@@ -954,10 +1020,12 @@ class WebChannel(BaseChannel):
 
     def _mission_evidence(self, owner_id: str, session_key: str, mission_id: str) -> dict[str, int]:
         """Return counts only; linked records remain in their own stores."""
+        linked_runs = self._run_store().list_by_mission(owner_id, mission_id, limit=100)
         return {
             "artifact_count": len(self._artifact_store().list(owner_id, session_key=session_key)),
             "activity_count": len(self._tool_activity_store().list(owner_id, session_key, limit=100)),
             "checkpoint_count": len(self._mission_store().checkpoints(owner_id, mission_id)),
+            "run_count": len(linked_runs),
         }
 
     def _create_browser_mission(
@@ -995,17 +1063,106 @@ class WebChannel(BaseChannel):
             )
         ]
 
-    def _browser_mission_detail(self, client_id: str, mission_id: str) -> dict[str, Any]:
+    def _browser_mission_for_session(
+        self, client_id: str, session_id: object, mission_id: str
+    ):
+        """Load a mission only when it belongs to the caller's saved session."""
+        valid_session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, valid_session_id)
         owner_id = self._memory_owner(client_id)
         mission = self._mission_store().get(owner_id, mission_id)
+        if mission.session_key != self._session_key(client_id, valid_session_id):
+            raise ValueError("Mission does not belong to this session")
+        return mission
+
+    def _browser_mission_detail(
+        self, client_id: str, session_id: object, mission_id: str
+    ) -> dict[str, Any]:
+        owner_id = self._memory_owner(client_id)
+        mission = self._browser_mission_for_session(client_id, session_id, mission_id)
+        linked_runs = self._run_store().list_by_mission(owner_id, mission.id, limit=20)
+        safe_runs = [
+            {
+                "id": r.id,
+                "state": r.state,
+                "provider": r.provider,
+                "model": r.model,
+                "created_at": r.created_at,
+                "started_at": r.started_at,
+                "ended_at": r.ended_at,
+                "elapsed_ms": r.elapsed_ms,
+                "error_summary": r.error_summary,
+                "usage": r.usage or None,
+                "blueprint_step_id": getattr(r, "blueprint_step_id", None),
+            }
+            for r in linked_runs
+        ]
+        approved_bp = self._mission_store().get_approved_blueprint(owner_id, mission.id)
+        latest_bp = self._mission_store().get_latest_blueprint(owner_id, mission.id)
+        bp_dict = approved_bp.to_dict() if approved_bp else (latest_bp.to_dict() if latest_bp else None)
         return {
             "mission": mission.to_dict(),
+            "blueprint": bp_dict,
+            "approved_blueprint": approved_bp.to_dict() if approved_bp else None,
+            "latest_blueprint": latest_bp.to_dict() if latest_bp else None,
             "checkpoints": [
                 item.to_dict() for item in self._mission_store().checkpoints(owner_id, mission.id)
             ],
             "events": [item.to_dict() for item in self._mission_store().events(owner_id, mission.id)],
+            "runs": safe_runs,
             "evidence": self._mission_evidence(owner_id, mission.session_key, mission.id),
         }
+
+    def _browser_get_mission_blueprint(
+        self, client_id: str, session_id: object, mission_id: str
+    ) -> dict[str, Any] | None:
+        owner_id = self._memory_owner(client_id)
+        self._browser_mission_for_session(client_id, session_id, mission_id)
+        approved = self._mission_store().get_approved_blueprint(owner_id, mission_id)
+        if approved:
+            return approved.to_dict()
+        latest = self._mission_store().get_latest_blueprint(owner_id, mission_id)
+        return latest.to_dict() if latest else None
+
+    def _browser_save_draft_blueprint(
+        self, client_id: str, session_id: object, mission_id: str, steps: object
+    ) -> dict[str, Any]:
+        owner_id = self._memory_owner(client_id)
+        self._browser_mission_for_session(client_id, session_id, mission_id)
+        if not isinstance(steps, list):
+            raise ValueError("Blueprint steps must be a list")
+        blueprint = self._mission_store().save_draft_blueprint(owner_id, mission_id, steps)
+        return blueprint.to_dict()
+
+    def _browser_approve_blueprint(
+        self, client_id: str, session_id: object, mission_id: str, blueprint_id: object = None
+    ) -> dict[str, Any]:
+        owner_id = self._memory_owner(client_id)
+        self._browser_mission_for_session(client_id, session_id, mission_id)
+        bp_id_str = str(blueprint_id) if isinstance(blueprint_id, str) and blueprint_id.strip() else None
+        blueprint = self._mission_store().approve_blueprint(owner_id, mission_id, blueprint_id=bp_id_str)
+        return blueprint.to_dict()
+
+    def _browser_transition_blueprint_step(
+        self,
+        client_id: str,
+        session_id: object,
+        mission_id: str,
+        step_id: object,
+        target_state: object,
+        blocked_reason: object = None,
+    ) -> dict[str, Any]:
+        owner_id = self._memory_owner(client_id)
+        self._browser_mission_for_session(client_id, session_id, mission_id)
+        if not isinstance(step_id, str) or not step_id.strip():
+            raise ValueError("Step ID is required")
+        if not isinstance(target_state, str) or not target_state.strip():
+            raise ValueError("Target state is required")
+        reason_str = str(blocked_reason) if isinstance(blocked_reason, str) and blocked_reason.strip() else None
+        blueprint = self._mission_store().transition_blueprint_step(
+            owner_id, mission_id, step_id.strip(), target_state.strip(), blocked_reason=reason_str
+        )
+        return blueprint.to_dict()
 
     def _transition_browser_mission(
         self, client_id: str, mission_id: str, state: object, blocked_reason: object
@@ -1066,6 +1223,21 @@ class WebChannel(BaseChannel):
         """
         return bool(getattr(config.tools.web.search, "provider", ""))
 
+    def _governed_registry(self):
+        from picobot.agent.skills import SkillsLoader
+        from picobot.operations.governed_registry import GovernedRegistryStore
+
+        cfg = self._runtime_config()
+        workspace = getattr(cfg, "workspace_path", Path("."))
+        store = GovernedRegistryStore(workspace)
+        tools_cfg = getattr(cfg, "tools", None)
+        mcp_servers = getattr(tools_cfg, "mcp_servers", {}) if tools_cfg else {}
+        store.sync_inventory(
+            SkillsLoader(workspace),
+            mcp_servers,
+        )
+        return store
+
     def _browser_operations(self, client_id: str, session_id: str | None) -> dict[str, Any]:
         from picobot.operations.registry import CapabilityRegistry
 
@@ -1093,6 +1265,13 @@ class WebChannel(BaseChannel):
                 shared_tab = self._browser_bridge_store().get(self._memory_owner(client_id), session_key).to_dict()
             except KeyError:
                 pass
+        governed_entries = [entry.to_dict() for entry in self._governed_registry().list_entries()]
+        active_mission_info = {"active_mission_id": None, "active_mission": None}
+        if session_key:
+            try:
+                active_mission_info = self._get_browser_session_active_mission(client_id, session_id)
+            except ValueError:
+                pass
         return {
             "profile": {"id": profile.id, "label": profile.label, "description": profile.description},
             "profiles": registry.profiles(),
@@ -1105,10 +1284,65 @@ class WebChannel(BaseChannel):
                     browser_shared=shared_tab is not None,
                 )
             ],
+            "governance": governed_entries,
             "activity": activities,
             "actions": actions,
             "shared_browser_tab": shared_tab,
+            "active_mission": active_mission_info.get("active_mission"),
         }
+
+    def _get_browser_session_active_mission(self, client_id: str, session_id: str) -> dict[str, Any]:
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session_key = self._session_key(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session = self._session_manager().get_or_create(session_key)
+        mission_id = session.metadata.get("pico_active_mission_id")
+        mission_dict = None
+        if isinstance(mission_id, str) and mission_id:
+            try:
+                mission = self._mission_store().get(owner_id, mission_id)
+                if mission.session_key == session_key and mission.state == "active":
+                    mission_dict = mission.to_dict()
+                else:
+                    session.metadata.pop("pico_active_mission_id", None)
+                    self._session_manager().save(session)
+            except KeyError:
+                session.metadata.pop("pico_active_mission_id", None)
+                self._session_manager().save(session)
+        return {
+            "active_mission_id": mission_dict["id"] if mission_dict else None,
+            "active_mission": mission_dict,
+        }
+
+    def _set_browser_session_active_mission(
+        self, client_id: str, session_id: str, mission_id: object
+    ) -> dict[str, Any]:
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session_key = self._session_key(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session = self._session_manager().get_or_create(session_key)
+
+        if mission_id is None or mission_id == "":
+            session.metadata.pop("pico_active_mission_id", None)
+            session.updated_at = datetime.now()
+            self._session_manager().save(session)
+            return {"active_mission_id": None, "active_mission": None}
+
+        if not isinstance(mission_id, str):
+            raise ValueError("Active mission ID must be a string or null")
+
+        mission = self._mission_store().get(owner_id, mission_id)
+        if mission.session_key != session_key:
+            raise ValueError("Mission belongs to a different session")
+        if mission.state != "active":
+            raise ValueError(f"Only active missions can be selected (mission is '{mission.state}')")
+
+        session.metadata["pico_active_mission_id"] = mission.id
+        session.updated_at = datetime.now()
+        self._session_manager().save(session)
+        return {"active_mission_id": mission.id, "active_mission": mission.to_dict()}
 
     def _set_browser_session_profile(self, client_id: str, session_id: str, profile_id: object) -> dict[str, str]:
         from picobot.operations.registry import CapabilityRegistry
