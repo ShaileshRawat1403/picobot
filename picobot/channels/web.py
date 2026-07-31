@@ -281,6 +281,34 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, response)
                 except ValueError as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/runtime/policy":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    service = self._policy_service()
+                    session_id = self._single_query_value(query, "session_id")
+                    if session_id is not None:
+                        session_id = self._valid_browser_id(session_id)
+                        self._require_browser_session(client_id, session_id)
+                        manager = self._session_manager()
+                        session = manager.get_or_create(self._session_key(client_id, session_id))
+                        if method == "PUT":
+                            summary = service.set_session_override(session, self._json_body(body))
+                            session.updated_at = datetime.now()
+                            manager.save(session)
+                            response = json.dumps(summary, ensure_ascii=False).encode()
+                        else:
+                            response = json.dumps(
+                                service.session_summary(session), ensure_ascii=False
+                            ).encode()
+                    elif method == "PUT":
+                        response = json.dumps(
+                            service.set_global(self._json_body(body)), ensure_ascii=False
+                        ).encode()
+                    else:
+                        response = json.dumps(service.summary(), ensure_ascii=False).encode()
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/operations":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -885,6 +913,12 @@ class WebChannel(BaseChannel):
         from picobot.providers.setup import ProviderSetupService
 
         return ProviderSetupService()
+
+    @staticmethod
+    def _policy_service():
+        from picobot.policy.runtime import RuntimePolicyService
+
+        return RuntimePolicyService()
 
     def _mission_store(self):
         from picobot.missions import MissionStore

@@ -251,7 +251,7 @@
     .toast { border-radius:4px; background:#273444; box-shadow:0 12px 30px #1f29371f; }
     .cockpit-wrapper { padding:14px 34px 0; display:flex; justify-content:center; flex:none; }
     .cockpit-bar { width:min(900px,100%); border:1px solid #dfe3e8; border-radius:5px; background:#fff; padding:9px 13px; box-shadow:none; }
-    .cockpit-grid { display:grid; grid-template-columns:minmax(120px,1fr) minmax(130px,1fr) minmax(200px,2fr) minmax(110px,1fr); gap:12px; align-items:center; }
+    .cockpit-grid { display:grid; grid-template-columns:minmax(120px,1fr) minmax(130px,1fr) minmax(200px,2fr) minmax(110px,1fr) minmax(120px,1fr); gap:12px; align-items:center; }
     .cockpit-item { display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; min-width:0; }
     button.cockpit-action { border:0; padding:4px 6px; margin:-4px -6px; border-radius:4px; background:transparent; color:inherit; font:inherit; width:calc(100% + 12px); cursor:pointer; text-align:left; }
     button.cockpit-action:hover { background:#edf3fa; }
@@ -263,6 +263,13 @@
     .cockpit-badge { display:inline-block; flex:none; font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; text-transform:uppercase; }
     .cockpit-badge.blocked { background:#fdf0f2; color:#b83241; border:1px solid #f7d4d8; }
     .cockpit-badge.active { background:#eef4fc; color:#214e8a; border:1px solid #d4e3f7; }
+    .policy-panel { width:min(900px,100%); margin:0 auto; padding:12px 0 0; }
+    .policy-panel-head { display:flex; align-items:center; justify-content:space-between; padding:2px 2px 10px; }
+    .policy-effective { margin-top:3px; font-size:12px; color:var(--muted); }
+    .policy-scopes { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .policy-scope { padding:12px; }
+    .policy-scope .form-row { margin-bottom:8px; }
+    @media (max-width:760px) { .policy-scopes { grid-template-columns:1fr } }
     @media (max-width:760px) { :root{--rail:0px} .app{display:block}.rail{z-index:2; width:100%; height:auto; position:static; padding:10px; flex-direction:row; align-items:center; gap:10px; border-right:0; border-bottom:1px solid var(--line)}.brand{padding:0}.new-session{width:34px; min-height:34px; padding:0; justify-content:center; font-size:0}.new-session::before{content:'+';font-size:18px}.nav{display:flex;grid-auto-flow:column}.nav-button{padding:8px;gap:0}.nav-button>span:last-child{display:none}.sessions,.rail-footer{display:none}main{margin:0;width:100%}.topbar{padding:0 16px}.title-action{display:none}.transcript,.composer-area{padding-left:16px;padding-right:16px}.workspace-view{padding:26px 16px}.workspace-head{display:block}.workspace-head .action{margin-top:14px}.message{max-width:96%}.artifact-layout,.mission-layout,.context-grid,.skill-proposal-layout,.operations-grid,.provider-card{grid-template-columns:1fr}.form-row,.memory-controls{grid-template-columns:1fr}.utility-bar{padding:5px 9px;overflow:auto}.utility-action{flex:none}.utility-action:nth-child(3){display:none}.utility-local{display:none}.cockpit-wrapper{padding:10px 16px 0}.cockpit-grid{grid-template-columns:1fr 1fr;gap:8px 12px} }
   </style>
 </head>
@@ -309,8 +316,54 @@
                 <span class="cockpit-label">Approvals</span>
                 <span class="cockpit-value" id="cockpit-approvals-value">Checking…</span>
               </button>
+              <button class="cockpit-item cockpit-action" id="cockpit-policy-btn" type="button" title="View or change the durable runtime policy">
+                <span class="cockpit-label">Policy</span>
+                <span class="cockpit-value" id="cockpit-policy-value">Checking…</span>
+              </button>
             </div>
           </div>
+        </div>
+        <div class="policy-panel" id="policy-panel" hidden>
+          <div class="policy-panel-head">
+            <div>
+              <div class="eyebrow">Runtime policy</div>
+              <div class="policy-effective" id="policy-effective">Loading…</div>
+            </div>
+            <button class="title-action" id="policy-close" type="button">Close</button>
+          </div>
+          <div class="policy-scopes">
+            <div class="card policy-scope">
+              <div class="section-label" style="padding:0 0 8px"><span>This session</span><span id="policy-session-source"></span></div>
+              <div class="form-row">
+                <select id="session-policy-provider" aria-label="Session provider"></select>
+                <input id="session-policy-model" autocomplete="off" maxlength="240" placeholder="Model, e.g. anthropic/claude-opus-4-5">
+              </div>
+              <div class="form-row">
+                <select id="session-policy-effort" aria-label="Session reasoning effort"><option value="">Default effort</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+                <select id="session-policy-mode" aria-label="Session response mode"><option value="default">Default style</option><option value="concise">Concise</option><option value="detailed">Detailed</option></select>
+              </div>
+              <div class="provider-row">
+                <button class="action" id="save-session-policy" type="button">Apply to this session</button>
+                <button class="memory-action" id="clear-session-policy" type="button">Clear</button>
+              </div>
+            </div>
+            <div class="card policy-scope">
+              <div class="section-label" style="padding:0 0 8px"><span>Global default</span><span id="policy-global-version"></span></div>
+              <div class="form-row">
+                <select id="global-policy-provider" aria-label="Global provider"></select>
+                <input id="global-policy-model" autocomplete="off" maxlength="240" placeholder="Model, e.g. anthropic/claude-opus-4-5">
+              </div>
+              <div class="form-row">
+                <select id="global-policy-effort" aria-label="Global reasoning effort"><option value="">Default effort</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
+                <select id="global-policy-mode" aria-label="Global response mode"><option value="default">Default style</option><option value="concise">Concise</option><option value="detailed">Detailed</option></select>
+              </div>
+              <div class="provider-row">
+                <button class="action" id="save-global-policy" type="button">Save global default</button>
+                <button class="memory-action" id="clear-global-policy" type="button">Reset</button>
+              </div>
+            </div>
+          </div>
+          <p class="provider-note">The effective policy is resolved before each new run and applies only to later turns — it never rewrites past runs. Only providers already configured in this local profile can be selected, and reasoning effort is applied only where the selected provider actually forwards it.</p>
         </div>
         <div class="transcript" id="transcript"></div>
         <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="stop-button" id="stop-run" type="button">Stop</button></div><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
@@ -351,7 +404,7 @@
     function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); reconnectTimer = setTimeout(connect, 1000); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); return; } if (data.type === 'message') { removeProgress(); appendMessage('assistant', data.content); loadSessions(); if (currentView === 'context') loadSessionContext(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); pollRuns(); } }
-    function setSession(nextSession) { sessionId = nextSession; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); }
+    function setSession(nextSession) { sessionId = nextSession; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); if (!$('policy-panel').hidden) loadPolicy(); }
     function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Start a piece of work.</h2><p>Pico keeps this conversation separate, and personal memory stays visible and editable.</p></div>`; }
     function appendMessage(role, content, timestamp = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${escapeHtml(content)}</div><div class="message-time">${formatTime(timestamp)}</div></div>`; $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
     function showProgress() { removeProgress(); progress = document.createElement('div'); progress.className = 'progress'; progress.innerHTML = '<span class="spinner"></span> Pico is working'; $('transcript').appendChild(progress); $('transcript').scrollTop = $('transcript').scrollHeight; }
@@ -535,6 +588,12 @@
     $('cockpit-profile-btn').onclick = () => showView('operations');
     $('cockpit-mission-btn').onclick = () => showView('missions');
     $('cockpit-approvals-btn').onclick = () => showView('operations');
+    $('cockpit-policy-btn').onclick = togglePolicyPanel;
+    $('policy-close').onclick = togglePolicyPanel;
+    $('save-session-policy').onclick = () => savePolicy('session');
+    $('clear-session-policy').onclick = () => clearPolicy('session');
+    $('save-global-policy').onclick = () => savePolicy('global');
+    $('clear-global-policy').onclick = () => clearPolicy('global');
     $('utility-profile').onclick = () => showView('operations');
     $('utility-missions').onclick = () => showView('missions');
     $('utility-approvals').onclick = () => showView('operations');
@@ -547,6 +606,46 @@
     $('message-input').onkeydown = (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('composer').requestSubmit(); } };
     $('message-input').oninput = (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`; };
     renderWelcome(); setConnected(false); connect();
+    function togglePolicyPanel() { const panel = $('policy-panel'); panel.hidden = !panel.hidden; if (!panel.hidden) loadPolicy(); }
+    function setPolicyFields(scope, values) { const prefix = scope === 'session' ? 'session-policy' : 'global-policy'; $(`${prefix}-provider`).value = values.provider || ''; $(`${prefix}-model`).value = values.model || ''; $(`${prefix}-effort`).value = values.reasoningEffort || ''; $(`${prefix}-mode`).value = values.responseMode || 'default'; }
+    function renderPolicyEffective(effective) {
+      const el = $('policy-effective');
+      if (!effective) { el.textContent = 'Unavailable.'; return; }
+      const reasoning = effective.reasoningEffortApplied ? ` · reasoning: ${escapeHtml(effective.reasoningEffort)}` : effective.reasoningEffortRequested ? ` · reasoning effort not supported by ${escapeHtml(effective.provider)}` : '';
+      el.innerHTML = `<strong>Effective:</strong> ${escapeHtml(effective.provider)}/${escapeHtml(effective.model)}${reasoning} · source: ${escapeHtml(effective.source)}${effective.valid ? '' : ` · ${escapeHtml(effective.reason || 'defaulted')}`}`;
+    }
+    async function loadPolicy() {
+      const panel = $('policy-panel');
+      try {
+        const response = await api(`/api/runtime/policy?session_id=${encodeURIComponent(sessionId)}`);
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        const providers = data.providers || [];
+        ['session-policy-provider', 'global-policy-provider'].forEach((id) => { const select = $(id); select.innerHTML = ''; const option = document.createElement('option'); option.value = ''; option.textContent = 'Use Pico default'; option.selected = true; select.appendChild(option); providers.filter((item) => item.status === 'configured').forEach((item) => { const o = document.createElement('option'); o.value = item.id; o.textContent = `${item.label} (${item.status.replaceAll('_', ' ')})`; select.appendChild(o); }); });
+        setPolicyFields('session', data.override || {});
+        setPolicyFields('global', data.policy || {});
+        renderPolicyEffective(data.effective);
+        $('policy-session-source').textContent = data.effective?.source === 'session' ? 'override active' : data.effective?.source === 'global' ? 'global default' : 'default';
+        $('policy-global-version').textContent = `v${data.policy?.version ?? 0}`;
+        const cockpit = $('cockpit-policy-value');
+        if (cockpit && data.effective) { cockpit.textContent = `${data.effective.provider}/${data.effective.model}`; cockpit.title = data.effective.valid ? `Serving via ${data.effective.source}. Click to change runtime policy.` : `Defaulted (${data.effective.reason || 'unavailable'}). Click to change runtime policy.`; }
+      } catch { if (!panel.hidden) toast('Pico could not load the runtime policy.'); }
+    }
+    function policyPayload(scope) { const prefix = scope === 'session' ? 'session-policy' : 'global-policy'; return { provider: $(`${prefix}-provider`).value || null, model: $(`${prefix}-model`).value.trim() || null, reasoning_effort: $(`${prefix}-effort`).value || null, response_mode: $(`${prefix}-mode`).value || 'default' }; }
+    async function savePolicy(scope) {
+      const path = scope === 'session' ? `/api/runtime/policy?session_id=${encodeURIComponent(sessionId)}` : '/api/runtime/policy';
+      const response = await api(path, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(policyPayload(scope))});
+      if (!response.ok) { toast('Pico could not save that policy. Confirm the provider is configured and the model routes to it.'); return; }
+      toast(scope === 'session' ? 'Session policy saved. It applies to this session\u2019s later turns.' : 'Global policy saved. It applies to later turns.');
+      loadPolicy();
+    }
+    async function clearPolicy(scope) {
+      const path = scope === 'session' ? `/api/runtime/policy?session_id=${encodeURIComponent(sessionId)}` : '/api/runtime/policy';
+      const response = await api(path, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({clear:true})});
+      if (!response.ok) { toast('Pico could not clear that policy.'); return; }
+      toast(scope === 'session' ? 'Session override cleared.' : 'Global policy reset.');
+      loadPolicy();
+    }
   </script>
 </body>
 </html>

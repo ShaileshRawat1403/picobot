@@ -75,6 +75,8 @@ class AgentLoop:
         channels_config: ChannelsConfig | None = None,
         dax_config: DaxConfig | None = None,
         skill_config: dict[str, SkillConfig] | None = None,
+        runtime_policy_service=None,
+        provider_factory=None,
     ):
         from picobot.config.schema import ExecToolConfig, SkillConfig, WebSearchConfig
 
@@ -92,6 +94,10 @@ class AgentLoop:
         self.restrict_to_workspace = restrict_to_workspace
         self.dax_config = dax_config
         self.skill_config = skill_config or {}
+        self.runtime_policy_service = runtime_policy_service
+        self.provider_factory = provider_factory
+        self._serving_providers: dict[str, LLMProvider] = {}
+        self._queued_policy_snapshots: dict[str, Any] = {}
 
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
@@ -241,8 +247,13 @@ class AgentLoop:
         allowed_tools: set[str] | None = None,
         activity_context: dict[str, str] | None = None,
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        serving_provider: LLMProvider | None = None,
+        serving_model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> tuple[str | None, list[str], list[dict], dict[str, Any]]:
         """Run the agent iteration loop."""
+        provider = serving_provider or self.provider
+        model = serving_model or self.model
         messages = initial_messages
         iteration = 0
         final_content = None
@@ -256,11 +267,10 @@ class AgentLoop:
 
             tool_defs = self.tools.get_definitions(allowed_tools)
 
-            response = await self.provider.chat_with_retry(
-                messages=messages,
-                tools=tool_defs,
-                model=self.model,
-            )
+            chat_kwargs = {"messages": messages, "tools": tool_defs, "model": model}
+            if reasoning_effort is not None:
+                chat_kwargs["reasoning_effort"] = reasoning_effort
+            response = await provider.chat_with_retry(**chat_kwargs)
 
             # Trusted usage only: summed from the provider response and bounded
             # to the three known integer counters. Everything else is ignored.
@@ -326,7 +336,7 @@ class AgentLoop:
                     failed = True
                     self._last_error = {
                         "provider": response.provider_name or "unknown",
-                        "model": response.model_name or self.model,
+                        "model": response.model_name or model,
                         "error": clean or "Unknown error",
                     }
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
@@ -570,28 +580,89 @@ class AgentLoop:
             self._dax_service.stop()
         logger.info("Agent loop stopping")
 
-    def _provider_name(self) -> str:
-        """Return a bounded label for the effective provider serving a turn."""
-        provider = getattr(self.provider, "primary", self.provider)
+    @staticmethod
+    def _provider_label(provider: LLMProvider) -> str:
+        """Return a bounded label for any provider instance."""
+        provider = getattr(provider, "primary", provider)
         for attr in ("name", "provider_name", "display_name"):
             value = getattr(provider, attr, None)
             if isinstance(value, str) and value.strip():
                 return " ".join(value.split())[:120]
         return type(provider).__name__
 
+    def _provider_name(self) -> str:
+        """Return a bounded label for the effective provider serving a turn."""
+        return self._provider_label(self.provider)
+
+    def _effective_policy(self, session: Session):
+        """Resolve the durable runtime policy for one session, or None when disabled."""
+        service = self.runtime_policy_service
+        if service is None:
+            return None
+        try:
+            return service.resolve_effective(
+                session.metadata,
+                fallback_model=self.model,
+                fallback_provider=self._provider_name(),
+            )
+        except Exception:
+            logger.warning("Runtime policy resolution failed; using process defaults")
+            return None
+
+    def _policy_for_submitted_turn(self, session: Session, queued_run_id: str | None):
+        """Use the submission snapshot when a queued turn reaches the runner."""
+        if queued_run_id:
+            snapshot = self._queued_policy_snapshots.get(queued_run_id)
+            if snapshot is not None:
+                return snapshot
+        return self._effective_policy(session)
+
+    def _serving_resources(self, session: Session, *, policy=None):
+        """Resolve (provider, model, reasoning_effort, policy) for one turn.
+
+        The durable policy wins when it selects a provider/model; otherwise the
+        loop's startup provider and model serve the turn. A provider selected by
+        policy is built lazily through ``provider_factory`` and cached.
+        """
+        if policy is None:
+            policy = self._effective_policy(session)
+        if policy is None or policy.source == "default":
+            return self.provider, self.model, None, None
+        serving = self.provider
+        model = policy.model or self.model
+        if policy.provider and policy.provider != self._provider_name():
+            if self.provider_factory is not None:
+                serving = self._serving_providers.get(policy.provider)
+                if serving is None:
+                    serving = self.provider_factory(policy.provider, model)
+                    self._serving_providers[policy.provider] = serving
+            else:
+                logger.warning(
+                    "Policy selects provider {} but no provider factory is available; serving with {}",
+                    policy.provider,
+                    self._provider_name(),
+                )
+        return serving, model, policy.reasoning_effort, policy
+
     def _queue_run(self, msg: InboundMessage) -> RunRecord:
         """Persist a queued normal-message turn before it waits for execution."""
         session = self.sessions.get_or_create(self._run_session_key(msg))
         profile = self._session_profile(session)
         allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
-        return self.runs.create(
+        serving, model, _effort, policy = self._serving_resources(session)
+        run = self.runs.create(
             owner_id=self._run_owner_id(msg),
             session_key=session.key,
             capability_profile=profile.id,
-            policy_revision=self._policy_revision(profile.id, allowed_tools),
-            provider=self._provider_name(),
-            model=self.model,
+            policy_revision=self._policy_revision(profile.id, allowed_tools, policy=policy),
+            provider=self._provider_label(serving),
+            model=model,
         )
+        # The run is submitted now, even when it must wait for the processing
+        # lock. Keep its resolved non-secret policy so an edit made while it is
+        # queued applies only to the next submitted turn.
+        self._queued_policy_snapshots[run.id] = policy
+        return run
 
     @staticmethod
     def _run_session_key(msg: InboundMessage) -> str:
@@ -626,11 +697,18 @@ class AgentLoop:
             logger.warning("Could not terminalize queued run {}", run_id[:8])
 
     @staticmethod
-    def _policy_revision(profile_id: str, allowed_tools) -> str:
-        """A non-secret signature of the effective profile and tool allow-list."""
+    def _policy_revision(profile_id: str, allowed_tools, *, policy=None) -> str:
+        """A non-secret signature of the profile, tool allow-list, and runtime policy."""
         signature = ",".join(sorted(allowed_tools or []))
         digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:12]
-        return f"{profile_id}@{digest}"
+        revision = f"{profile_id}@{digest}"
+        if policy is None:
+            return revision
+        return (
+            f"{revision}~v{policy.version or 0}:"
+            f"{policy.provider or '-'}:{policy.model or '-'}:"
+            f"{policy.reasoning_effort or '-'}:{policy.response_mode}"
+        )
 
     @staticmethod
     def _safe_error_summary(value: str | None) -> str:
@@ -689,7 +767,15 @@ class AgentLoop:
         queued_run_id: str | None = None,
     ) -> tuple[str | None, list[dict], dict[str, Any], RunRecord]:
         """Create a queued run, execute one turn, and persist the terminal state."""
-        provider = self._provider_name()
+        queued_policy = (
+            self._queued_policy_snapshots.pop(queued_run_id, None)
+            if queued_run_id
+            else None
+        )
+        serving, model, reasoning_effort, policy = self._serving_resources(
+            session, policy=queued_policy
+        )
+        provider = self._provider_label(serving)
         if queued_run_id:
             run = self.runs.get(owner_id, queued_run_id)
         else:
@@ -697,24 +783,27 @@ class AgentLoop:
                 owner_id=owner_id,
                 session_key=session.key,
                 capability_profile=profile.id,
-                policy_revision=self._policy_revision(profile.id, allowed_tools),
+                policy_revision=self._policy_revision(profile.id, allowed_tools, policy=policy),
                 provider=provider,
-                model=self.model,
+                model=model,
                 mission_id=mission_id,
             )
-        run = self.runs.mark_running(owner_id, run.id, provider=provider, model=self.model)
+        run = self.runs.mark_running(owner_id, run.id, provider=provider, model=model)
         try:
             final_content, tools_used, all_msgs, response_meta = await self._run_agent_loop(
                 messages,
                 allowed_tools=allowed_tools,
                 activity_context=activity_context,
                 on_progress=on_progress,
+                serving_provider=serving,
+                serving_model=model,
+                reasoning_effort=reasoning_effort,
             )
             run_usage = response_meta.pop("_usage", {})
             run_failed = response_meta.pop("_failed", False)
             run_meta = {
                 "provider": response_meta.get("served_by") or provider,
-                "model": response_meta.get("served_model") or self.model,
+                "model": response_meta.get("served_model") or model,
                 "usage": run_usage,
                 "tool_activity_count": len(tools_used),
                 "result_ref": result_ref,
@@ -775,7 +864,9 @@ class AgentLoop:
                 channel=channel,
                 chat_id=chat_id,
                 owner_id=owner_id,
-                system_prompt=self._context_snapshot(session),
+                system_prompt=self._context_snapshot(
+                    session, self._policy_for_submitted_turn(session, queued_run_id)
+                ),
             )
             final_content, all_msgs, _, run = await self._run_turn(
                 owner_id=owner_id,
@@ -926,7 +1017,9 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
             owner_id=owner_id,
-            system_prompt=self._context_snapshot(session),
+            system_prompt=self._context_snapshot(
+                session, self._policy_for_submitted_turn(session, queued_run_id)
+            ),
             recalled_memory=recalled_memory,
         )
 
@@ -987,19 +1080,38 @@ class AgentLoop:
         """Scope personal memory to a channel identity, never the chat alone."""
         return f"{channel}:{sender_id or 'anonymous'}"
 
-    def _context_snapshot(self, session: Session) -> str:
-        """Keep the system prompt stable for the lifetime of a session."""
+    def _context_snapshot(self, session: Session, policy=None) -> str:
+        """Return the stable session prompt plus a truthful per-turn style preference.
+
+        The durable base prompt stays cached in the session. Runtime policy is
+        deliberately resolved per turn, so an owner-visible policy change takes
+        effect for later turns without rewriting history or the session's
+        recorded identity prompt.
+        """
         snapshot = session.metadata.get("pico_system_prompt")
         if isinstance(snapshot, str) and snapshot.strip():
-            return snapshot
-        profile = self._session_profile(session)
-        snapshot = self.context.build_system_prompt() + (
-            "\n\n# Session capability profile\n\n"
-            f"Active profile: {profile.label}. {profile.description}\n"
-            "Use only tool definitions available in this session. Do not claim access to other tools."
-        )
-        session.metadata["pico_system_prompt"] = snapshot
-        return snapshot
+            base_prompt = snapshot
+        else:
+            profile = self._session_profile(session)
+            base_prompt = self.context.build_system_prompt() + (
+                "\n\n# Session capability profile\n\n"
+                f"Active profile: {profile.label}. {profile.description}\n"
+                "Use only tool definitions available in this session. Do not claim access to other tools."
+            )
+            session.metadata["pico_system_prompt"] = base_prompt
+
+        response_mode = getattr(policy, "response_mode", "default")
+        if response_mode == "concise":
+            return base_prompt + (
+                "\n\n# Response preference for this turn\n\n"
+                "Be concise. Lead with the answer and include only the detail needed to act."
+            )
+        if response_mode == "detailed":
+            return base_prompt + (
+                "\n\n# Response preference for this turn\n\n"
+                "Be thorough when it helps. Explain material decisions and tradeoffs, but do not pad the answer."
+            )
+        return base_prompt
 
     def _session_profile(self, session: Session):
         """Resolve a server-owned profile and persist a safe default if needed."""

@@ -275,73 +275,76 @@ def onboard(
     )
 
 
-def _make_provider(config: Config):
-    """Create the appropriate LLM provider from config."""
+def _build_single_provider(config: Config, model: str):
+    """Create a single provider instance for one model (no fallback wrapper)."""
     from picobot.providers.azure_openai_provider import AzureOpenAIProvider
-    from picobot.providers.base import GenerationSettings
-    from picobot.providers.fallback_provider import FallbackProvider
     from picobot.providers.openai_codex_provider import OpenAICodexProvider
 
-    def _build_single_provider(model: str):
-        provider_name = config.get_provider_name(model)
-        p = config.get_provider(model)
+    provider_name = config.get_provider_name(model)
+    p = config.get_provider(model)
 
-        # OpenAI Codex (OAuth)
-        if provider_name == "openai_codex" or model.startswith("openai-codex/"):
-            return OpenAICodexProvider(default_model=model)
-        # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
-        if provider_name == "custom":
-            from picobot.providers.custom_provider import CustomProvider
+    # OpenAI Codex (OAuth)
+    if provider_name == "openai_codex" or model.startswith("openai-codex/"):
+        return OpenAICodexProvider(default_model=model)
+    # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
+    if provider_name == "custom":
+        from picobot.providers.custom_provider import CustomProvider
 
-            return CustomProvider(
-                api_key=p.api_key if p else "no-key",
-                api_base=config.get_api_base(model) or "http://localhost:8000/v1",
-                default_model=model,
-            )
-        # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
-        if provider_name == "azure_openai":
-            if not p or not p.api_key or not p.api_base:
-                console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
-                console.print(
-                    "Set them in ~/.picobot/config.json under providers.azure_openai section"
-                )
-                console.print("Use the model field to specify the deployment name.")
-                raise typer.Exit(1)
-            return AzureOpenAIProvider(
-                api_key=p.api_key,
-                api_base=p.api_base,
-                default_model=model,
-            )
-        # Gemini OAuth: Reuses DAX's OAuth credentials
-        if provider_name == "gemini_oauth":
-            from picobot.providers.gemini_oauth_provider import create_provider
-
-            return create_provider(api_base=config.get_api_base(model))
-
-        from picobot.providers.litellm_provider import LiteLLMProvider
-        from picobot.providers.registry import find_by_name
-
-        spec = find_by_name(provider_name)
-        if (
-            not model.startswith("bedrock/")
-            and not (p and p.api_key)
-            and not (spec and (spec.is_oauth or spec.is_local))
-        ):
-            console.print("[red]Error: No API key configured.[/red]")
-            console.print("Set one in ~/.picobot/config.json under providers section")
-            raise typer.Exit(1)
-        return LiteLLMProvider(
-            api_key=p.api_key if p else None,
-            api_base=config.get_api_base(model),
+        return CustomProvider(
+            api_key=p.api_key if p else "no-key",
+            api_base=config.get_api_base(model) or "http://localhost:8000/v1",
             default_model=model,
-            extra_headers=p.extra_headers if p else None,
-            provider_name=provider_name,
         )
+    # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
+    if provider_name == "azure_openai":
+        if not p or not p.api_key or not p.api_base:
+            console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
+            console.print(
+                "Set them in ~/.picobot/config.json under providers.azure_openai section"
+            )
+            console.print("Use the model field to specify the deployment name.")
+            raise typer.Exit(1)
+        return AzureOpenAIProvider(
+            api_key=p.api_key,
+            api_base=p.api_base,
+            default_model=model,
+        )
+    # Gemini OAuth: Reuses DAX's OAuth credentials
+    if provider_name == "gemini_oauth":
+        from picobot.providers.gemini_oauth_provider import create_provider
+
+        return create_provider(api_base=config.get_api_base(model))
+
+    from picobot.providers.litellm_provider import LiteLLMProvider
+    from picobot.providers.registry import find_by_name
+
+    spec = find_by_name(provider_name)
+    if (
+        not model.startswith("bedrock/")
+        and not (p and p.api_key)
+        and not (spec and (spec.is_oauth or spec.is_local))
+    ):
+        console.print("[red]Error: No API key configured.[/red]")
+        console.print("Set one in ~/.picobot/config.json under providers section")
+        raise typer.Exit(1)
+    return LiteLLMProvider(
+        api_key=p.api_key if p else None,
+        api_base=config.get_api_base(model),
+        default_model=model,
+        extra_headers=p.extra_headers if p else None,
+        provider_name=provider_name,
+    )
+
+
+def _make_provider(config: Config):
+    """Create the appropriate LLM provider from config."""
+    from picobot.providers.base import GenerationSettings
+    from picobot.providers.fallback_provider import FallbackProvider
 
     defaults = config.agents.defaults
     model = defaults.model
     provider_name = config.get_provider_name(model)
-    provider = _build_single_provider(model)
+    provider = _build_single_provider(config, model)
 
     fallback_model = defaults.fallback_model
     if fallback_model is None and provider_name == "gemini_oauth":
@@ -349,7 +352,7 @@ def _make_provider(config: Config):
     if fallback_model and fallback_model != model:
         provider = FallbackProvider(
             primary=provider,
-            fallback=_build_single_provider(fallback_model),
+            fallback=_build_single_provider(config, fallback_model),
             primary_model=model,
             fallback_model=fallback_model,
         )
@@ -360,6 +363,11 @@ def _make_provider(config: Config):
         reasoning_effort=defaults.reasoning_effort,
     )
     return provider
+
+
+def _make_policy_provider(config: Config, model: str):
+    """Build a single provider for a policy-resolved model, no fallback wrapper."""
+    return _build_single_provider(config, model)
 
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
@@ -406,6 +414,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     from picobot.cron.service import CronService
     from picobot.cron.types import CronJob
     from picobot.heartbeat.service import HeartbeatService
+    from picobot.policy.runtime import RuntimePolicyService
     from picobot.session.manager import SessionManager
 
     if verbose:
@@ -444,6 +453,8 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         dax_config=config.dax,
+        runtime_policy_service=RuntimePolicyService(),
+        provider_factory=lambda provider_name, model: _make_policy_provider(config, model),
     )
 
     async def on_cron_job(job: CronJob) -> str | None:
@@ -631,6 +642,7 @@ def agent(
     from picobot.bus.queue import MessageBus
     from picobot.config.paths import get_cron_dir
     from picobot.cron.service import CronService
+    from picobot.policy.runtime import RuntimePolicyService
 
     config = _load_runtime_config(config, workspace)
     _print_deprecated_memory_window_notice(config)
@@ -663,6 +675,8 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
         dax_config=config.dax,
+        runtime_policy_service=RuntimePolicyService(),
+        provider_factory=lambda provider_name, model: _make_policy_provider(config, model),
     )
 
     # Show spinner when logs are off (no output to miss); skip when logs are on

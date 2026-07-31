@@ -439,6 +439,25 @@ class ToolsConfig(Base):
     skills: dict[str, SkillConfig] = Field(default_factory=dict)
 
 
+class RuntimePolicyConfig(Base):
+    """Durable, non-secret runtime policy applied to new Pico turns.
+
+    ``provider`` and ``model`` are the registry name and model id to route
+    through. ``None`` means "use the current configured default", so a policy
+    can select only the provider/model, only the answer style, or nothing at
+    all. ``reasoning_effort`` is only honored when the selected provider's Pico
+    implementation actually forwards it to the upstream API. The policy holds
+    no credentials and is serialized to the profile config file.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None  # "low" | "medium" | "high"
+    response_mode: str = "default"  # "default" | "concise" | "detailed"
+    version: int = 0
+    updated_at: str | None = None
+
+
 class Config(BaseSettings):
     """Root configuration for picobot."""
 
@@ -450,6 +469,7 @@ class Config(BaseSettings):
     dax: DaxConfig = Field(default_factory=DaxConfig)
     soothsayer: SoothsayerConfig = Field(default_factory=SoothsayerConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
+    policy: RuntimePolicyConfig = Field(default_factory=RuntimePolicyConfig)
 
     @property
     def workspace_path(self) -> Path:
