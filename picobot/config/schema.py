@@ -275,6 +275,24 @@ class AgentsConfig(Base):
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
 
 
+class CompactionConfig(Base):
+    """Explicit context-budget and compaction tuning.
+
+    ``context_budget_tokens`` is the deterministic token ceiling for one model
+    window; when unset it falls back to ``agents.defaults.contextWindowTokens``.
+    The protected recent tail is never summarized; only older eligible history
+    is compacted into a durable ``CompactionRecord``.
+    """
+
+    enabled: bool = True
+    context_budget_tokens: int | None = None
+    protected_tail_messages: int = 10
+    cooldown_minutes: int = 30
+    summary_max_tokens: int = 800
+    summary_max_chars: int = 4000
+    min_source_messages: int = 4
+
+
 class ProviderConfig(Base):
     """LLM provider configuration."""
 
@@ -470,6 +488,7 @@ class Config(BaseSettings):
     soothsayer: SoothsayerConfig = Field(default_factory=SoothsayerConfig)
     webhook: WebhookConfig = Field(default_factory=WebhookConfig)
     policy: RuntimePolicyConfig = Field(default_factory=RuntimePolicyConfig)
+    context: CompactionConfig = Field(default_factory=CompactionConfig)
 
     @property
     def workspace_path(self) -> Path:

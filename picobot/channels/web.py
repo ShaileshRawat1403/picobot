@@ -903,6 +903,11 @@ class WebChannel(BaseChannel):
 
         return PersonalMemoryStore(self._runtime_config().workspace_path)
 
+    def _compaction_store(self):
+        from picobot.context.store import CompactionStore
+
+        return CompactionStore(self._runtime_config().workspace_path)
+
     def _artifact_store(self):
         from picobot.artifacts.store import ArtifactStore
 
@@ -1222,11 +1227,19 @@ class WebChannel(BaseChannel):
             except KeyError:
                 continue
         history_count = trace.get("history_message_count", 0)
+        owner_id = self._memory_owner(client_id)
+        try:
+            compaction_records = self._compaction_store().list(owner_id, key, limit=5)
+        except Exception:
+            compaction_records = []
+        compaction_timeline = [record.public_view() for record in compaction_records]
         return {
             "session_id": session_id,
             "recorded_at": trace.get("recorded_at"),
             "history_message_count": history_count if isinstance(history_count, int) else 0,
             "memory": memories,
+            "compaction": compaction_timeline[0] if compaction_timeline else None,
+            "compaction_timeline": compaction_timeline,
         }
 
     async def stop(self) -> None:

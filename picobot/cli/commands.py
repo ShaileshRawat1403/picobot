@@ -411,6 +411,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
     from picobot.bus.soothsayer_service import init_soothsayer_service
     from picobot.channels.manager import ChannelManager
     from picobot.config.paths import get_cron_dir
+    from picobot.context.compactor import CompactionService
     from picobot.cron.service import CronService
     from picobot.cron.types import CronJob
     from picobot.heartbeat.service import HeartbeatService
@@ -443,7 +444,8 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
-        context_window_tokens=config.agents.defaults.context_window_tokens,
+        context_window_tokens=config.context.context_budget_tokens
+        or config.agents.defaults.context_window_tokens,
         web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
@@ -455,6 +457,15 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
         dax_config=config.dax,
         runtime_policy_service=RuntimePolicyService(),
         provider_factory=lambda provider_name, model: _make_policy_provider(config, model),
+        compaction=CompactionService(
+            config.workspace_path,
+            enabled=config.context.enabled,
+            protected_tail_count=config.context.protected_tail_messages,
+            cooldown_minutes=config.context.cooldown_minutes,
+            summary_max_tokens=config.context.summary_max_tokens,
+            summary_max_chars=config.context.summary_max_chars,
+            min_source_messages=config.context.min_source_messages,
+        ),
     )
 
     async def on_cron_job(job: CronJob) -> str | None:
@@ -641,6 +652,7 @@ def agent(
     from picobot.agent.loop import AgentLoop
     from picobot.bus.queue import MessageBus
     from picobot.config.paths import get_cron_dir
+    from picobot.context.compactor import CompactionService
     from picobot.cron.service import CronService
     from picobot.policy.runtime import RuntimePolicyService
 
@@ -666,7 +678,8 @@ def agent(
         workspace=config.workspace_path,
         model=config.agents.defaults.model,
         max_iterations=config.agents.defaults.max_tool_iterations,
-        context_window_tokens=config.agents.defaults.context_window_tokens,
+        context_window_tokens=config.context.context_budget_tokens
+        or config.agents.defaults.context_window_tokens,
         web_search_config=config.tools.web.search,
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
@@ -677,6 +690,15 @@ def agent(
         dax_config=config.dax,
         runtime_policy_service=RuntimePolicyService(),
         provider_factory=lambda provider_name, model: _make_policy_provider(config, model),
+        compaction=CompactionService(
+            config.workspace_path,
+            enabled=config.context.enabled,
+            protected_tail_count=config.context.protected_tail_messages,
+            cooldown_minutes=config.context.cooldown_minutes,
+            summary_max_tokens=config.context.summary_max_tokens,
+            summary_max_chars=config.context.summary_max_chars,
+            min_source_messages=config.context.min_source_messages,
+        ),
     )
 
     # Show spinner when logs are off (no output to miss); skip when logs are on

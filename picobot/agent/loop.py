@@ -32,6 +32,8 @@ from picobot.bus.analytics import get_analytics
 from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
+from picobot.context.compactor import CompactionService, ProviderContextSummarizer
+from picobot.context.planner import estimate_tokens
 from picobot.providers.base import LLMProvider
 from picobot.operations import CapabilityRegistry, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
@@ -55,7 +57,6 @@ class AgentLoop:
     """
 
     _TOOL_RESULT_MAX_CHARS = 16_000
-    _MAX_SESSION_HISTORY_MESSAGES = 40
 
     def __init__(
         self,
@@ -77,6 +78,7 @@ class AgentLoop:
         skill_config: dict[str, SkillConfig] | None = None,
         runtime_policy_service=None,
         provider_factory=None,
+        compaction: CompactionService | None = None,
     ):
         from picobot.config.schema import ExecToolConfig, SkillConfig, WebSearchConfig
 
@@ -96,6 +98,7 @@ class AgentLoop:
         self.skill_config = skill_config or {}
         self.runtime_policy_service = runtime_policy_service
         self.provider_factory = provider_factory
+        self.compaction = compaction or CompactionService(workspace)
         self._serving_providers: dict[str, LLMProvider] = {}
         self._queued_policy_snapshots: dict[str, Any] = {}
 
@@ -857,7 +860,9 @@ class AgentLoop:
             allowed_tools = self.capabilities.allowed_tools(profile.id, self.tools.tool_names)
             owner_id = self._owner_id(channel, msg.sender_id)
             self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
-            history = self._history_for_prompt(session)
+            history = await self._history_for_prompt(
+                session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
+            )
             messages = self.context.build_messages(
                 history=history,
                 current_message=msg.content,
@@ -1002,7 +1007,9 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
-        history = self._history_for_prompt(session)
+        history = await self._history_for_prompt(
+            session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
+        )
         recalled_memory = self.context.personal_memory.recall(owner_id, msg.content)
         self.context.personal_memory.record_use(
             owner_id,
@@ -1120,9 +1127,34 @@ class AgentLoop:
             session.metadata["pico_operation_profile"] = profile.id
         return profile
 
-    def _history_for_prompt(self, session: Session) -> list[dict[str, Any]]:
-        """Bound raw transcript context; durable facts live in personal memory."""
-        return session.get_history(max_messages=self._MAX_SESSION_HISTORY_MESSAGES)
+    async def _history_for_prompt(
+        self,
+        session: Session,
+        owner_id: str,
+        current_request_tokens: int = 0,
+        queued_run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build the budget-bounded model window for one turn.
+
+        The window is deterministic: it keeps everything below the budget,
+        compacts older eligible history into a durable handoff while the
+        protected recent tail stays verbatim, or falls back to the largest
+        safe trailing slice.  The source session transcript is never changed.
+        """
+        policy = self._policy_for_submitted_turn(session, queued_run_id)
+        serving, model, _effort, _policy = self._serving_resources(session, policy=policy)
+        summarizer = self.compaction.summarizer or ProviderContextSummarizer(serving, model)
+        window = await self.compaction.build_window(
+            session.get_history(),
+            owner_id=owner_id,
+            session_key=session.key,
+            budget_tokens=self.context_window_tokens,
+            current_request_tokens=current_request_tokens,
+            provider=self._provider_label(serving),
+            model=model,
+            summarizer=summarizer,
+        )
+        return window.messages
 
     @staticmethod
     def _record_turn_context(session: Session, history: list[dict[str, Any]], memories) -> None:
