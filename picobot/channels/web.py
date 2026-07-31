@@ -281,6 +281,63 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, response)
                 except ValueError as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/providers":
+                try:
+                    # Provider setup is local-workbench only. The opaque browser
+                    # identity keeps this mutation path consistent with the rest
+                    # of Pico's local owner-scoped API surface.
+                    self._browser_id_from_query(query)
+                    setup = self._provider_setup()
+                    if method == "GET":
+                        response = json.dumps(setup.inventory(), ensure_ascii=False).encode()
+                    elif method == "POST":
+                        payload = self._json_body(body)
+                        response = json.dumps(
+                            setup.choose_default(payload.get("provider"), payload.get("model")),
+                            ensure_ascii=False,
+                        ).encode()
+                    else:
+                        raise ValueError("Provider route was not found")
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/providers/custom-endpoint" and method == "POST":
+                try:
+                    self._browser_id_from_query(query)
+                    payload = self._json_body(body)
+                    response = json.dumps(
+                        self._provider_setup().configure_custom_endpoint(
+                            payload.get("endpoint"), payload.get("model"), payload.get("api_key")
+                        ),
+                        ensure_ascii=False,
+                    ).encode()
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/providers/"):
+                try:
+                    self._browser_id_from_query(query)
+                    provider_path = path.removeprefix("/api/providers/").strip("/")
+                    provider_name, _, operation = provider_path.partition("/")
+                    setup = self._provider_setup()
+                    if method == "POST" and operation == "api-key":
+                        response = json.dumps(
+                            {
+                                "provider": setup.configure_api_key(
+                                    provider_name, self._json_body(body).get("api_key")
+                                )
+                            },
+                            ensure_ascii=False,
+                        ).encode()
+                    elif method == "POST" and operation == "test":
+                        response = json.dumps(
+                            await setup.test_connection(provider_name), ensure_ascii=False
+                        ).encode()
+                    else:
+                        raise ValueError("Provider route was not found")
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path == "/api/browser-bridge/tickets":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -812,6 +869,12 @@ class WebChannel(BaseChannel):
         from picobot.artifacts.store import ArtifactStore
 
         return ArtifactStore(self._runtime_config().workspace_path)
+
+    @staticmethod
+    def _provider_setup():
+        from picobot.providers.setup import ProviderSetupService
+
+        return ProviderSetupService()
 
     def _mission_store(self):
         from picobot.missions import MissionStore
