@@ -298,6 +298,59 @@ class WebChannel(BaseChannel):
                         self._write_response(
                             writer, 200, json.dumps({"blueprint": blueprint}, ensure_ascii=False).encode()
                         )
+                    elif method == "POST" and operation == "tasks":
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        session = self._require_browser_session(client_id, session_id)
+                        profile = self._session_profile(session)
+                        active_mission = self._mission_store().get(owner_id, mission_id)
+                        if active_mission.session_key != session_key or active_mission.state != "active":
+                            raise ValueError("Mission is not active or does not belong to this session")
+                        title = payload.get("title")
+                        objective = payload.get("objective")
+                        max_turns = int(payload.get("max_turns") or 10)
+                        max_elapsed_sec = int(payload.get("max_elapsed_sec") or 600)
+                        max_attempts = int(payload.get("max_attempts") or 3)
+
+                        task = self._task_store().create(
+                            owner_id=owner_id,
+                            session_key=session_key,
+                            mission_id=mission_id,
+                            title=title,
+                            objective=objective,
+                            capability_profile=profile.id,
+                            max_turns=max_turns,
+                            max_elapsed_sec=max_elapsed_sec,
+                            max_attempts=max_attempts,
+                            depth=0,
+                        )
+                        self._write_response(
+                            writer, 201, json.dumps({"task": task.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    elif method == "GET" and operation == "tasks":
+                        session_id = self._valid_browser_id(self._single_query_value(query, "session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        mission = self._mission_store().get(owner_id, mission_id)
+                        if mission.session_key != session_key:
+                            raise ValueError("Session mismatch for mission tasks")
+                        tasks = self._task_store().list(owner_id, session_key=session_key, mission_id=mission_id)
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps(
+                                {
+                                    "tasks": [
+                                        {
+                                            **t.to_dict(),
+                                            "linked_runs_count": len(self._run_store().list_by_task(owner_id, t.id)),
+                                        }
+                                        for t in tasks
+                                    ]
+                                },
+                                ensure_ascii=False,
+                            ).encode(),
+                        )
                     else:
                         raise ValueError("Mission route was not found")
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
@@ -500,11 +553,13 @@ class WebChannel(BaseChannel):
                             operation,
                             payload_fingerprint=payload.get("payload_fingerprint"),
                         )
+                        self._sync_action_task_outcome(owner_id, session_key, action)
                         self._write_response(
                             writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
                         )
                     elif operation == "cancel":
                         action = self._action_store().cancel(owner_id, action_id, session_key)
+                        self._sync_action_task_outcome(owner_id, session_key, action)
                         self._write_response(
                             writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
                         )
@@ -521,6 +576,102 @@ class WebChannel(BaseChannel):
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
 
+            elif path.startswith("/api/tasks/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    task_path = path.removeprefix("/api/tasks/").strip("/")
+                    task_id, _, operation = task_path.partition("/")
+                    owner_id = self._memory_owner(client_id)
+
+                    if method == "GET" and not operation:
+                        session_id = self._valid_browser_id(self._single_query_value(query, "session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        task = self._task_store().get(owner_id, task_id)
+                        if task.session_key != session_key:
+                            raise ValueError("Session mismatch for task access")
+                        runs = self._run_store().list_by_task(owner_id, task.id, limit=30)
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps(
+                                {
+                                    "task": task.to_dict(),
+                                    "runs": [r.turn_receipt() for r in runs],
+                                },
+                                ensure_ascii=False,
+                            ).encode(),
+                        )
+                    elif method == "POST" and operation == "run":
+                        if not (hasattr(self, "_agent_loop") and self._agent_loop):
+                            self._write_response(
+                                writer, 503, self._json_error("Agent loop is not available")
+                            )
+                            return
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        session = self._require_browser_session(client_id, session_id)
+                        active_mission_info = self._get_browser_session_active_mission(client_id, session_id)
+                        active_mission = active_mission_info.get("active_mission")
+                        profile = self._session_profile(session)
+
+                        task = self._task_store().claim_for_run(
+                            owner_id, task_id, session_key, profile.id, active_mission
+                        )
+                        session.metadata["pico_active_task_id"] = task.id
+                        self._session_manager().save(session)
+
+                        task, run = await self._agent_loop.run_direct_task(
+                            owner_id, session_key, task.id
+                        )
+
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps(
+                                {
+                                    "task": task.to_dict(),
+                                    "run": run.turn_receipt() if run else None,
+                                },
+                                ensure_ascii=False,
+                            ).encode(),
+                        )
+                    elif method == "POST" and operation == "cancel":
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        session = self._require_browser_session(client_id, session_id)
+                        task = self._task_store().cancel(
+                            owner_id, task_id, session_key, run_store=self._run_store()
+                        )
+                        if hasattr(self, "_agent_loop") and self._agent_loop:
+                            self._agent_loop.cancel_task_run(task_id)
+                        if session.metadata.get("pico_active_task_id") == task.id:
+                            session.metadata.pop("pico_active_task_id", None)
+                            self._session_manager().save(session)
+                        self._write_response(
+                            writer, 200, json.dumps({"task": task.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    elif method == "POST" and operation == "retry":
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        session_key = self._session_key(client_id, session_id)
+                        session = self._require_browser_session(client_id, session_id)
+                        active_mission_info = self._get_browser_session_active_mission(client_id, session_id)
+                        active_mission = active_mission_info.get("active_mission")
+                        profile = self._session_profile(session)
+
+                        new_task = self._task_store().retry_task(
+                            owner_id, task_id, session_key, profile.id, active_mission
+                        )
+                        self._write_response(
+                            writer, 201, json.dumps({"task": new_task.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    else:
+                        raise ValueError("Task route was not found")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+
             elif path.startswith("/api/sessions/") and path.endswith("/active-mission"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -534,6 +685,22 @@ class WebChannel(BaseChannel):
                         res = self._get_browser_session_active_mission(client_id, session_id)
                     else:
                         raise ValueError("Active mission route supports GET or POST only")
+                    self._write_response(writer, 200, json.dumps(res, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/sessions/") and path.endswith("/active-task"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/active-task").rstrip("/")
+                    if method == "POST":
+                        payload = self._json_body(body)
+                        res = self._set_browser_session_active_task(
+                            client_id, session_id, payload.get("task_id")
+                        )
+                    elif method == "GET":
+                        res = self._get_browser_session_active_task(client_id, session_id)
+                    else:
+                        raise ValueError("Active task route supports GET or POST only")
                     self._write_response(writer, 200, json.dumps(res, ensure_ascii=False).encode())
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
@@ -1024,6 +1191,27 @@ class WebChannel(BaseChannel):
 
         return RunStore(self._runtime_config().workspace_path)
 
+    def _task_store(self):
+        from picobot.tasks import TaskStore
+
+        return TaskStore(self._runtime_config().workspace_path)
+
+    def _sync_action_task_outcome(self, owner_id: str, session_key: str, action: Any) -> None:
+        if not getattr(action, "initiating_run_id", None):
+            return
+        try:
+            run = self._run_store().get(owner_id, action.initiating_run_id)
+            if run and getattr(run, "task_id", None):
+                task_store = self._task_store()
+                if action.status == "rejected":
+                    task_store.fail(owner_id, run.task_id, failure_category="rejected", result_summary="Proposed action was rejected by human.", session_key=session_key)
+                elif action.status == "cancelled":
+                    task_store.cancel(owner_id, run.task_id, session_key=session_key)
+                elif action.status == "expired":
+                    task_store.fail(owner_id, run.task_id, failure_category="expired", result_summary="Proposed action expired before review.", session_key=session_key)
+        except Exception:
+            pass
+
     def _browser_runs(self, client_id: str, session_id: str | None) -> dict[str, Any]:
         """Return safe turn receipts; never transcripts, args, or reasoning."""
         owner_id = self._memory_owner(client_id)
@@ -1123,6 +1311,14 @@ class WebChannel(BaseChannel):
         approved_bp = self._mission_store().get_approved_blueprint(owner_id, mission.id)
         latest_bp = self._mission_store().get_latest_blueprint(owner_id, mission.id)
         bp_dict = approved_bp.to_dict() if approved_bp else (latest_bp.to_dict() if latest_bp else None)
+        tasks_list = self._task_store().list(owner_id, mission_id=mission.id, limit=30)
+        tasks_data = [
+            {
+                **t.to_dict(),
+                "linked_runs_count": len(self._run_store().list_by_task(owner_id, t.id, limit=100)),
+            }
+            for t in tasks_list
+        ]
         return {
             "mission": mission.to_dict(),
             "blueprint": bp_dict,
@@ -1138,6 +1334,7 @@ class WebChannel(BaseChannel):
                 item.to_dict()
                 for item in self._action_store().list_by_mission(owner_id, mission.id, limit=30)
             ],
+            "tasks": tasks_data,
         }
 
     def _browser_get_mission_blueprint(
@@ -1375,6 +1572,61 @@ class WebChannel(BaseChannel):
         session.updated_at = datetime.now()
         self._session_manager().save(session)
         return {"active_mission_id": mission.id, "active_mission": mission.to_dict()}
+
+    def _get_browser_session_active_task(self, client_id: str, session_id: str) -> dict[str, Any]:
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session_key = self._session_key(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session = self._session_manager().get_or_create(session_key)
+        task_id = session.metadata.get("pico_active_task_id")
+        task_dict = None
+        if isinstance(task_id, str) and task_id:
+            try:
+                task = self._task_store().get(owner_id, task_id)
+                if task.session_key == session_key and task.state in {"queued", "running", "waiting_for_approval"}:
+                    task_dict = task.to_dict()
+                else:
+                    session.metadata.pop("pico_active_task_id", None)
+                    self._session_manager().save(session)
+            except KeyError:
+                session.metadata.pop("pico_active_task_id", None)
+                self._session_manager().save(session)
+        if not task_dict:
+            active = self._task_store().get_active(owner_id, session_key)
+            if active:
+                task_dict = active.to_dict()
+        return {
+            "active_task_id": task_dict["id"] if task_dict else None,
+            "active_task": task_dict,
+        }
+
+    def _set_browser_session_active_task(
+        self, client_id: str, session_id: str, task_id: object
+    ) -> dict[str, Any]:
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session_key = self._session_key(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session = self._session_manager().get_or_create(session_key)
+
+        if task_id is None or task_id == "":
+            session.metadata.pop("pico_active_task_id", None)
+            session.updated_at = datetime.now()
+            self._session_manager().save(session)
+            return {"active_task_id": None, "active_task": None}
+
+        if not isinstance(task_id, str):
+            raise ValueError("Task ID must be a string or null")
+
+        task = self._task_store().get(owner_id, task_id)
+        if task.session_key != session_key:
+            raise ValueError("Task belongs to a different session")
+
+        session.metadata["pico_active_task_id"] = task.id
+        session.updated_at = datetime.now()
+        self._session_manager().save(session)
+        return {"active_task_id": task.id, "active_task": task.to_dict()}
 
     def _set_browser_session_profile(self, client_id: str, session_id: str, profile_id: object) -> dict[str, str]:
         from picobot.operations.registry import CapabilityRegistry

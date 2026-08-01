@@ -202,6 +202,10 @@ class MissionExecutor:
                     # Evidence recording failure must not roll back a successful execution.
                     pass
 
+            self._resolve_linked_task(
+                owner_id, session_key, action, success=True, result_summary=result_summary, result_ref=result_ref
+            )
+
             return {
                 "status": "executed",
                 "action_id": updated_action.id,
@@ -224,6 +228,13 @@ class MissionExecutor:
     ) -> dict[str, Any]:
         """Persist one safe terminal refusal for an approved action."""
         try:
+            action = self.action_store.get(owner_id, action_id, session_key=session_key)
+            self._resolve_linked_task(
+                owner_id, session_key, action, success=False, result_summary=detail, failure_category=failure_category
+            )
+        except Exception:
+            pass
+        try:
             self.action_store.record_execution_result(
                 owner_id,
                 action_id,
@@ -236,3 +247,33 @@ class MissionExecutor:
             # A concurrent human cancellation wins. Do not leak internal state.
             pass
         return {"status": "failed", "failure_category": failure_category, "detail": detail}
+
+    def _resolve_linked_task(
+        self,
+        owner_id: str,
+        session_key: str,
+        action: Any,
+        *,
+        success: bool,
+        result_summary: str,
+        result_ref: str | None = None,
+        failure_category: str | None = None,
+    ) -> None:
+        if not getattr(action, "initiating_run_id", None):
+            return
+        try:
+            from picobot.runs.store import RunStore
+            from picobot.tasks.store import TaskStore
+            run = RunStore(self.workspace).get(owner_id, action.initiating_run_id)
+            if run and getattr(run, "task_id", None):
+                task_store = TaskStore(self.workspace)
+                if success:
+                    task_store.complete(
+                        owner_id, run.task_id, result_summary=result_summary, result_ref=result_ref, session_key=session_key
+                    )
+                else:
+                    task_store.fail(
+                        owner_id, run.task_id, failure_category=failure_category or "execution_error", result_summary=result_summary, session_key=session_key
+                    )
+        except Exception:
+            pass

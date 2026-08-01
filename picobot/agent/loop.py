@@ -39,6 +39,7 @@ from picobot.providers.base import LLMProvider
 from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
 from picobot.session.manager import Session, SessionManager
+from picobot.tasks import TaskRecord, TaskStore
 
 if TYPE_CHECKING:
     from picobot.config.schema import ChannelsConfig, DaxConfig, ExecToolConfig, SkillConfig, WebSearchConfig
@@ -113,8 +114,9 @@ class AgentLoop:
         self.artifacts = ArtifactStore(workspace)
         self.runs = RunStore(workspace)
         self.missions = MissionStore(workspace)
-        self._queued_run_ids: dict[int, str] = {}
+        self.tasks = TaskStore(workspace)
         self.tools = ToolRegistry()
+        self._active_async_tasks: dict[str, asyncio.Task[Any]] = {}
 
         self.subagents = SubagentManager(
             provider=provider,
@@ -207,6 +209,13 @@ class AgentLoop:
         self.tools.register(DaxTool(config=dax_tool_config, dax_queue=dax_queue))
         logger.info("DAX tool registered with queue")
 
+    def cancel_task_run(self, task_id: str) -> None:
+        """Cancel active asyncio task associated with a running task."""
+        if async_task := self._active_async_tasks.get(task_id):
+            if not async_task.done():
+                async_task.cancel()
+            self._active_async_tasks.pop(task_id, None)
+
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
         if self._mcp_connected or self._mcp_connecting or not self._mcp_servers:
@@ -288,6 +297,7 @@ class AgentLoop:
         serving_provider: LLMProvider | None = None,
         serving_model: str | None = None,
         reasoning_effort: str | None = None,
+        max_turns: int | None = None,
     ) -> tuple[str | None, list[str], list[dict], dict[str, Any]]:
         """Run the agent iteration loop."""
         provider = serving_provider or self.provider
@@ -300,7 +310,9 @@ class AgentLoop:
         total_usage: dict[str, int] = {}
         failed = False
 
-        while iteration < self.max_iterations:
+        effective_max = min(self.max_iterations, max_turns) if max_turns and max_turns > 0 else self.max_iterations
+
+        while iteration < effective_max:
             iteration += 1
 
             tool_defs = self.tools.get_definitions(allowed_tools)
@@ -360,18 +372,23 @@ class AgentLoop:
                     if not is_permitted:
                         result = "Error: Tool is not permitted by this session"
                     elif tool_risk == "mutating":
-                        is_approved = False
-                        if activity_context:
-                            actions = self.proposed_actions.list(
-                                activity_context["owner_id"], activity_context["session_key"]
-                            )
-                            is_approved = any(a.tool_name == tool_call.name and a.status == "approved" for a in actions)
-                        if not is_approved:
-                            result = "Error: Action requires owner approval in Operations before execution"
-                        else:
+                        if tool_call.name == "save_mission_artifact_draft":
                             result = await self.tools.execute(
                                 tool_call.name, tool_call.arguments, allowed_names=allowed_tools
                             )
+                        else:
+                            is_approved = False
+                            if activity_context:
+                                actions = self.proposed_actions.list(
+                                    activity_context["owner_id"], activity_context["session_key"]
+                                )
+                                is_approved = any(a.tool_name == tool_call.name and a.status == "approved" for a in actions)
+                            if not is_approved:
+                                result = "Error: Action requires owner approval in Operations before execution"
+                            else:
+                                result = await self.tools.execute(
+                                    tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                                )
                     else:
                         result = await self.tools.execute(
                             tool_call.name, tool_call.arguments, allowed_names=allowed_tools
@@ -424,10 +441,12 @@ class AgentLoop:
                 final_content = clean
                 break
 
-        if final_content is None and iteration >= self.max_iterations:
-            logger.warning("Max iterations ({}) reached", self.max_iterations)
+        if final_content is None and iteration >= effective_max:
+            logger.warning("Max iterations ({}) reached", effective_max)
+            failed = True
+            response_meta["_budget_exhausted"] = True
             final_content = (
-                f"I reached the maximum number of tool call iterations ({self.max_iterations}) "
+                f"I reached the maximum number of tool call iterations ({effective_max}) "
                 "without completing the task. You can try breaking the task into smaller steps."
             )
 
@@ -929,6 +948,7 @@ class AgentLoop:
         activity_context: dict[str, str],
         on_progress: Callable[..., Awaitable[None]] | None = None,
         mission_id: str | None = None,
+        task_id: str | None = None,
         result_ref: str | None = None,
         queued_run_id: str | None = None,
     ) -> tuple[str | None, list[dict], dict[str, Any], RunRecord]:
@@ -953,20 +973,77 @@ class AgentLoop:
                 provider=provider,
                 model=model,
                 mission_id=mission_id,
+                task_id=task_id,
             )
+        run_task_id = task_id or getattr(run, "task_id", None)
         run = self.runs.mark_running(owner_id, run.id, provider=provider, model=model)
+        self._set_tool_context(
+            activity_context.get("channel", "web"),
+            activity_context.get("chat_id") or "direct",
+            activity_context.get("message_id"),
+            owner_id=owner_id,
+            session_key=session.key,
+            profile_id=profile.id,
+            queued_run_id=run.id,
+            mission_id=mission_id,
+        )
+        if run_task_id:
+            try:
+                self.tasks.mark_running(owner_id, run_task_id, run_id=run.id, session_key=session.key)
+            except Exception as exc:
+                logger.error("Could not mark task {} running: {}", run_task_id[:8], exc)
+                self.runs.fail(
+                    owner_id,
+                    run.id,
+                    error_summary=f"Task linkage failure: {exc}",
+                )
+                try:
+                    self.tasks.fail(
+                        owner_id,
+                        run_task_id,
+                        failure_category="linkage_failure",
+                        result_summary=self._safe_error_summary(f"Task linkage failure: {exc}"),
+                        session_key=session.key,
+                    )
+                except Exception:
+                    pass
+                if session.metadata.get("pico_active_task_id") == run_task_id:
+                    session.metadata.pop("pico_active_task_id", None)
+                    self.sessions.save(session)
+                raise
+
+        task_obj = self.tasks.get(owner_id, run_task_id) if run_task_id else None
+        timeout_sec = task_obj.max_elapsed_sec if task_obj else None
+
         try:
-            final_content, tools_used, all_msgs, response_meta = await self._run_agent_loop(
-                messages,
-                allowed_tools=allowed_tools,
-                activity_context=activity_context,
-                on_progress=on_progress,
-                serving_provider=serving,
-                serving_model=model,
-                reasoning_effort=reasoning_effort,
-            )
+            if timeout_sec and timeout_sec > 0:
+                final_content, tools_used, all_msgs, response_meta = await asyncio.wait_for(
+                    self._run_agent_loop(
+                        messages,
+                        allowed_tools=allowed_tools,
+                        activity_context=activity_context,
+                        on_progress=on_progress,
+                        serving_provider=serving,
+                        serving_model=model,
+                        reasoning_effort=reasoning_effort,
+                        max_turns=task_obj.max_turns if task_obj else None,
+                    ),
+                    timeout=float(timeout_sec),
+                )
+            else:
+                final_content, tools_used, all_msgs, response_meta = await self._run_agent_loop(
+                    messages,
+                    allowed_tools=allowed_tools,
+                    activity_context=activity_context,
+                    on_progress=on_progress,
+                    serving_provider=serving,
+                    serving_model=model,
+                    reasoning_effort=reasoning_effort,
+                    max_turns=task_obj.max_turns if task_obj else None,
+                )
             run_usage = response_meta.pop("_usage", {})
             run_failed = response_meta.pop("_failed", False)
+            budget_exhausted = response_meta.pop("_budget_exhausted", False)
             run_meta = {
                 "provider": response_meta.get("served_by") or provider,
                 "model": response_meta.get("served_model") or model,
@@ -983,8 +1060,74 @@ class AgentLoop:
                     error_summary=self._safe_error_summary(final_content),
                     **run_meta,
                 )
+                if run_task_id:
+                    try:
+                        self.tasks.fail(
+                            owner_id,
+                            run_task_id,
+                            failure_category="budget_exhausted" if budget_exhausted else "execution_error",
+                            result_summary=self._safe_error_summary(final_content),
+                            session_key=session.key,
+                        )
+                    except Exception:
+                        pass
+                    if session.metadata.get("pico_active_task_id") == run_task_id:
+                        session.metadata.pop("pico_active_task_id", None)
+                        self.sessions.save(session)
             else:
-                run = self.runs.complete(owner_id, run.id, **run_meta)
+                staged_proposals = [
+                    p
+                    for p in self.proposed_actions.list(owner_id, session.key, limit=100)
+                    if p.status in {"proposed", "approved"} and p.initiating_run_id == run.id
+                ]
+                if staged_proposals:
+                    run = self.runs.wait_for_approval(owner_id, run.id)
+                    if run_task_id:
+                        try:
+                            self.tasks.mark_waiting_for_approval(
+                                owner_id, run_task_id, session_key=session.key
+                            )
+                        except Exception:
+                            pass
+                else:
+                    run = self.runs.complete(owner_id, run.id, **run_meta)
+                    if run_task_id:
+                        try:
+                            self.tasks.complete(
+                                owner_id,
+                                run_task_id,
+                                result_summary=f"Run {run.id[:8]} completed successfully.",
+                                result_ref=result_ref or f"run:{run.id}",
+                                session_key=session.key,
+                            )
+                        except Exception:
+                            pass
+                        if session.metadata.get("pico_active_task_id") == run_task_id:
+                            session.metadata.pop("pico_active_task_id", None)
+                            self.sessions.save(session)
+        except asyncio.TimeoutError:
+            logger.warning("Run {} timed out after {}s for session {}", run.id[:8], timeout_sec, session.key)
+            try:
+                run = self.runs.cancel(owner_id, run.id)
+            except Exception:
+                pass
+            if run_task_id:
+                try:
+                    self.tasks.fail(
+                        owner_id,
+                        run_task_id,
+                        failure_category="budget_exhausted",
+                        result_summary=f"Task execution exceeded maximum allowed time limit ({timeout_sec}s).",
+                        session_key=session.key,
+                    )
+                except Exception:
+                    pass
+                if session.metadata.get("pico_active_task_id") == run_task_id:
+                    session.metadata.pop("pico_active_task_id", None)
+                    self.sessions.save(session)
+            final_content = "Task execution exceeded maximum allowed time limit."
+            all_msgs = messages
+            response_meta = {"_failed": True}
         except asyncio.CancelledError:
             logger.info("Run {} cancelled for session {}", run.id[:8], session.key)
             try:
@@ -998,6 +1141,14 @@ class AgentLoop:
                     )
                 except Exception:
                     pass
+            if run_task_id:
+                try:
+                    self.tasks.cancel(owner_id, run_task_id, session_key=session.key)
+                except Exception:
+                    pass
+                if session.metadata.get("pico_active_task_id") == run_task_id:
+                    session.metadata.pop("pico_active_task_id", None)
+                    self.sessions.save(session)
             raise
         except Exception:
             logger.exception("Run {} failed for session {}", run.id[:8], session.key)
@@ -1014,6 +1165,20 @@ class AgentLoop:
                     )
                 except Exception:
                     pass
+            if run_task_id:
+                try:
+                    self.tasks.fail(
+                        owner_id,
+                        run_task_id,
+                        failure_category="execution_error",
+                        result_summary="The task turn stopped before completing.",
+                        session_key=session.key,
+                    )
+                except Exception:
+                    pass
+                if session.metadata.get("pico_active_task_id") == run_task_id:
+                    session.metadata.pop("pico_active_task_id", None)
+                    self.sessions.save(session)
             raise
 
         if getattr(run, "mission_id", None):
@@ -1274,6 +1439,9 @@ class AgentLoop:
                 "owner_id": owner_id,
                 "session_key": session.key,
                 "profile_id": profile.id,
+                "channel": msg.channel,
+                "chat_id": msg.chat_id,
+                "message_id": message_id,
             },
             on_progress=on_progress or _bus_progress,
             result_ref=f"message:{message_id}" if isinstance(message_id, str) else None,
@@ -1572,3 +1740,102 @@ class AgentLoop:
             msg, session_key=session_key, on_progress=on_progress
         )
         return response.content if response else ""
+
+    async def run_direct_task(
+        self,
+        owner_id: str,
+        session_key: str,
+        task_id: str,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+    ) -> tuple[TaskRecord, RunRecord]:
+        """Execute a direct task turn through Pico's existing agent run pipeline."""
+        await self._connect_mcp()
+        session = self.sessions.get_or_create(session_key)
+
+        task = self.tasks.get(owner_id, task_id)
+        if task.session_key != session_key:
+            raise ValueError("Session mismatch for direct task execution")
+        if task.state != "queued":
+            raise ValueError(f"Task in state '{task.state}' cannot be executed")
+
+        active_mission = self._active_mission_for_session(session, owner_id)
+        if not active_mission and task.mission_id:
+            try:
+                m = self.missions.get(owner_id, task.mission_id)
+                if m.session_key == session_key and m.state == "active":
+                    active_mission = m
+                    session.metadata["pico_active_mission_id"] = m.id
+                    self.sessions.save(session)
+            except KeyError:
+                pass
+
+        if (
+            not active_mission
+            or active_mission.id != task.mission_id
+            or active_mission.state != "active"
+            or active_mission.session_key != session_key
+        ):
+            raise ValueError("Active mission mismatch or inactive for direct task execution")
+
+        profile = self._session_profile(session)
+        if profile.id != task.capability_profile:
+            raise ValueError(
+                f"Session profile '{profile.id}' does not match task capability snapshot '{task.capability_profile}'"
+            )
+
+        allowed_tools = self.capabilities.allowed_tools(
+            profile.id, self.tools.tool_names, governed_registry=self.governed_registry
+        )
+
+        prompt_content = f"Task: {task.title}\nObjective: {task.objective}"
+        messages = self.context.build_messages(
+            history=session.get_history(),
+            current_message=prompt_content,
+            system_prompt="You are executing a bounded direct task under an active mission.",
+            active_mission=active_mission,
+        )
+
+        channel, _, chat_id = session_key.partition(":")
+        self._set_tool_context(
+            channel or "web",
+            chat_id or "task",
+            owner_id=owner_id,
+            session_key=session_key,
+            profile_id=profile.id,
+            mission_id=active_mission.id if active_mission else None,
+        )
+
+        activity_context = {
+            "owner_id": owner_id,
+            "session_key": session_key,
+            "profile_id": profile.id,
+            "channel": "direct_task",
+        }
+
+        current_async_task = asyncio.current_task()
+        if current_async_task:
+            self._active_async_tasks[task.id] = current_async_task
+
+        try:
+            _content, _msgs, _meta, run = await self._run_turn(
+                owner_id=owner_id,
+                session=session,
+                profile=profile,
+                allowed_tools=allowed_tools,
+                messages=messages,
+                activity_context=activity_context,
+                on_progress=on_progress,
+                task_id=task.id,
+                mission_id=active_mission.id if active_mission else None,
+            )
+        except asyncio.CancelledError:
+            try:
+                self.tasks.cancel(owner_id, task.id, session_key, run_store=self.runs)
+            except Exception:
+                pass
+            raise
+        finally:
+            self._active_async_tasks.pop(task.id, None)
+
+        updated_task = self.tasks.get(owner_id, task.id)
+        return updated_task, run
