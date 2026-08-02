@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico workflow builder concept</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #20263a;
+      --muted: #7e879c;
+      --faint: #aeb6c7;
+      --line: #e3e7ef;
+      --panel: rgba(255, 255, 255, .92);
+      --canvas: #f6f8fc;
+      --blue: #5277df;
+      --blue-soft: #e9efff;
+      --green: #2b9a7a;
+      --amber: #c4862e;
+      --rose: #bd6370;
+      --shadow: 0 24px 70px rgba(45, 62, 105, .12);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #eef2f8; color: var(--ink); font: 13px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    button, input, textarea, select { font: inherit; }
+    button { border: 0; cursor: pointer; }
+    .app { min-height: 100vh; display: grid; grid-template-rows: 62px minmax(0, 1fr); }
+    .topbar { display: flex; align-items: center; gap: 22px; padding: 0 22px; background: rgba(255, 255, 255, .88); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 205px; letter-spacing: .16em; text-transform: uppercase; color: var(--blue); font-size: 11px; font-weight: 800; }
+    .brand-mark { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 8px; color: #fff; background: linear-gradient(145deg, #6b8cf3, #415dc7); box-shadow: 0 5px 12px rgba(82, 119, 223, .25); }
+    .workflow-title { min-width: 0; display: flex; align-items: center; gap: 10px; }
+    .workflow-title strong { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .pill { padding: 3px 8px; border: 1px solid #dfe6f4; border-radius: 999px; color: #66728b; background: #f7f9fd; font-size: 10px; font-weight: 700; }
+    .top-tabs { display: flex; gap: 3px; margin-left: auto; }
+    .top-tab { padding: 8px 13px; border-radius: 7px; color: var(--muted); background: transparent; font-weight: 700; }
+    .top-tab:hover, .top-tab.active { color: var(--ink); background: #eef3ff; }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .icon-button, .outline-button, .primary-button { min-height: 32px; padding: 0 11px; border-radius: 7px; border: 1px solid var(--line); color: #63708a; background: #fff; font-weight: 700; }
+    .icon-button { width: 32px; padding: 0; font-size: 16px; }
+    .primary-button { border-color: #5476dd; color: #fff; background: #5277df; box-shadow: 0 6px 14px rgba(82, 119, 223, .22); }
+    .workspace { min-height: 0; display: grid; grid-template-columns: 216px minmax(0, 1fr) 274px; gap: 1px; background: var(--line); }
+    .panel { min-width: 0; background: var(--panel); }
+    .left-panel, .right-panel { padding: 17px; overflow: auto; }
+    .section-label { color: #98a2b8; font-size: 10px; letter-spacing: .15em; text-transform: uppercase; font-weight: 800; }
+    .panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: #4e5d78; font-weight: 800; }
+    .panel-heading small { color: #a7afbf; font-weight: 700; }
+    .scope-note { margin: 14px 0 22px; padding: 11px 12px; border-left: 3px solid #8ea6ed; color: #71809a; background: #f4f7ff; border-radius: 0 8px 8px 0; font-size: 11px; }
+    .workflow-list { display: grid; gap: 5px; }
+    .workflow-item { padding: 11px; border-radius: 8px; color: #5d6980; background: transparent; text-align: left; }
+    .workflow-item:hover, .workflow-item.active { color: #2f4a9d; background: var(--blue-soft); }
+    .workflow-item strong { display: block; font-size: 12px; }
+    .workflow-item span { display: block; margin-top: 4px; color: #9da7ba; font-size: 10px; }
+    .palette { display: grid; gap: 7px; margin-top: 24px; }
+    .palette-button { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: #536078; background: #fff; text-align: left; }
+    .palette-button:hover { border-color: #b9c8ef; color: #3e5db7; background: #f8faff; }
+    .node-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: #fff; background: #8299d5; font-size: 11px; font-weight: 800; }
+    .node-icon.approval { background: #c98c3b; }
+    .node-icon.artifact { background: #2b9a7a; }
+    .node-icon.condition { background: #866eb8; }
+    .canvas-area { position: relative; min-width: 0; overflow: hidden; background: var(--canvas); }
+    .canvas-toolbar { display: flex; align-items: center; gap: 7px; padding: 11px 13px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .8); }
+    .canvas-toolbar .status { margin-right: auto; color: #74809a; font-size: 11px; font-weight: 700; }
+    .canvas-toolbar .status b { color: var(--green); }
+    .canvas { position: absolute; inset: 56px 0 0; overflow: hidden; background-color: var(--canvas); background-image: radial-gradient(#d7ddeb 1px, transparent 1px); background-size: 20px 20px; }
+    .canvas-inner { position: absolute; inset: 0; min-width: 980px; min-height: 650px; transform-origin: 0 0; transition: transform .18s ease; }
+    .edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+    .edges path { fill: none; stroke: #9aacd6; stroke-width: 2.4; }
+    .edges path.active { stroke: #5a7ce0; stroke-width: 3; }
+    .edges text { fill: #8794ad; font-size: 11px; font-weight: 700; }
+    .node { position: absolute; width: 178px; min-height: 89px; padding: 12px 13px; border: 1px solid #d4dced; border-radius: 10px; background: rgba(255, 255, 255, .96); box-shadow: 0 9px 23px rgba(54, 70, 112, .1); cursor: pointer; }
+    .node:hover, .node.selected { border-color: #5f81e4; box-shadow: 0 0 0 3px rgba(95, 129, 228, .14), 0 12px 26px rgba(54, 70, 112, .14); }
+    .node::before, .node::after { content: ""; position: absolute; top: 50%; width: 10px; height: 10px; margin-top: -5px; border: 2px solid #fff; border-radius: 50%; background: #8299d5; box-shadow: 0 0 0 1px #aab9da; }
+    .node::before { left: -8px; } .node::after { right: -8px; }
+    .node.approval::after { background: var(--amber); } .node.artifact::after { background: var(--green); } .node.condition::after { background: #866eb8; }
+    .node-kicker { color: #8794ae; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; font-weight: 800; }
+    .node-title { margin-top: 5px; color: #293752; font-size: 14px; font-weight: 800; }
+    .node-meta { margin-top: 5px; color: #8c97aa; font-size: 10px; }
+    .node-state { position: absolute; top: 10px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: #c6cedb; }
+    .node-state.ready { background: var(--green); } .node-state.waiting { background: var(--amber); box-shadow: 0 0 0 4px rgba(196, 134, 46, .13); }
+    .canvas-controls { position: absolute; left: 16px; bottom: 16px; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255, 255, 255, .92); box-shadow: 0 8px 20px rgba(45, 62, 105, .1); }
+    .canvas-controls button { width: 29px; height: 27px; border-radius: 6px; color: #66748c; background: transparent; font-weight: 800; }
+    .canvas-controls button:hover { color: var(--blue); background: var(--blue-soft); }
+    .canvas-hint { position: absolute; right: 16px; bottom: 18px; color: #9aa5b9; font-size: 10px; }
+    .right-panel { position: relative; }
+    .inspector-title { display: flex; align-items: center; gap: 9px; margin: 9px 0 19px; }
+    .inspector-title strong { font-size: 15px; }
+    .field { display: grid; gap: 6px; margin: 15px 0; }
+    .field label { color: #8a95a9; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .field input, .field textarea, .field select { width: 100%; padding: 9px 10px; border: 1px solid #dfe4ed; border-radius: 7px; color: #34415d; background: #fbfcfe; outline: none; }
+    .field input:focus, .field textarea:focus, .field select:focus { border-color: #91a8ea; box-shadow: 0 0 0 3px rgba(82, 119, 223, .1); }
+    .field textarea { min-height: 86px; resize: vertical; }
+    .inspector-section { margin-top: 21px; padding-top: 17px; border-top: 1px solid var(--line); }
+    .inspector-section p { margin: 8px 0; color: #8792a8; font-size: 11px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 999px; color: #2b7c65; background: #e8f7f1; font-size: 10px; font-weight: 800; }
+    .drawer { position: absolute; right: 16px; bottom: 16px; left: 16px; display: none; grid-template-columns: 225px minmax(0, 1fr); max-height: 190px; border: 1px solid #dfe4ee; border-radius: 10px; background: rgba(255, 255, 255, .96); box-shadow: var(--shadow); overflow: hidden; z-index: 5; }
+    .drawer.open { display: grid; }
+    .drawer-list { padding: 12px; border-right: 1px solid var(--line); overflow: auto; }
+    .drawer-list button { display: block; width: 100%; padding: 8px; border-radius: 6px; color: #66728b; background: transparent; text-align: left; }
+    .drawer-list button.active, .drawer-list button:hover { color: #304f9e; background: #eff3ff; }
+    .drawer-detail { padding: 14px 17px; overflow: auto; }
+    .drawer-detail h3 { margin: 0 0 7px; font-size: 13px; }
+    .drawer-detail p { margin: 5px 0; color: #7a869c; font-size: 11px; }
+    .hidden { display: none !important; }
+    @media (max-width: 1000px) { .workspace { grid-template-columns: 180px minmax(0, 1fr); } .right-panel { display: none; } }
+    @media (max-width: 700px) { .app { grid-template-rows: auto minmax(0, 1fr); } .topbar { flex-wrap: wrap; gap: 9px; padding: 10px 13px; } .brand { min-width: auto; } .top-tabs { order: 3; width: 100%; margin-left: 0; } .workspace { grid-template-columns: 1fr; } .left-panel { display: none; } .drawer { grid-template-columns: 1fr; } .drawer-list { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">P</span><span>Pico workflows</span></div>
+      <div class="workflow-title"><strong>Research brief to review</strong><span class="pill">Draft</span></div>
+      <nav class="top-tabs" aria-label="Workflow states">
+        <button class="top-tab active" data-state="build">Build</button>
+        <button class="top-tab" data-state="review">Review</button>
+        <button class="top-tab" data-state="run">Run</button>
+      </nav>
+      <div class="top-actions"><button class="outline-button" id="save">Save draft</button><button class="primary-button" id="run">Run</button><button class="icon-button" id="more" aria-label="More options">⋯</button></div>
+    </header>
+    <div class="workspace">
+      <aside class="panel left-panel">
+        <div class="panel-heading"><span>Workflow map</span><small>4 nodes</small></div>
+        <div class="scope-note">A small repeatable loop. Pico pauses at authority boundaries and records every meaningful result.</div>
+        <div class="section-label">Nodes</div>
+        <div class="workflow-list" id="node-list">
+          <button class="workflow-item active" data-node="start"><strong>Start</strong><span>Manual trigger</span></button>
+          <button class="workflow-item" data-node="research"><strong>Research with Pico</strong><span>Bounded agent task</span></button>
+          <button class="workflow-item" data-node="review"><strong>Review findings</strong><span>Approval gate</span></button>
+          <button class="workflow-item" data-node="brief"><strong>Save brief</strong><span>Artifact output</span></button>
+        </div>
+        <div class="section-label" style="margin-top:24px">Add a bounded node</div>
+        <div class="palette">
+          <button class="palette-button" data-add="agent"><span class="node-icon">✦</span><span>Agent task</span></button>
+          <button class="palette-button" data-add="approval"><span class="node-icon approval">✓</span><span>Approval</span></button>
+          <button class="palette-button" data-add="condition"><span class="node-icon condition">◇</span><span>Condition</span></button>
+          <button class="palette-button" data-add="artifact"><span class="node-icon artifact">▣</span><span>Artifact</span></button>
+        </div>
+      </aside>
+      <main class="panel canvas-area">
+        <div class="canvas-toolbar"><span class="status"><b>●</b> Local draft · 4 nodes · 3 connections</span><button class="outline-button" id="focus">Focus canvas</button><button class="outline-button" id="evidence">Evidence</button></div>
+        <div class="canvas" id="canvas">
+          <div class="canvas-inner" id="canvas-inner">
+            <svg class="edges" viewBox="0 0 980 650" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M 220 171 C 280 171, 292 171, 350 171"></path>
+              <path d="M 528 171 C 590 171, 606 270, 670 270"></path>
+              <path d="M 848 270 C 880 270, 878 421, 670 421"></path>
+              <text x="559" y="207">findings</text><text x="734" y="251">ready for review</text>
+            </svg>
+            <article class="node selected" data-node="start" style="left:42px;top:126px"><span class="node-state ready"></span><div class="node-kicker">Manual trigger</div><div class="node-title">Begin research brief</div><div class="node-meta">Starts when you choose Run</div></article>
+            <article class="node" data-node="research" style="left:350px;top:126px"><span class="node-state ready"></span><div class="node-kicker">Agent task</div><div class="node-title">Research with Pico</div><div class="node-meta">Browser review · bounded context</div></article>
+            <article class="node approval" data-node="review" style="left:670px;top:225px"><span class="node-state waiting"></span><div class="node-kicker">Approval gate</div><div class="node-title">Review findings</div><div class="node-meta">Pauses for your decision</div></article>
+            <article class="node artifact" data-node="brief" style="left:670px;top:376px"><span class="node-state"></span><div class="node-kicker">Artifact</div><div class="node-title">Save research brief</div><div class="node-meta">Markdown · versioned output</div></article>
+          </div>
+          <div class="canvas-controls"><button id="zoom-out" aria-label="Zoom out">−</button><button id="zoom-reset">100%</button><button id="zoom-in" aria-label="Zoom in">+</button><button id="fit">⌗</button></div>
+          <div class="canvas-hint" id="canvas-hint">Drag from a port to connect · Click a node to inspect</div>
+        </div>
+        <section class="drawer" id="drawer">
+          <div class="drawer-list"><button class="active">Research with Pico <small>completed</small></button><button>Review findings <small>waiting</small></button><button>Save research brief <small>queued</small></button></div>
+          <div class="drawer-detail"><span class="badge">● Waiting for approval</span><h3>Review findings</h3><p>Pico prepared a bounded result and is waiting for the owner to approve the next step.</p><p><strong>Safe evidence:</strong> provider, elapsed time, artifact candidate, and requested transition. Private arguments remain hidden.</p></div>
+        </section>
+      </main>
+      <aside class="panel right-panel" id="inspector">
+        <div class="panel-heading"><span>Inspector</span><small id="inspector-kind">Manual trigger</small></div>
+        <div class="inspector-title"><span class="node-icon" id="inspector-icon">↗</span><strong id="inspector-title">Begin research brief</strong></div>
+        <div class="field"><label for="node-name">Node name</label><input id="node-name" value="Begin research brief"></div>
+        <div class="field"><label for="node-purpose">Purpose</label><textarea id="node-purpose">Start a small, repeatable research loop from an intentional run.</textarea></div>
+        <div class="inspector-section"><div class="section-label">Authority</div><p id="authority-copy">Manual trigger. No provider or integration is invoked until the workflow is run.</p><span class="badge">Owner controlled</span></div>
+        <div class="inspector-section"><div class="section-label">Scope guardrail</div><p>Node configuration is typed and reviewed. Secrets, arbitrary code, and unbounded destinations are not accepted.</p></div>
+      </aside>
+    </div>
+  </div>
+  <script>
+    const nodeData = {
+      start: { kind: 'Manual trigger', title: 'Begin research brief', icon: '↗', copy: 'Manual trigger. No provider or integration is invoked until the workflow is run.' },
+      research: { kind: 'Agent task', title: 'Research with Pico', icon: '✦', copy: 'Runs a bounded thinking or research task with the active session profile.' },
+      review: { kind: 'Approval gate', title: 'Review findings', icon: '✓', copy: 'Pauses the run until the owner explicitly approves the proposed transition.' },
+      brief: { kind: 'Artifact', title: 'Save research brief', icon: '▣', copy: 'Creates a durable, versioned artifact with safe run provenance.' }
+    };
+    let zoom = 1;
+    const $ = (id) => document.getElementById(id);
+    function selectNode(id) {
+      document.querySelectorAll('.node, .workflow-item').forEach((el) => el.classList.toggle('selected', el.dataset.node === id));
+      document.querySelectorAll('.workflow-item').forEach((el) => el.classList.toggle('active', el.dataset.node === id));
+      const data = nodeData[id] || nodeData.start;
+      $('inspector-kind').textContent = data.kind;
+      $('inspector-title').textContent = data.title;
+      $('inspector-icon').textContent = data.icon;
+      $('node-name').value = data.title;
+      $('authority-copy').textContent = data.copy;
+    }
+    function setZoom(value) { zoom = Math.max(.65, Math.min(1.45, value)); $('canvas-inner').style.transform = `scale(${zoom})`; $('zoom-reset').textContent = `${Math.round(zoom * 100)}%`; }
+    document.querySelectorAll('[data-node]').forEach((el) => el.addEventListener('click', () => selectNode(el.dataset.node)));
+    document.querySelectorAll('[data-state]').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('[data-state]').forEach((el) => el.classList.toggle('active', el === button));
+      $('drawer').classList.toggle('open', button.dataset.state === 'run');
+      $('inspector').classList.toggle('hidden', button.dataset.state === 'build' && false);
+      if (button.dataset.state === 'review') selectNode('review');
+      if (button.dataset.state === 'run') selectNode('review');
+    }));
+    $('zoom-out').onclick = () => setZoom(zoom - .1); $('zoom-in').onclick = () => setZoom(zoom + .1); $('zoom-reset').onclick = () => setZoom(1); $('fit').onclick = () => { setZoom(1); $('canvas').scrollLeft = 0; $('canvas').scrollTop = 0; };
+    $('evidence').onclick = () => $('drawer').classList.toggle('open');
+    $('focus').onclick = () => { document.querySelector('.left-panel').classList.toggle('hidden'); document.querySelector('.right-panel').classList.toggle('hidden'); $('focus').textContent = document.querySelector('.left-panel').classList.contains('hidden') ? 'Show panels' : 'Focus canvas'; };
+    document.querySelectorAll('[data-add]').forEach((button) => button.onclick = () => { $('canvas-hint').textContent = `${button.textContent.trim()} node ready to place on the canvas`; setTimeout(() => $('canvas-hint').textContent = 'Drag from a port to connect · Click a node to inspect', 1800); });
+    $('save').onclick = () => { $('save').textContent = 'Saved'; setTimeout(() => $('save').textContent = 'Save draft', 1200); };
+    $('run').onclick = () => { document.querySelector('[data-state="run"]').click(); $('run').textContent = 'Running'; setTimeout(() => $('run').textContent = 'Run', 1200); };
+  </script>
+</body>
+</html>
