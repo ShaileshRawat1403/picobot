@@ -60,3 +60,21 @@ behind the existing Pico provider and capability contracts.
 Cycles, arbitrary code nodes, secret-bearing configuration, and unbounded
 remote execution remain out of scope until a real personal workflow justifies
 an explicit contract for them.
+
+## Editor affordances
+
+The editor borrows proven interaction patterns from React Flow, Rete, Flowise,
+Activepieces, and Langflow without importing their integration catalogues:
+
+- undo and redo keep graph edits reversible before a draft is saved;
+- Arrange gives a quick readable left-to-right layout, while Fit resets the
+  viewport and zoom controls preserve canvas space for larger graphs;
+- a minimap and node context menu make a graph navigable without hiding the
+  bounded inspector and approval model;
+- selecting a node exposes its execution harness and a local preview that
+  validates input shape without dispatching a provider, browser, or action;
+- an evidence drawer mirrors the durable run timeline and highlights node
+  states, approval pauses, and safe event summaries on the graph.
+
+These affordances improve graph literacy and debugging. They do not add
+arbitrary code execution, automatic approvals, cycles, or new integrations.
