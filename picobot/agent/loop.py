@@ -2029,10 +2029,23 @@ class AgentLoop:
         )
 
         prompt_content = f"Task: {task.title}\nObjective: {task.objective}"
+        history = session.get_history()
+        self.context.skills.begin_turn()
+        recalled_memory = self.context.personal_memory.recall(owner_id, prompt_content)
+        self.context.personal_memory.record_use(
+            owner_id,
+            [item.id for item in recalled_memory],
+            session_key=session.key,
+        )
+        task_channel, _, task_chat_id = session_key.partition(":")
         messages = self.context.build_messages(
-            history=session.get_history(),
+            history=history,
             current_message=prompt_content,
             system_prompt="You are executing a bounded direct task under an active mission.",
+            channel=task_channel or "direct_task",
+            chat_id=task_chat_id or "task",
+            owner_id=owner_id,
+            recalled_memory=recalled_memory,
             active_mission=active_mission,
         )
 
@@ -2078,5 +2091,14 @@ class AgentLoop:
         finally:
             self._active_async_tasks.pop(task.id, None)
 
+        self._record_turn_context(
+            session,
+            history,
+            recalled_memory,
+            run_id=run.id,
+            owner_id=owner_id,
+            skill_names=self.context.skills.consume_turn_loads(),
+        )
+        self.sessions.save(session)
         updated_task = self.tasks.get(owner_id, task.id)
         return updated_task, run
