@@ -80,6 +80,9 @@
     .run-detail-button:hover { text-decoration:underline; }
     .run-detail-panel { width:min(900px,100%); margin:0 auto 8px; border:1px solid #dfe3e8; border-radius:5px; padding:10px 12px; background:#fff; color:#59616d; font-size:12px; }
     .run-detail-panel[hidden] { display:none; }
+    .run-detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:9px; padding-bottom:8px; border-bottom:1px solid #e7e9ed; }
+    .run-detail-title { color:#273d60; font-size:13px; font-weight:650; }
+    .run-detail-subtitle { margin-top:2px; color:#8a919a; font-size:10px; }
     .run-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px 14px; }
     .run-detail-label { color:#8a919a; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
     .run-detail-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
@@ -400,6 +403,10 @@
     .operation-state { background:#e5f0e8; color:#396c52; }
     .operation-state.muted { background:#f0ede6; color:#81776b; }
     .toast { background:#2e403b; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline:2px solid #719388; outline-offset:2px; }
+    button[disabled], input[disabled], select[disabled], textarea[disabled] { cursor:not-allowed; opacity:.58; }
+    .run-detail-head .title-action { color:#756d63; }
+    .run-detail-head .title-action:hover { color:#365e58; }
   </style>
 </head>
 <body>
@@ -606,7 +613,11 @@
       const approvalAction = run.state === 'waiting_for_approval' ? '<button class="action" id="run-open-operations" type="button">Review approval</button>' : '';
       const context = data.context;
       const contextSummary = context ? `stance ${escapeHtml((context.stance_id || 'explore').replace(/^./, (char) => char.toUpperCase()))} · history ${Number(context.history_message_count) || 0} · memory ${context.memory_ids?.length || 0} · skills ${context.skill_names?.length || 0} · ${escapeHtml(context.plan_action || 'none')}` : 'not recorded';
-      panel.innerHTML = `<div class="run-detail-grid"><div><div class="run-detail-label">Outcome</div><div>${escapeHtml(RUN_LABELS[run.state] || run.state || 'Unknown')}</div></div><div><div class="run-detail-label">Provider / model</div><div>${escapeHtml(run.provider || '—')} / ${escapeHtml(run.model || '—')}</div></div><div><div class="run-detail-label">Profile</div><div>${escapeHtml(run.capability_profile || '—')}</div></div><div><div class="run-detail-label">Elapsed / usage</div><div>${escapeHtml(formatElapsed(run.elapsed_ms) || 'in progress')} · ${usage}</div></div></div><div style="margin-top:8px"><div class="run-detail-label">Context supplied</div><div>${contextSummary}</div></div><div style="margin-top:8px"><div class="run-detail-label">Tools used</div><div>${toolList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Approvals</div><div>${approvalList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Artifacts changed</div><div>${artifactList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Links</div><div>${task ? `Task ${escapeHtml(task.title || task.id)} · ${escapeHtml(task.state)}` : 'No task'}${run.mission_id ? ` · Mission ${escapeHtml(run.mission_id.slice(0, 8))}` : ''} · ${escapeHtml(retry)}</div></div>${data.failure_category || run.error_summary ? `<div style="margin-top:6px;color:var(--bad)"><div class="run-detail-label">Safe failure</div><div>${escapeHtml(data.failure_category || run.error_summary)}</div></div>` : ''}<div class="run-detail-actions">${approvalAction}${missionAction}${retryAction}</div>`;
+      const contextAction = context ? '<button class="memory-action" id="run-open-context" type="button">Open context evidence</button>' : '';
+      panel.innerHTML = `<div class="run-detail-head"><div><div class="run-detail-title">Run evidence</div><div class="run-detail-subtitle">${escapeHtml(String(run.run_id || '').slice(0, 12))} · ${escapeHtml(formatTime(run.ended_at || run.created_at))}</div></div><button class="title-action" id="close-run-detail" type="button">Close</button></div><div class="run-detail-grid"><div><div class="run-detail-label">Outcome</div><div>${escapeHtml(RUN_LABELS[run.state] || run.state || 'Unknown')}</div></div><div><div class="run-detail-label">Provider / model</div><div>${escapeHtml(run.provider || '—')} / ${escapeHtml(run.model || '—')}</div></div><div><div class="run-detail-label">Profile</div><div>${escapeHtml(run.capability_profile || '—')}</div></div><div><div class="run-detail-label">Elapsed / usage</div><div>${escapeHtml(formatElapsed(run.elapsed_ms) || 'in progress')} · ${usage}</div></div></div><div style="margin-top:8px"><div class="run-detail-label">Context supplied</div><div>${contextSummary}</div></div><div style="margin-top:8px"><div class="run-detail-label">Tools used</div><div>${toolList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Approvals</div><div>${approvalList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Artifacts changed</div><div>${artifactList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Links</div><div>${task ? `Task ${escapeHtml(task.title || task.id)} · ${escapeHtml(task.state)}` : 'No task'}${run.mission_id ? ` · Mission ${escapeHtml(run.mission_id.slice(0, 8))}` : ''} · ${escapeHtml(retry)}</div></div>${data.failure_category || run.error_summary ? `<div style="margin-top:6px;color:var(--bad)"><div class="run-detail-label">Safe failure</div><div>${escapeHtml(data.failure_category || run.error_summary)}</div></div>` : ''}<div class="run-detail-actions">${contextAction}${approvalAction}${missionAction}${retryAction}</div>`;
+      $('close-run-detail').onclick = () => { panel.hidden = true; };
+      const openContextButton = $('run-open-context');
+      if (openContextButton) openContextButton.onclick = () => { panel.hidden = true; showView('context'); loadSessionContext(); };
       const openMissionButton = $('run-open-mission');
       if (openMissionButton) openMissionButton.onclick = () => { activeMissionId = data.mission.id; showView('missions'); };
       const retryTaskButton = $('run-retry-task');

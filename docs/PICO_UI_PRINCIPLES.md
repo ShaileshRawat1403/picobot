@@ -26,5 +26,7 @@ without becoming vague, and calm without hiding state.
 - Show capability and profile state before exposing execution affordances.
 - Distinguish “supplied to this turn” from “available in the workspace”.
 - Keep approvals, lifecycle transitions, and provenance explicit and local.
+- Make inspectors reversible: every evidence panel has a clear close path and
+  a direct link to the fuller evidence view when the owner wants more detail.
 - Avoid notification density, gamification, and catalogue-style integration
   surfaces.
