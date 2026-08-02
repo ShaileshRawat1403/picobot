@@ -58,6 +58,9 @@ class WebChannel(BaseChannel):
         self._chat_clients: dict[str, websockets.WebSocketServerProtocol] = {}
         self._http_server = None
         self._cron_service = None
+        self._index_path: Path | None = None
+        self._index_mtime_ns: int | None = None
+        self._index_html = ""
 
     def set_cron_service(self, cron_service: Any) -> None:
         """Attach the gateway's durable scheduler to the local workbench."""
@@ -77,11 +80,11 @@ class WebChannel(BaseChannel):
             "Starting Web UI on http://{}:{} (WebSocket: ws://{}:{})", host, port + 1, host, port
         )
 
-        # Load index.html
-        web_dir = Path(__file__).parent.parent / "web"
-        self._index_html = (web_dir / "index.html").read_text("utf-8").replace(
-            "__PICO_WS_PORT__", str(port)
-        ).replace("__PICO_API_PORT__", str(port + 1))
+        # Load index.html and retain its path so local UI edits can be picked up
+        # by an already-running development process.
+        self._index_path = Path(__file__).parent.parent / "web" / "index.html"
+        self._index_html = self._render_index_html(port)
+        self._index_mtime_ns = self._index_path.stat().st_mtime_ns
 
         self._server = await websockets.serve(
             self._handle_connection,
@@ -114,7 +117,7 @@ class WebChannel(BaseChannel):
                 return
 
             if path == "/":
-                response = self._index_html.encode()
+                response = self._current_index_html().encode()
                 body = (
                     b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: "
                     + str(len(response)).encode()
@@ -1397,6 +1400,28 @@ class WebChannel(BaseChannel):
             logger.error(f"HTTP error: {e}")
         finally:
             writer.close()
+
+    def _render_index_html(self, port: int) -> str:
+        """Load the local UI and inject the ports for this channel instance."""
+        if self._index_path is None:
+            return self._index_html
+        return self._index_path.read_text("utf-8").replace(
+            "__PICO_WS_PORT__", str(port)
+        ).replace("__PICO_API_PORT__", str(port + 1))
+
+    def _current_index_html(self) -> str:
+        """Refresh the UI bundle when it changes, preserving the last good copy."""
+        if self._index_path is None:
+            return self._index_html
+        try:
+            mtime_ns = self._index_path.stat().st_mtime_ns
+            if mtime_ns != self._index_mtime_ns:
+                self._index_html = self._render_index_html(getattr(self.config, "port", 18791))
+                self._index_mtime_ns = mtime_ns
+        except OSError:
+            # Keep serving the last known-good document during an interrupted edit.
+            pass
+        return self._index_html
 
     @classmethod
     def _valid_browser_id(cls, value: object) -> str:
