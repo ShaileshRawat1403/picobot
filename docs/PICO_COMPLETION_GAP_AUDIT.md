@@ -54,20 +54,18 @@ an integration catalogue.
   multi-user enterprise deployment. These require a separate security and
   tenancy project.
 
-## Remaining product-quality work
+## Final refinement status
 
-1. Make provider setup honest and low-friction: supported API providers first,
-   subscription CLI setup clearly separated, and disconnect/status actions
-   visible without exposing credentials.
-2. Reduce Operations density by separating profile selection, browser sharing,
-   approvals, and recent activity into clear sections with state-specific copy.
-3. Continue improving thinking-partner response quality and context
-   explanations without expanding the integration boundary; the first governed
-   stance slice is now complete.
+The provider setup, governed Operations, thinking-partner, session-resume, and
+evidence-inspector refinements are complete for this local-first phase. The next
+proof is deliberately not another catalogue feature: exercise the personal
+workflow bundle in `PICO_PERSONAL_WORKFLOW_TESTS.md` with real weekly work and
+record where Pico slows, misleads, or leaves an important trace missing.
 
-The learning proof workflow is now a first-class surface. Approved skill use
-is measured only when skill instructions were actually supplied to a model
-turn; mere installation or mention does not count as use.
+The learning proof workflow is a first-class surface. Approved skill use is
+measured only when skill instructions were actually supplied to a model turn;
+mere installation or mention does not count as use.
 
-The next implementation slice should improve those surfaces without adding a
-new integration.
+After workflow proof, any change should be a narrowly evidenced improvement to
+an existing path. New connectors remain out of scope until one workflow repeats
+weekly and has a clear missing read path.
