@@ -243,9 +243,9 @@ execution. Do not add a new messaging matrix; use the web workbench first and
 add a single real delivery channel only after its workflow is proven.
 
 “Learning” stays honest: Pico may record an owner-scoped useful/not-useful/
-correction signal against a completed run, then propose a memory, skill
-improvement, or workflow template. It does not apply that signal automatically
-or claim autonomous self-improvement.
+correction signal against a completed run, then turn a correction into a
+reviewable memory or skill candidate with provenance. It does not apply that
+candidate automatically or claim autonomous self-improvement.
 
 **Acceptance gate:** search respects owner scope; sources remain inspectable;
 verification becomes stale after relevant changed inputs; paused jobs do not

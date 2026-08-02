@@ -31,6 +31,12 @@ def test_feedback_is_bounded_owned_and_idempotent(tmp_path: Path):
     assert corrected.kind == "correction"
     assert corrected.note == "Prefer a concise answer with the decision first."
     assert len(store.list("web:browser:owner-a")) == 1
+    attached = store.attach_candidate("web:browser:owner-a", corrected.id, "memory", "memory-a")
+    assert attached.candidate_type == "memory"
+    assert attached.candidate_ref == "memory-a"
+    assert store.attach_candidate("web:browser:owner-a", corrected.id, "memory", "memory-a").id == corrected.id
+    with pytest.raises(ValueError, match="different learning candidate"):
+        store.attach_candidate("web:browser:owner-a", corrected.id, "skill", "skill-a")
 
 
 def test_corrections_require_bounded_notes(tmp_path: Path):

@@ -967,6 +967,16 @@ class WebChannel(BaseChannel):
                     )
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path.startswith("/api/feedback/") and path.endswith("/candidate"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    feedback_id = path.removeprefix("/api/feedback/").removesuffix("/candidate").strip("/")
+                    result = self._create_browser_learning_candidate(
+                        client_id, feedback_id, self._json_body(body)
+                    )
+                    self._write_response(writer, 201, json.dumps(result, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/feedback":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1790,6 +1800,76 @@ class WebChannel(BaseChannel):
             kind=payload.get("kind"),
             note=payload.get("note"),
         )
+
+    def _create_browser_learning_candidate(
+        self, client_id: str, feedback_id: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        session_id = self._valid_browser_id(payload.get("session_id"))
+        self._require_browser_session(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session_key = self._session_key(client_id, session_id)
+        feedback_store = self._feedback_store()
+        feedback = feedback_store.get(owner_id, feedback_id)
+        if feedback.session_key != session_key:
+            raise ValueError("Feedback does not belong to this session")
+        if feedback.kind != "correction" or not feedback.note:
+            raise ValueError("Only correction feedback can become a learning candidate")
+
+        candidate_type = payload.get("candidate_type")
+        if candidate_type not in {"memory", "skill"}:
+            raise ValueError("Candidate type must be memory or skill")
+        if feedback.candidate_type and feedback.candidate_ref:
+            return self._existing_learning_candidate(owner_id, feedback)
+
+        source_ref = f"feedback:{feedback.id}"
+        if candidate_type == "memory":
+            candidate = self._memory_store().propose(
+                owner_id,
+                feedback.note,
+                kind="correction",
+                source_type="response_correction",
+                source_ref=source_ref,
+            )
+            feedback = feedback_store.attach_candidate(
+                owner_id, feedback.id, "memory", candidate.id
+            )
+            return {
+                "feedback": asdict(feedback),
+                "candidate_type": "memory",
+                "candidate": asdict(candidate),
+            }
+
+        name = payload.get("name") or f"response-correction-{feedback.id[:8]}"
+        description = payload.get("description") or "Review a reusable response correction before activation."
+        guidance = payload.get("guidance") or feedback.note
+        candidate = self._skill_proposal_store().create(
+            owner_id=owner_id,
+            session_key=session_key,
+            name=name,
+            description=description,
+            guidance=guidance,
+            source_type="response_correction",
+            source_ref=source_ref,
+        )
+        feedback = feedback_store.attach_candidate(owner_id, feedback.id, "skill", candidate.id)
+        return {
+            "feedback": asdict(feedback),
+            "candidate_type": "skill",
+            "candidate": asdict(candidate),
+        }
+
+    def _existing_learning_candidate(self, owner_id: str, feedback) -> dict[str, Any]:
+        if feedback.candidate_type == "memory":
+            candidate = self._memory_store().get(owner_id, feedback.candidate_ref)
+        elif feedback.candidate_type == "skill":
+            candidate = self._skill_proposal_store().get(owner_id, feedback.candidate_ref)
+        else:
+            raise ValueError("Feedback candidate type is invalid")
+        return {
+            "feedback": asdict(feedback),
+            "candidate_type": feedback.candidate_type,
+            "candidate": asdict(candidate),
+        }
 
     def _tool_activity_store(self):
         from picobot.operations.activity import ToolActivityStore

@@ -19,6 +19,8 @@ def test_skill_proposals_are_reviewable_owned_and_non_destructive(tmp_path: Path
 
     assert proposal.status == "proposed"
     assert proposal.name == "website-ops-brief"
+    assert proposal.source_type == "explicit_user"
+    assert proposal.source_ref is None
     assert "safe WebsiteOps brief" in proposal.content
     assert "session-a" not in proposal.content
     assert store.list("web:browser:owner-a") == [proposal]

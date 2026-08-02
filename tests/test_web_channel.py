@@ -431,3 +431,88 @@ def test_browser_feedback_is_bound_to_the_owned_session_run(tmp_path: Path):
             CLIENT_A,
             {"session_id": SESSION_A, "run_id": other_run.id, "kind": "useful"},
         )
+
+
+def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    runs = RunStore(workspace)
+    memory_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        capability_profile="personal-work",
+    )
+    skill_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        capability_profile="personal-work",
+    )
+    useful_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        capability_profile="personal-work",
+    )
+    memory_feedback = channel._record_browser_feedback(
+        CLIENT_A,
+        {
+            "session_id": SESSION_A,
+            "run_id": memory_run.id,
+            "kind": "correction",
+            "note": "Keep answers decision-first.",
+        },
+    )
+    skill_feedback = channel._record_browser_feedback(
+        CLIENT_A,
+        {
+            "session_id": SESSION_A,
+            "run_id": skill_run.id,
+            "kind": "correction",
+            "note": "Use a short decision-first workflow.",
+        },
+    )
+
+    memory_result = channel._create_browser_learning_candidate(
+        CLIENT_A,
+        memory_feedback.id,
+        {"session_id": SESSION_A, "candidate_type": "memory"},
+    )
+    assert memory_result["candidate"]["status"] == "proposed"
+    assert memory_result["candidate"]["source_ref"] == f"feedback:{memory_feedback.id}"
+    assert channel._create_browser_learning_candidate(
+        CLIENT_A,
+        memory_feedback.id,
+        {"session_id": SESSION_A, "candidate_type": "memory"},
+    )["candidate"]["id"] == memory_result["candidate"]["id"]
+
+    skill_result = channel._create_browser_learning_candidate(
+        CLIENT_A,
+        skill_feedback.id,
+        {
+            "session_id": SESSION_A,
+            "candidate_type": "skill",
+            "name": "decision-first-workflow",
+            "description": "Prefer a decision-first response workflow.",
+        },
+    )
+    assert skill_result["candidate"]["status"] == "proposed"
+    assert skill_result["candidate"]["source_type"] == "response_correction"
+    assert skill_result["candidate"]["source_ref"] == f"feedback:{skill_feedback.id}"
+
+    useful = channel._record_browser_feedback(
+        CLIENT_A,
+        {
+            "session_id": SESSION_A,
+            "run_id": useful_run.id,
+            "kind": "useful",
+        },
+    )
+    with pytest.raises(ValueError, match="Only correction feedback"):
+        channel._create_browser_learning_candidate(
+            CLIENT_A,
+            useful.id,
+            {"session_id": SESSION_A, "candidate_type": "memory"},
+        )

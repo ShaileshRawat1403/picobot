@@ -29,6 +29,8 @@ class SkillProposal:
     updated_at: str
     approved_at: str | None
     installed_path: str | None
+    source_type: str
+    source_ref: str | None
 
 
 class SkillProposalStore:
@@ -38,6 +40,7 @@ class SkillProposalStore:
     _STATUSES = {"proposed", "approved", "rejected"}
     _MAX_DESCRIPTION_LENGTH = 280
     _MAX_CONTENT_LENGTH = 24_000
+    _MAX_SOURCE_LENGTH = 320
 
     def __init__(self, workspace: Path):
         self.workspace = workspace
@@ -68,7 +71,9 @@ class SkillProposalStore:
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     approved_at TEXT,
-                    installed_path TEXT
+                    installed_path TEXT,
+                    source_type TEXT NOT NULL DEFAULT 'explicit_user',
+                    source_ref TEXT
                 );
                 CREATE INDEX IF NOT EXISTS skill_proposals_owner_updated_idx
                     ON skill_proposals(owner_id, updated_at DESC);
@@ -76,6 +81,15 @@ class SkillProposalStore:
                     ON skill_proposals(owner_id, session_key, updated_at DESC);
                 """
             )
+            columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(skill_proposals)").fetchall()
+            }
+            if "source_type" not in columns:
+                connection.execute(
+                    "ALTER TABLE skill_proposals ADD COLUMN source_type TEXT NOT NULL DEFAULT 'explicit_user'"
+                )
+            if "source_ref" not in columns:
+                connection.execute("ALTER TABLE skill_proposals ADD COLUMN source_ref TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -112,6 +126,21 @@ class SkillProposalStore:
             raise ValueError(f"Skill draft is limited to {cls._MAX_CONTENT_LENGTH} characters")
         return content + "\n"
 
+    @classmethod
+    def _clean_source(cls, value: object, label: str, *, required: bool = False) -> str | None:
+        if value is None:
+            if required:
+                raise ValueError(f"Skill proposal {label} is required")
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"Skill proposal {label} must be text")
+        clean = " ".join(value.split())
+        if required and not clean:
+            raise ValueError(f"Skill proposal {label} is required")
+        if len(clean) > cls._MAX_SOURCE_LENGTH:
+            raise ValueError(f"Skill proposal {label} is limited to {cls._MAX_SOURCE_LENGTH} characters")
+        return clean or None
+
     @staticmethod
     def _proposal(row: sqlite3.Row) -> SkillProposal:
         return SkillProposal(
@@ -126,6 +155,8 @@ class SkillProposalStore:
             updated_at=row["updated_at"],
             approved_at=row["approved_at"],
             installed_path=row["installed_path"],
+            source_type=row["source_type"] if "source_type" in row.keys() else "explicit_user",
+            source_ref=row["source_ref"] if "source_ref" in row.keys() else None,
         )
 
     @staticmethod
@@ -163,6 +194,8 @@ description: {description}
         name: object,
         description: object,
         guidance: object = "",
+        source_type: object = "explicit_user",
+        source_ref: object = None,
     ) -> SkillProposal:
         if not isinstance(owner_id, str) or not owner_id.strip():
             raise ValueError("Skill proposal owner is required")
@@ -172,6 +205,8 @@ description: {description}
         clean_description = self._clean_description(description)
         if not isinstance(guidance, str):
             raise ValueError("Skill guidance must be text")
+        clean_source_type = self._clean_source(source_type, "source type", required=True)
+        clean_source_ref = self._clean_source(source_ref, "source reference")
         content = self._clean_content(self.draft(clean_name, clean_description, guidance))
         proposal_id = str(uuid.uuid4())
         now = self._now()
@@ -180,10 +215,21 @@ description: {description}
                 """
                 INSERT INTO skill_proposals(
                     id, owner_id, session_key, name, description, content, status,
-                    created_at, updated_at, approved_at, installed_path
-                ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, ?, NULL, NULL)
+                    created_at, updated_at, approved_at, installed_path, source_type, source_ref
+                ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, ?, NULL, NULL, ?, ?)
                 """,
-                (proposal_id, owner_id, session_key, clean_name, clean_description, content, now, now),
+                (
+                    proposal_id,
+                    owner_id,
+                    session_key,
+                    clean_name,
+                    clean_description,
+                    content,
+                    now,
+                    now,
+                    clean_source_type,
+                    clean_source_ref,
+                ),
             )
         return self.get(owner_id, proposal_id)
 
