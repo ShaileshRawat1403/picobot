@@ -31,11 +31,11 @@ agent runtime.
 | --- | --- | --- |
 | Model/provider setup | Implemented boundary | API providers are limited to OpenAI, Gemini, Anthropic, Ollama, and one custom OpenAI-compatible endpoint; subscriptions use official provider-owned CLIs with redacted status. |
 | Chat/tool execution | Implemented foundation | Durable runs, safe receipts, run detail evidence, tool activity, approvals, and artifact/task/mission linkage are inspectable without private payloads. |
-| Memory | Good base | Retrieval and explicit confirmation exist; no bounded adapter contract, learning quality signal, or cross-session recall surface. |
-| Context | Partial | History is bounded, but it is not token-budgeted and has no durable compaction handoff. |
-| Skills and MCP | Partial | Skills are reviewable and MCP can connect, but server health, tool filtering, and profile permissions are not managed as a registry. |
-| Missions/delegation | Partial | A mission is durable state; it is not yet linked to controlled runs, delegated work, cancellation, or verification evidence. |
-| Artifacts/schedules | Implemented foundation | Versioned local artifacts now retain source run/mission provenance; schedules remain owner-scoped and reversible. |
+| Memory | Implemented foundation | Explicit recall, confirmation, forgetting, usage evidence, and reviewable learning candidates are live; external memory adapters remain intentionally deferred. |
+| Context | Implemented foundation | Token-bounded planning, durable compaction handoffs, protected tails, failure evidence, and a Context view are live. |
+| Skills and MCP | Implemented foundation | Governed inventory, readiness, profile filtering, safe diagnostics, and reviewable skill proposals are live; a first real MCP server remains optional. |
+| Missions/delegation | Implemented bounded | Missions, depth-zero tasks, cancellation, retry, approvals, run linkage, and evidence are live; remote workers remain excluded. |
+| Artifacts/schedules | Implemented foundation | Versioned artifacts, structured formats, links, HTML/bundle exports, provenance, and reversible local schedules are live. |
 
 ## What Pico adopts
 
