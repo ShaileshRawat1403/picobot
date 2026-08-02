@@ -329,6 +329,52 @@
     .policy-scope .form-row { margin-bottom:8px; }
     @media (max-width:760px) { .policy-scopes { grid-template-columns:1fr } }
     @media (max-width:760px) { :root{--rail:0px} .app{display:block}.rail{z-index:2; width:100%; height:auto; position:static; padding:10px; flex-direction:row; align-items:center; gap:10px; border-right:0; border-bottom:1px solid var(--line)}.brand{padding:0}.new-session{width:34px; min-height:34px; padding:0; justify-content:center; font-size:0}.new-session::before{content:'+';font-size:18px}.nav{display:flex;grid-auto-flow:column}.nav-button{padding:8px;gap:0}.nav-button>span:last-child{display:none}.sessions,.rail-footer{display:none}main{margin:0;width:100%}.topbar{padding:0 16px}.title-action{display:none}.transcript,.composer-area{padding-left:16px;padding-right:16px}.workspace-view{padding:26px 16px}.workspace-head{display:block}.workspace-head .action{margin-top:14px}.message{max-width:96%}.artifact-layout,.mission-layout,.context-grid,.memory-layout,.skill-proposal-layout,.learning-layout,.operations-grid,.provider-card{grid-template-columns:1fr}.form-row,.memory-controls{grid-template-columns:1fr}.utility-bar{padding:5px 9px;overflow:auto}.utility-action{flex:none}.utility-action:nth-child(3){display:none}.utility-local{display:none}.cockpit-wrapper{padding:10px 16px 0}.cockpit-grid{grid-template-columns:1fr 1fr;gap:8px 12px} }
+    /* Pico's field-notes theme: a quiet thinking room, not a command console. */
+    :root { --ink:#2b2925; --muted:#776f65; --line:#ded8cd; --paper:#f3f0e8; --panel:#fbfaf6; --pico:#365e58; --pico-dark:#274843; --pico-pale:#e5efeb; --good:#4e7b62; --bad:#a85c57; --warm:#b87852; }
+    body { background:radial-gradient(circle at 78% 8%,#fffaf1 0,transparent 33%),var(--paper); color:var(--ink); }
+    .rail { background:#ece7dc; border-right-color:#d8d0c3; }
+    .brand { font-family:Iowan Old Style,Baskerville,"Times New Roman",serif; font-size:19px; letter-spacing:-.035em; color:#282b29; }
+    .mark { border-radius:50%; background:#365e58; color:#f4efe4; font-family:Iowan Old Style,Baskerville,serif; font-size:14px; }
+    .new-session { border-color:#cfc5b6; background:#f8f5ed; color:#365e58; }
+    .new-session:hover { background:#e2ece6; color:#274843; }
+    .nav-button:hover, .nav-button.active, .session-button:hover, .session-button.active { color:#274843; background:#dfeae4; }
+    .section-label, .eyebrow { color:#8c8174; letter-spacing:.16em; }
+    .session-meta, .rail-footer { color:#8a8075; }
+    .rail-footer { border-top-color:#d8d0c3; }
+    main { background:transparent; }
+    .topbar { border-bottom-color:#ded8cd; background:#f7f4eddd; }
+    .workspace-head h2, .welcome h2, h1 { font-family:Iowan Old Style,Baskerville,"Times New Roman",serif; font-weight:600; }
+    .workspace-head h2 { font-size:27px; letter-spacing:-.045em; }
+    .workspace-head p { max-width:640px; color:#756d63; }
+    .transcript { padding-top:46px; }
+    .welcome { border-left-color:#8aab9d; background:linear-gradient(135deg,#edf3ee66,transparent); }
+    .welcome h2 { font-size:23px; }
+    .bubble { color:#302e2a; }
+    .message.user .bubble { border-color:#d0d9d1; background:#e6ece7; }
+    .avatar { background:#365e58; }
+    .message.user .avatar { background:#e6ded2; color:#6b5848; }
+    .bubble a { color:#365e58; }
+    .composer { border-color:#cfc8bb; background:#fbfaf6; box-shadow:0 10px 26px #55483a12; }
+    .composer:focus-within { border-color:#719388; box-shadow:0 0 0 3px #365e5817; }
+    .send { background:#365e58; }
+    .card, .run-detail-panel, .cockpit-bar { border-color:#ded8cd; background:#fbfaf6; }
+    .action { border-color:#365e58; background:#365e58; }
+    .action.secondary { border-color:#c9d9d1; color:#365e58; background:#edf3ee; }
+    .memory-card, .skill-card, .artifact-card, .mission-card, .operation-card, .provider-card, .learning-card { border-color:#e0dacf; background:#fcfbf7; }
+    .memory-card:hover, .skill-card:hover, .artifact-card:hover, .mission-card:hover, .mission-card.active, .skill-proposal-card:hover, .skill-proposal-card.active { border-color:#9db5a9; background:#f1f6f1; }
+    .memory-action { border-color:#d3cec4; color:#365e58; background:#fbfaf6; }
+    .memory-action:hover { border-color:#8eaa9e; color:#274843; background:#eef4ef; }
+    .memory-action.reject, .memory-action.forget { color:#9a5c55; background:#fbefeb; }
+    .context-stat { border-color:#e0dacf; background:#faf9f4; }
+    .context-stat-value { color:#365e58; }
+    .empty { border-color:#d8d1c6; background:#faf9f4; }
+    .utility-bar { border-top-color:#ded8cd; background:#f5f1e8cc; }
+    .utility-action:hover, button.cockpit-action:hover { background:#e7efe9; color:#274843; }
+    .cockpit-value.cockpit-active { color:#365e58; }
+    .skill-state { background:#e5f0e8; color:#396c52; }
+    .operation-state { background:#e5f0e8; color:#396c52; }
+    .operation-state.muted { background:#f0ede6; color:#81776b; }
+    .toast { background:#2e403b; }
   </style>
 </head>
 <body>
@@ -355,7 +401,7 @@
         <label class="session-archive-toggle"><input id="show-archived-sessions" type="checkbox"> Show archived</label>
         <div id="session-list"></div>
       </section>
-      <div class="rail-footer"><div class="runtime"><span class="dot" id="runtime-dot"></span><span id="runtime-status">Connecting</span></div><div style="margin-top:5px">Local personal workbench</div></div>
+      <div class="rail-footer"><div class="runtime"><span class="dot" id="runtime-dot"></span><span id="runtime-status">Connecting</span></div><div style="margin-top:5px">A local thinking room</div></div>
     </aside>
     <main>
       <header class="topbar"><div><div class="eyebrow" id="view-label">Personal workbench</div><div class="title-line"><h1 id="page-title">New session</h1><input class="session-title-input" id="session-title-input" aria-label="Session title" maxlength="72" hidden><button class="title-action" id="rename-session" type="button">Rename</button><button class="title-action" id="archive-session" type="button">Archive</button><button class="title-action primary" id="save-session-title" type="button" hidden>Save</button><button class="title-action" id="cancel-session-title" type="button" hidden>Cancel</button></div></div><div class="connection"><span class="dot" id="connection-dot"></span><span id="connection-text">Connecting…</span></div></header>
@@ -479,7 +525,7 @@
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); reconnectTimer = setTimeout(connect, 1000); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content, null, data.metadata?.run_id || null); loadSessions(); if (currentView === 'context') loadSessionContext(); if (currentView === 'learning') loadLearning(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); pollRuns(); } }
     function setSession(nextSession) { sessionId = nextSession; latestAssistantRunId = null; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); if (!$('policy-panel').hidden) loadPolicy(); }
-    function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Start a piece of work.</h2><p>Pico keeps this conversation separate, and personal memory stays visible and editable.</p></div>`; }
+    function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Make a little room for the work.</h2><p>Bring a question, keep the useful trace, and decide what should become memory.</p></div>`; }
     function formatInlineMarkdown(value) { return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>'); }
     function renderMessageContent(value) { const lines = escapeHtml(value || '').split('\n'), output = []; let listType = null, codeLines = null; const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = null; } }; const closeCode = () => { if (codeLines !== null) { output.push(`<pre><code>${codeLines.join('\n')}</code></pre>`); codeLines = null; } }; lines.forEach((line) => { if (line.trim().startsWith('```')) { if (codeLines === null) { closeList(); codeLines = []; } else closeCode(); return; } if (codeLines !== null) { codeLines.push(line); return; } const bullet = line.match(/^\s*[-*]\s+(.+)$/), ordered = line.match(/^\s*\d+[.)]\s+(.+)$/), heading = line.match(/^\s*#{1,3}\s+(.+)$/); if (bullet) { if (listType !== 'ul') { closeList(); output.push('<ul>'); listType = 'ul'; } output.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`); } else if (ordered) { if (listType !== 'ol') { closeList(); output.push('<ol>'); listType = 'ol'; } output.push(`<li>${formatInlineMarkdown(ordered[1])}</li>`); } else { closeList(); if (!line.trim()) output.push('<br>'); else if (heading) output.push(`<h4>${formatInlineMarkdown(heading[1])}</h4>`); else output.push(`<div>${formatInlineMarkdown(line)}</div>`); } }); closeList(); closeCode(); return output.join(''); }
     function appendMessage(role, content, timestamp = null, runId = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; const feedback = role === 'assistant' && runId ? `<div class="message-feedback" data-feedback-run="${escapeHtml(runId)}"><button type="button" data-feedback-kind="useful">Useful</button><button type="button" data-feedback-kind="not_useful">Not useful</button><button type="button" data-feedback-kind="correction">Correct</button></div>` : ''; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${renderMessageContent(content)}</div><div class="message-time">${formatTime(timestamp)}</div>${feedback}</div>`; if (feedback) item.querySelectorAll('[data-feedback-kind]').forEach((button) => { button.onclick = () => recordResponseFeedback(runId, button.dataset.feedbackKind, button); }); $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
