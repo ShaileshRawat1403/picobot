@@ -1,4 +1,8 @@
-"""OpenAI Codex Responses Provider."""
+"""Deprecated direct Codex transport kept for migration reference.
+
+Pico now uses the official Codex CLI for subscription connections and does not
+read or replay its OAuth token. This legacy provider is intentionally disabled.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +25,10 @@ class OpenAICodexProvider(LLMProvider):
     """Use Codex OAuth to call the Responses API."""
 
     def __init__(self, default_model: str = "openai-codex/gpt-5.3-codex"):
+        raise RuntimeError(
+            "The legacy direct Codex OAuth transport is disabled. "
+            "Use the official Codex CLI subscription connection."
+        )
         super().__init__(api_key=None, api_base=None)
         self.default_model = default_model
 

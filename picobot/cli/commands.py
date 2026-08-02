@@ -3,7 +3,9 @@
 import asyncio
 import os
 import select
+import shutil
 import signal
+import subprocess
 import sys
 from pathlib import Path
 from loguru import logger
@@ -278,14 +280,16 @@ def onboard(
 def _build_single_provider(config: Config, model: str):
     """Create a single provider instance for one model (no fallback wrapper)."""
     from picobot.providers.azure_openai_provider import AzureOpenAIProvider
-    from picobot.providers.openai_codex_provider import OpenAICodexProvider
 
     provider_name = config.get_provider_name(model)
     p = config.get_provider(model)
 
-    # OpenAI Codex (OAuth)
+    # OpenAI Codex subscription: authentication and transport stay in the
+    # provider-owned official CLI; Pico never reads its token store.
     if provider_name == "openai_codex" or model.startswith("openai-codex/"):
-        return OpenAICodexProvider(default_model=model)
+        from picobot.providers.subscription_cli import SubscriptionCLIProvider
+
+        return SubscriptionCLIProvider("openai_codex", default_model=model)
     # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
     if provider_name == "custom":
         from picobot.providers.custom_provider import CustomProvider
@@ -309,11 +313,12 @@ def _build_single_provider(config: Config, model: str):
             api_base=p.api_base,
             default_model=model,
         )
-    # Gemini OAuth: Reuses DAX's OAuth credentials
+    # Gemini subscription: use the provider-owned official CLI. Pico must not
+    # piggyback on Gemini CLI OAuth credentials or private backend endpoints.
     if provider_name == "gemini_oauth":
-        from picobot.providers.gemini_oauth_provider import create_provider
+        from picobot.providers.subscription_cli import SubscriptionCLIProvider
 
-        return create_provider(api_base=config.get_api_base(model))
+        return SubscriptionCLIProvider("gemini_oauth", default_model=model)
 
     from picobot.providers.litellm_provider import LiteLLMProvider
     from picobot.providers.registry import find_by_name
@@ -1343,16 +1348,20 @@ def _register_login(name: str):
 @provider_app.command("login")
 def provider_login(
     provider: str = typer.Argument(
-        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"
+        ..., help="Supported subscription connection (e.g. 'openai-codex', 'gemini-oauth')"
     ),
 ):
     """Authenticate with an OAuth provider."""
+    from picobot.providers.connections import SUPPORTED_SUBSCRIPTION_PROVIDERS
     from picobot.providers.registry import PROVIDERS
 
     key = provider.replace("-", "_")
-    spec = next((s for s in PROVIDERS if s.name == key and s.is_oauth), None)
+    spec = next(
+        (s for s in PROVIDERS if s.name == key and s.name in SUPPORTED_SUBSCRIPTION_PROVIDERS),
+        None,
+    )
     if not spec:
-        names = ", ".join(s.name.replace("_", "-") for s in PROVIDERS if s.is_oauth)
+        names = ", ".join(name.replace("_", "-") for name in SUPPORTED_SUBSCRIPTION_PROVIDERS)
         console.print(f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
         raise typer.Exit(1)
 
@@ -1367,29 +1376,28 @@ def provider_login(
 
 @_register_login("openai_codex")
 def _login_openai_codex() -> None:
-    try:
-        from oauth_cli_kit import get_token, login_oauth_interactive
-
-        token = None
-        try:
-            token = get_token()
-        except Exception:
-            pass
-        if not (token and token.access):
-            console.print("[cyan]Starting interactive OAuth login...[/cyan]\n")
-            token = login_oauth_interactive(
-                print_fn=lambda s: console.print(s),
-                prompt_fn=lambda s: typer.prompt(s),
-            )
-        if not (token and token.access):
-            console.print("[red]✗ Authentication failed[/red]")
-            raise typer.Exit(1)
-        console.print(
-            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]"
-        )
-    except ImportError:
-        console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
+    if not shutil.which("codex"):
+        console.print("[red]Official Codex CLI not found. Install it before logging in.[/red]")
         raise typer.Exit(1)
+    console.print("[cyan]Starting the official Codex login flow...[/cyan]\n")
+    result = subprocess.run(["codex", "login"], check=False)
+    if result.returncode != 0:
+        console.print("[red]✗ Codex login did not complete.[/red]")
+        raise typer.Exit(1)
+    console.print("[green]✓ Codex subscription connection is ready.[/green]")
+
+
+@_register_login("gemini_oauth")
+def _login_gemini_oauth() -> None:
+    if not shutil.which("gemini"):
+        console.print("[red]Official Gemini CLI not found. Install it before logging in.[/red]")
+        raise typer.Exit(1)
+    console.print("[cyan]Starting the official Gemini CLI sign-in flow...[/cyan]\n")
+    result = subprocess.run(["gemini"], check=False)
+    if result.returncode != 0:
+        console.print("[red]✗ Gemini CLI sign-in did not complete.[/red]")
+        raise typer.Exit(1)
+    console.print("[green]✓ Gemini subscription connection is ready.[/green]")
 
 
 @_register_login("github_copilot")

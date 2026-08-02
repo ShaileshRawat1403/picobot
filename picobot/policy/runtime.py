@@ -31,14 +31,11 @@ _REASONING_EFFORT_VALUES = ("low", "medium", "high")
 _RESPONSE_MODES = ("default", "concise", "detailed")
 _MAX_MODEL_LENGTH = 240
 
-# Providers whose Pico chat() implementation accepts reasoning_effort but does
-# not forward it to the upstream API (verified against providers/*.py:
-# gemini_oauth_provider.chat() ignores the parameter). Every other provider in
-# ProvidersConfig is routed through an implementation that forwards it
-# (custom, openai_codex, azure_openai, or litellm). Requests for reasoning
-# effort through an unsupported provider are preserved as "default" and
-# reported truthfully.
-_REASONING_EFFORT_UNSUPPORTED = frozenset({"gemini_oauth"})
+# Subscription CLI connections do not expose provider-specific reasoning
+# controls to Pico. API transports may forward reasoning_effort normally;
+# subscription requests preserve the requested value but report it as
+# unsupported rather than pretending the official CLI accepted it.
+_REASONING_EFFORT_UNSUPPORTED = frozenset({"openai_codex", "gemini_oauth"})
 
 _DEFAULTS: dict[str, Any] = {
     "provider": None,

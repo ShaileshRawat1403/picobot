@@ -11,6 +11,13 @@ from urllib.request import Request, urlopen
 
 from picobot.config.loader import get_config_path, load_config, set_profile_provider_secret, save_config
 from picobot.config.schema import ProvidersConfig
+from picobot.providers.connections import (
+    SUPPORTED_PROVIDER_NAMES,
+    SUPPORTED_SUBSCRIPTION_PROVIDERS,
+    is_supported_provider,
+    subscription_login_hint,
+    subscription_status,
+)
 from picobot.providers.registry import PROVIDERS, find_by_name
 
 
@@ -35,11 +42,15 @@ class ProviderSetupService:
 
     @staticmethod
     def _provider_names() -> tuple[str, ...]:
+        return SUPPORTED_PROVIDER_NAMES
+
+    @staticmethod
+    def _known_provider_names() -> tuple[str, ...]:
         return tuple(ProvidersConfig.model_fields)
 
     @classmethod
     def _validate_provider_name(cls, provider_name: str) -> str:
-        if not isinstance(provider_name, str) or provider_name not in cls._provider_names():
+        if not isinstance(provider_name, str) or provider_name not in cls._known_provider_names():
             raise ValueError("Unknown Pico provider")
         return provider_name
 
@@ -73,12 +84,32 @@ class ProviderSetupService:
 
     def _entry(self, provider_name: str, config) -> dict:
         provider = getattr(config.providers, provider_name)
+        if not is_supported_provider(provider_name):
+            return {
+                "id": provider_name,
+                "label": self._label(provider_name),
+                "kind": "deferred",
+                "status": "deferred",
+                "detail": "This provider is outside Pico's supported provider boundary.",
+                "setup_hint": "Choose one of Pico's supported API or subscription connections.",
+                "default_model": None,
+                "has_api_key": bool(provider.api_key),
+                "has_endpoint": bool(provider.api_base),
+                "is_active": False,
+                "last_diagnostic": None,
+                "failure_category": "unsupported",
+            }
         kind = self._kind(provider_name)
         has_key = bool(provider.api_key)
         has_endpoint = bool(provider.api_base)
-        if kind == "oauth":
-            status = "setup_required"
-            detail = "OAuth setup is not available in Pico's web workbench yet."
+        auth_metadata: dict[str, Any] = {}
+        if provider_name in SUPPORTED_SUBSCRIPTION_PROVIDERS:
+            auth_metadata = subscription_status(provider_name)
+            status = auth_metadata["status"]
+            detail = auth_metadata["detail"]
+        elif kind == "oauth":
+            status = "deferred"
+            detail = "This subscription connection is outside Pico's supported boundary."
         elif kind == "local":
             status = "configured" if has_endpoint else "not_configured"
             detail = "Local endpoint configured." if has_endpoint else "Add a local endpoint to use this provider."
@@ -115,6 +146,12 @@ class ProviderSetupService:
             "is_active": config.agents.defaults.provider == provider_name,
             "last_diagnostic": diag,
             "failure_category": failure_category,
+            "login_hint": subscription_login_hint(provider_name)
+            if provider_name in SUPPORTED_SUBSCRIPTION_PROVIDERS
+            else None,
+            "cli_available": auth_metadata.get("cli_available")
+            if auth_metadata
+            else None,
         }
 
     def inventory(self) -> dict:
@@ -130,6 +167,8 @@ class ProviderSetupService:
 
     def configure_api_key(self, provider_name: str, api_key: str) -> dict:
         provider_name = self._validate_provider_name(provider_name)
+        if not is_supported_provider(provider_name):
+            raise ValueError("This provider is outside Pico's supported provider boundary")
         if self._kind(provider_name) in {"oauth", "local"}:
             raise ValueError("This provider does not accept an API key in Pico's web workbench")
         if not isinstance(api_key, str):
@@ -178,6 +217,8 @@ class ProviderSetupService:
             raise ValueError("Model must contain between 1 and 240 characters")
         config = load_config(self.config_path)
         entry = self._entry(provider_name, config)
+        if entry["status"] == "deferred":
+            raise ValueError("This provider is outside Pico's supported provider boundary")
         if entry["status"] not in {"configured", "ready"}:
             raise ValueError("Configure this provider before making it the default")
         config.agents.defaults.provider = provider_name
@@ -194,12 +235,27 @@ class ProviderSetupService:
 
         key_pair = self._diagnostic_key(provider_name)
 
+        if not is_supported_provider(provider_name):
+            res = {
+                "provider": provider_name,
+                "status": "not_available",
+                "failure_category": "unsupported",
+                "detail": "This provider is outside Pico's supported provider boundary.",
+            }
+            self._last_diagnostics[key_pair] = res
+            return res
+
+        if provider_name in SUPPORTED_SUBSCRIPTION_PROVIDERS:
+            res = {"provider": provider_name, **subscription_status(provider_name)}
+            self._last_diagnostics[key_pair] = res
+            return res
+
         if self._kind(provider_name) == "oauth":
             res = {
                 "provider": provider_name,
                 "status": "not_available",
                 "failure_category": "unsupported",
-                "detail": "OAuth setup is not available in Pico's web workbench yet.",
+                "detail": "This subscription connection is outside Pico's supported boundary.",
             }
             self._last_diagnostics[key_pair] = res
             return res

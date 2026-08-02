@@ -53,7 +53,7 @@ def test_unavailable_provider_cannot_be_selected_by_policy(tmp_workspace: Path):
     setup_service = ProviderSetupService(tmp_workspace)
 
     # 1. Unconfigured provider cannot be selected as default in setup_service
-    with pytest.raises(ValueError, match="Configure this provider before making it the default"):
+    with pytest.raises(ValueError, match="outside Pico's supported provider boundary"):
         setup_service.choose_default("deepseek", "deepseek-chat")
 
     # 2. Unconfigured provider cannot be set in global runtime policy
@@ -79,10 +79,19 @@ async def test_successful_and_failed_diagnostics_are_bounded_and_redacted(tmp_wo
     assert res1["detail"] == "Add an API key before testing this provider."
     assert "sk-" not in str(res1)
 
-    # 2. Test OAuth provider -> unsupported
-    res2 = await service.test_connection("openai_codex")
-    assert res2["status"] == "not_available"
-    assert res2["failure_category"] == "unsupported"
+    # 2. Subscription readiness is delegated to the official provider CLI.
+    with patch(
+        "picobot.providers.setup.subscription_status",
+        return_value={
+            "status": "setup_required",
+            "failure_category": "login_required",
+            "detail": "Run `codex login` to connect your ChatGPT/Codex subscription.",
+            "cli_available": True,
+        },
+    ):
+        res2 = await service.test_connection("openai_codex")
+    assert res2["status"] == "setup_required"
+    assert res2["failure_category"] == "login_required"
 
     # 3. Test with configured key and mocked successful probe -> connection_verified
     set_profile_provider_secret("openai", "sk-validkey", tmp_workspace)
@@ -121,10 +130,11 @@ async def test_action_does_not_persist_provider_selection_as_side_effect(tmp_wor
     initial_default_model = initial_config.agents.defaults.model
     initial_policy = initial_config.policy.model_dump()
 
-    # Perform connection test on deepseek
+    # Deferred providers are not probed, even if an old key exists.
     with patch.object(ProviderSetupService, "_probe_models", return_value=200):
         res = await service.test_connection("deepseek")
-        assert res["status"] == "ready"
+        assert res["status"] == "not_available"
+        assert res["failure_category"] == "unsupported"
 
     # Verify config defaults and policy were NOT modified as a side effect
     after_config = load_config(tmp_workspace)

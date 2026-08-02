@@ -113,6 +113,8 @@ owner's real working setup:
    preset; a single custom OpenAI-compatible endpoint may be used instead.
 
 The local slot is one active endpoint, not a catalogue of local runtimes.
+The connection lifecycle and readiness contract are documented in
+[`PICO_PROVIDER_CONNECTIONS.md`](PICO_PROVIDER_CONNECTIONS.md).
 
 ### Subscription connections
 

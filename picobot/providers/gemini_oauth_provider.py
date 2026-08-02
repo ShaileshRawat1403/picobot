@@ -1,6 +1,9 @@
-"""
-Gemini OAuth Provider for Picobot
-Uses DAX OAuth tokens with Code Assist API (Pro/Plus serverless).
+"""Deprecated Gemini subscription transport kept for migration reference.
+
+Pico no longer instantiates this provider. It previously read DAX-managed
+tokens and called a private Code Assist endpoint, which is outside Pico's
+supported provider boundary. Use :mod:`picobot.providers.subscription_cli`
+and the official Gemini CLI instead.
 """
 
 import json
@@ -27,6 +30,10 @@ class GeminiOAuthProvider(LLMProvider):
     DAX_AUTH_PATH = os.path.expanduser("~/.local/share/dax/auth.json")
 
     def __init__(self, api_base: str | None = None):
+        raise RuntimeError(
+            "The legacy Gemini OAuth transport is disabled. "
+            "Use the official Gemini CLI subscription connection."
+        )
         super().__init__(api_key=None, api_base=api_base)
         self._token = ""
         self._token_expires_ms = 0

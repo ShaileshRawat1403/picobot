@@ -193,26 +193,28 @@ not launch a DAX or Soothsayer connection.
 
 | Provider     | Auth            | Notes                                |
 | ------------ | --------------- | ------------------------------------ |
-| **Gemini**   | OAuth / API Key | Recommended - use with DAX for OAuth |
-| **OpenAI**   | API Key         | GPT-4, GPT-3.5                       |
-| **Claude**   | API Key         | Opus, Sonnet, Haiku                  |
-| **DeepSeek** | API Key         | Great for code                       |
-| **Ollama**   | Local           | Run models locally                   |
-| **Groq**     | API Key         | Fast inference                       |
-| **Custom**   | API Key + URL   | Any OpenAI-compatible API            |
+| **OpenAI**   | API Key         | Primary hosted API                   |
+| **Gemini**   | API Key         | Secondary hosted API                 |
+| **Anthropic**| API Key         | Hosted API                           |
+| **Codex**    | Official OAuth  | ChatGPT/Codex subscription           |
+| **Gemini CLI** | Official OAuth | Gemini subscription                  |
+| **Ollama**   | Local           | Local endpoint                       |
+| **Custom**   | API Key + URL   | One OpenAI-compatible endpoint       |
 
-### Using DAX for Gemini OAuth
+### Using a Gemini subscription
 
-DAX handles OAuth authentication for Gemini:
+Pico uses the official Gemini CLI for subscription sign-in and transport. It
+does not read or reuse Gemini CLI tokens:
 
 ```bash
-# Terminal 1: Start DAX
-cd /Users/Shared/MYAIAGENTS/dax
-python -m dax run
+# Sign in with Google in the official CLI
+gemini
 
-# Terminal 2: Login to Gemini
+# Or launch Pico's setup wrapper
 picobot provider login gemini_oauth
 ```
+
+Use the Gemini API connection for Pico tool execution and governed actions.
 
 ---
 
@@ -312,6 +314,8 @@ picobot channels status
 **Token expired?**
 
 ```bash
+picobot provider login openai_codex
+# or
 picobot provider login gemini_oauth
 ```
 

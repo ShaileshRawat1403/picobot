@@ -505,6 +505,7 @@ class Config(BaseSettings):
         self, model: str | None = None
     ) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its registry name. Returns (config, spec_name)."""
+        from picobot.providers.connections import is_supported_provider
         from picobot.providers.registry import PROVIDERS
 
         forced = self.agents.defaults.provider
@@ -523,6 +524,8 @@ class Config(BaseSettings):
 
         # Explicit provider prefix wins — prevents `github-copilot/...codex` matching openai_codex.
         for spec in PROVIDERS:
+            if not is_supported_provider(spec.name):
+                continue
             p = getattr(self.providers, spec.name, None)
             if p and model_prefix and normalized_prefix == spec.name:
                 if spec.is_oauth or spec.is_local or p.api_key:
@@ -530,6 +533,8 @@ class Config(BaseSettings):
 
         # Match by keyword (order follows PROVIDERS registry)
         for spec in PROVIDERS:
+            if not is_supported_provider(spec.name):
+                continue
             p = getattr(self.providers, spec.name, None)
             if p and any(_kw_matches(kw) for kw in spec.keywords):
                 if spec.is_oauth or spec.is_local or p.api_key:
@@ -541,6 +546,8 @@ class Config(BaseSettings):
         # (e.g. Ollama's "11434" in "http://localhost:11434") over plain registry order.
         local_fallback: tuple[ProviderConfig, str] | None = None
         for spec in PROVIDERS:
+            if not is_supported_provider(spec.name):
+                continue
             if not spec.is_local:
                 continue
             p = getattr(self.providers, spec.name, None)
@@ -556,6 +563,8 @@ class Config(BaseSettings):
         # Fallback: gateways first, then others (follows registry order)
         # OAuth providers are NOT valid fallbacks — they require explicit model selection
         for spec in PROVIDERS:
+            if not is_supported_provider(spec.name):
+                continue
             if spec.is_oauth:
                 continue
             p = getattr(self.providers, spec.name, None)

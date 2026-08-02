@@ -79,6 +79,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         litellm_prefix="",
         is_direct=True,
     ),
+    # Ollama: the supported local/OpenAI-compatible endpoint preset.
+    ProviderSpec(
+        name="ollama",
+        keywords=("ollama",),
+        env_key="",
+        display_name="Ollama",
+        litellm_prefix="ollama",
+        is_local=True,
+        detect_by_base_keyword="11434",
+        default_api_base="http://127.0.0.1:11434/v1",
+    ),
 
     # === Azure OpenAI (direct API calls with API version 2024-10-21) =====
     ProviderSpec(

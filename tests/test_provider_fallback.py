@@ -100,20 +100,16 @@ class TestProviderBootstrap:
         primary = DummyProvider("gemini", LLMResponse(content="ok", finish_reason="stop"))
         fallback_instances: list[DummyProvider] = []
 
-        def fake_create_provider(**kwargs):
-            return primary
-
-        def fake_codex_provider(default_model: str):
+        def fake_subscription_provider(provider_name: str, default_model: str):
+            if provider_name == "gemini_oauth":
+                return primary
             instance = DummyProvider("codex", LLMResponse(content="ok", finish_reason="stop"))
             instance.default_model = default_model
             fallback_instances.append(instance)
             return instance
 
         monkeypatch.setattr(
-            "picobot.providers.gemini_oauth_provider.create_provider", fake_create_provider
-        )
-        monkeypatch.setattr(
-            "picobot.providers.openai_codex_provider.OpenAICodexProvider", fake_codex_provider
+            "picobot.providers.subscription_cli.SubscriptionCLIProvider", fake_subscription_provider
         )
 
         config = Config.model_validate(
