@@ -32,6 +32,7 @@ setup(
         "litellm>=1.0.0",
         "pydantic-settings>=2.0.0",
         "json-repair>=0.1.0",
+        "PyYAML>=6.0",
         "websockets>=11.0.0",
         "python-telegram-bot>=20.0",
         "duckduckgo-search>=3.8.0",

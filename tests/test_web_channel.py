@@ -465,6 +465,17 @@ def test_browser_artifact_source_is_bound_to_the_owned_session_run(tmp_path: Pat
         channel._browser_artifact_source(CLIENT_A, SESSION_A, "missing-run")
 
 
+def test_artifact_download_name_is_safe_and_keeps_the_format_extension():
+    artifact = SimpleNamespace(
+        title='Quarterly / "decision" pack',
+        revision=3,
+        relative_path="artifact-id/v3.yaml",
+    )
+
+    assert WebChannel._artifact_download_name(artifact) == "Quarterly-decision-pack-v3.yaml"
+    assert WebChannel._artifact_download_name(artifact, 1) == "Quarterly-decision-pack-v1.yaml"
+
+
 def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

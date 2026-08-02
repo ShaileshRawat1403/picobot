@@ -51,7 +51,7 @@ These are Pico mechanics, independent of any particular external platform:
 - capability profiles, readiness, least authority, approvals, and audit trails;
 - bounded delegation and cancellation;
 - durable artifacts, revisions, verification, source run/mission provenance,
-  and local search;
+  format validation, and local search;
 - local schedules and bounded heartbeat checks;
 - one local web workbench and a direct CLI;
 - evidence-first workspace and browser operations.

@@ -135,6 +135,15 @@ reserved for a later review workflow and will not silently change your profile.
 Legacy `MEMORY.md`, `HISTORY.md`, and `vectors.pkl` files are left untouched,
 but are no longer used by Pico's active recall path.
 
+### Durable artifacts
+
+Pico can save versioned owner-scoped notes, briefs, plans, reports, checklists,
+structured data, code/config text, and source-link bundles. Supported formats
+include Markdown, plain text, JSON, YAML, CSV, TSV, JSONL, and URI lists. Each
+revision remains inside the configured workspace and can be downloaded with a
+format-aware filename. See [`docs/PICO_ARTIFACTS.md`](docs/PICO_ARTIFACTS.md)
+for the validation and sharing contract.
+
 ### Credentials
 
 Keep provider secrets in a profile-local `.env` beside Pico's `config.json`,

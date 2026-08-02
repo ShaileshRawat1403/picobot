@@ -8,6 +8,9 @@ or move as ordinary local files.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import re
 import sqlite3
 import uuid
@@ -15,6 +18,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -48,12 +53,26 @@ class ArtifactStore:
 
     _MAX_TITLE_LENGTH = 160
     _MAX_CONTENT_LENGTH = 512_000
-    _KINDS = {"note", "brief", "plan", "draft", "checklist", "data", "link"}
+    _KINDS = {
+        "note",
+        "brief",
+        "plan",
+        "report",
+        "draft",
+        "checklist",
+        "data",
+        "link",
+        "code",
+        "config",
+    }
     _CONTENT_TYPES = {
         "text/markdown": "md",
         "text/plain": "txt",
         "application/json": "json",
+        "application/yaml": "yaml",
         "text/csv": "csv",
+        "text/tab-separated-values": "tsv",
+        "application/x-ndjson": "jsonl",
         "text/uri-list": "url",
     }
     _VERIFICATION_STATES = {"verified", "stale", "unverified"}
@@ -152,6 +171,86 @@ class ArtifactStore:
                 raise ValueError("Link artifacts cannot contain embedded credentials")
         return "\n".join(links)
 
+    @classmethod
+    def _clean_link_bundle(cls, content: str) -> str:
+        try:
+            value = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Link bundle must be valid JSON") from exc
+        if not isinstance(value, dict) or not isinstance(value.get("links"), list):
+            raise ValueError("Link bundle must contain a links array")
+        if not value["links"] or len(value["links"]) > 50:
+            raise ValueError("A link bundle must contain between 1 and 50 links")
+        clean_links = []
+        for item in value["links"]:
+            if not isinstance(item, dict):
+                raise ValueError("Each link bundle item must be an object")
+            url = item.get("url")
+            url = url.strip() if isinstance(url, str) else None
+            parsed = urlsplit(url) if isinstance(url, str) else None
+            if (
+                parsed is None
+                or parsed.scheme not in {"http", "https"}
+                or not parsed.netloc
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("Link bundle URLs must be absolute HTTP(S) URLs without credentials")
+            clean = {"url": url}
+            for field in ("label", "note", "source"):
+                field_value = item.get(field)
+                if field_value is not None:
+                    if not isinstance(field_value, str) or len(field_value) > 400:
+                        raise ValueError(f"Link bundle {field} must be text up to 400 characters")
+                    clean[field] = " ".join(field_value.split())
+            clean_links.append(clean)
+        return json.dumps({"links": clean_links}, ensure_ascii=False, indent=2) + "\n"
+
+    @staticmethod
+    def _reject_json_constants(value: str) -> None:
+        raise ValueError(f"JSON does not allow the constant {value}")
+
+    @classmethod
+    def _validate_content_format(cls, content: str, kind: str, content_type: str) -> str:
+        if kind == "link" and content_type == "text/uri-list":
+            return cls._clean_link_content(content)
+        if kind == "link" and content_type == "application/json":
+            return cls._clean_link_bundle(content)
+        if kind == "link":
+            raise ValueError("Link artifacts must use text/uri-list or application/json content")
+        if content_type == "text/uri-list":
+            raise ValueError("text/uri-list content is reserved for link artifacts")
+        if content_type == "application/json":
+            try:
+                json.loads(content, parse_constant=cls._reject_json_constants)
+            except (TypeError, json.JSONDecodeError, ValueError) as exc:
+                raise ValueError("Artifact content must be valid JSON") from exc
+        elif content_type == "application/yaml":
+            try:
+                yaml.safe_load(content)
+            except yaml.YAMLError as exc:
+                raise ValueError("Artifact content must be safe, valid YAML") from exc
+        elif content_type == "application/x-ndjson":
+            lines = [line for line in content.splitlines() if line.strip()]
+            if not lines:
+                raise ValueError("JSONL artifacts need at least one JSON object")
+            if len(lines) > 10_000:
+                raise ValueError("JSONL artifacts can contain at most 10,000 records")
+            for line in lines:
+                try:
+                    json.loads(line, parse_constant=cls._reject_json_constants)
+                except (TypeError, json.JSONDecodeError, ValueError) as exc:
+                    raise ValueError("Every JSONL line must be valid JSON") from exc
+        elif content_type in {"text/csv", "text/tab-separated-values"}:
+            try:
+                delimiter = "\t" if content_type == "text/tab-separated-values" else ","
+                rows = list(csv.reader(io.StringIO(content), delimiter=delimiter, strict=True))
+            except csv.Error as exc:
+                raise ValueError("Artifact content must be valid CSV/TSV") from exc
+            if not rows or not any(row for row in rows):
+                raise ValueError("Tabular artifacts need at least one row")
+        return content
+
     @staticmethod
     def _optional_reference(value: object, label: str) -> str | None:
         if value is None:
@@ -222,12 +321,7 @@ class ArtifactStore:
         content = self._clean_content(content)
         kind = self._validate_kind(kind)
         content_type = self._validate_content_type(content_type)
-        if kind == "link":
-            if content_type != "text/uri-list":
-                raise ValueError("Link artifacts must use text/uri-list content")
-            content = self._clean_link_content(content)
-        elif content_type == "text/uri-list":
-            raise ValueError("text/uri-list content is reserved for link artifacts")
+        content = self._validate_content_format(content, kind, content_type)
         source_run_id = self._optional_reference(source_run_id, "source run ID")
         source_mission_id = self._optional_reference(source_mission_id, "source mission ID")
         artifact_id = str(uuid.uuid4())
@@ -320,7 +414,8 @@ class ArtifactStore:
 
     def revise(self, owner_id: str, artifact_id: str, content: str) -> Artifact:
         artifact = self.get(owner_id, artifact_id)
-        content = self._clean_link_content(content) if artifact.kind == "link" else self._clean_content(content)
+        content = self._clean_content(content)
+        content = self._validate_content_format(content, artifact.kind, artifact.content_type)
         next_revision = artifact.revision + 1
         now = self._now()
         file_path = self._revision_path(artifact_id, next_revision, artifact.content_type)

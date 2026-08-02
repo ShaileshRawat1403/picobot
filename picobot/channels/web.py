@@ -258,13 +258,15 @@ class WebChannel(BaseChannel):
                     if artifact_path.endswith("/download") and method == "GET":
                         artifact_id = artifact_path.removesuffix("/download").rstrip("/")
                         artifact = store.get(owner_id, artifact_id)
-                        content = store.read_content(owner_id, artifact_id).encode("utf-8")
+                        revision_value = self._single_query_value(query, "revision")
+                        revision = int(revision_value) if revision_value is not None else artifact.revision
+                        content = store.read_content(owner_id, artifact_id, revision).encode("utf-8")
                         self._write_raw_response(
                             writer,
                             200,
                             content,
                             artifact.content_type,
-                            f'attachment; filename="{artifact_id}-v{artifact.revision}"',
+                            f'attachment; filename="{self._artifact_download_name(artifact, revision)}"',
                         )
                     elif artifact_path.endswith("/verification") and method == "POST":
                         artifact_id = artifact_path.removesuffix("/verification").rstrip("/")
@@ -1411,6 +1413,14 @@ class WebChannel(BaseChannel):
         from picobot.artifacts.store import ArtifactStore
 
         return ArtifactStore(self._runtime_config().workspace_path)
+
+    @staticmethod
+    def _artifact_download_name(artifact, revision: int | None = None) -> str:
+        """Return a safe, useful filename without trusting artifact titles."""
+        title = re.sub(r"[^A-Za-z0-9._-]+", "-", artifact.title).strip("-._")[:80]
+        stem = title or "pico-artifact"
+        suffix = Path(artifact.relative_path).suffix or ".txt"
+        return f"{stem}-v{revision or artifact.revision}{suffix}"
 
     def _browser_artifact_source(
         self, client_id: str, session_id: str, source_run_id: object
