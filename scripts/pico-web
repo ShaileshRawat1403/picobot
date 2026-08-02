@@ -5,7 +5,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-exec python3 -m picobot web \
+python_bin="python3"
+if [[ -x "$repo_root/.venv/bin/python" ]]; then
+  python_bin="$repo_root/.venv/bin/python"
+fi
+
+exec "$python_bin" -m picobot web \
   --host 127.0.0.1 \
-  --port 18791 \
   --config .picobot/config.json

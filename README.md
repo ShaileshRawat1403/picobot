@@ -171,8 +171,11 @@ cd /Users/Shailesh/MYAIAGENTS/picobot
 
 Then open <http://127.0.0.1:18792>. The WebSocket listens on `18791`; the page
 is served on `18792`. Each browser connection receives only replies for its
-own server-bound chat session. The launcher intentionally does not stop an
-existing Pico process; press `Ctrl+C` in its terminal before starting a new one.
+own server-bound chat session. If Pico is already listening, the launcher
+reports the existing URL instead of creating a duplicate. If another local
+service owns the pair, Pico selects the next available WebSocket/HTTP pair and
+prints the new URL. The launcher uses `.venv` automatically when it exists.
+This is a Python service; `npm run dev` is not a supported command.
 
 ### Isolated Pico test
 

@@ -1,12 +1,16 @@
 """CLI commands for picobot."""
 
 import asyncio
+import json
 import os
 import select
+import socket
 import shutil
 import signal
 import subprocess
 import sys
+from urllib.error import URLError
+from urllib.request import urlopen
 from pathlib import Path
 from loguru import logger
 
@@ -975,6 +979,59 @@ def channels_login():
 # ============================================================================
 
 
+def _web_pair_available(host: str, port: int) -> bool:
+    """Return whether both the WebSocket and HTTP ports can be claimed."""
+    if port < 1 or port > 65534:
+        return False
+    try:
+        addresses = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        http_addresses = socket.getaddrinfo(host, port + 1, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
+    for address in addresses[:1] + http_addresses[:1]:
+        family, socktype, _, _, sockaddr = address
+        with socket.socket(family, socktype) as sock:
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(sockaddr)
+            except OSError:
+                return False
+    return True
+
+
+def _pico_web_running(host: str, port: int) -> bool:
+    """Check the local health endpoint without treating arbitrary listeners as Pico."""
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        return False
+    try:
+        url_host = f"[{host}]" if ":" in host else host
+        with urlopen(f"http://{url_host}:{port + 1}/api/health", timeout=0.4) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return payload.get("status") == "ok" and payload.get("channel") == "web"
+    except (OSError, URLError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _resolve_web_port(host: str, requested_port: int) -> int | None:
+    """Reuse an existing Pico or find the next available WebSocket/HTTP pair."""
+    if _pico_web_running(host, requested_port):
+        console.print(
+            f"{__logo__} Pico is already running at http://{host}:{requested_port + 1}."
+        )
+        return None
+    port = requested_port
+    while port <= 65534 and not _web_pair_available(host, port):
+        port += 2
+    if port > 65534:
+        raise typer.BadParameter("No available Pico web port pair was found.")
+    if port != requested_port:
+        console.print(
+            f"{__logo__} Ports {requested_port}/{requested_port + 1} are occupied; "
+            f"using {port}/{port + 1}."
+        )
+    return port
+
+
 @app.command()
 def web(
     port: int = typer.Option(18791, "--port", "-p", help="Web server port"),
@@ -985,6 +1042,10 @@ def web(
     """Start picobot with the web interface enabled."""
 
     cfg = _load_runtime_config(config, workspace)
+    resolved_port = _resolve_web_port(host, port)
+    if resolved_port is None:
+        return
+    port = resolved_port
     cfg.channels.web.enabled = True
     cfg.channels.web.port = port
     cfg.channels.web.host = host
