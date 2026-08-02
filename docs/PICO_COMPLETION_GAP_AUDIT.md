@@ -27,6 +27,9 @@ an integration catalogue.
 - Governed Operations clarity: the workbench makes the Propose → Inspect →
   Approve → Execute → Audit flow explicit and summarizes proposed versus
   approved actions without changing the underlying authorization checks.
+- Provider boundary clarity: setup cards distinguish API connections, local
+  endpoints, and provider-owned subscriptions while showing redacted lifecycle
+  states and setup guidance.
 - Run-linked context evidence: each completed turn records bounded history,
   recalled memory references, actually supplied skill names, context planning
   outcome, token estimates, and compaction references without storing prompt
