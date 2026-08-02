@@ -97,3 +97,23 @@ def test_subscription_output_parsers_are_bounded():
         "hello",
         {"total_tokens": 4},
     )
+    gemini_stream = "\n".join(
+        [
+            '{"type":"init","session_id":"redacted"}',
+            '{"type":"message","role":"assistant","content":"final answer"}',
+            '{"type":"result","stats":{"input_tokens":5,"output_tokens":3}}',
+        ]
+    )
+    assert _parse_gemini_json(gemini_stream) == (
+        "final answer",
+        {"input_tokens": 5, "output_tokens": 3},
+    )
+
+
+def test_gemini_cli_uses_bounded_plan_stream():
+    provider = SubscriptionCLIProvider("gemini_oauth", "gemini-2.5-pro")
+    provider.executable = "gemini"
+    command = provider._command("gemini-2.5-pro", "hello")
+    assert "stream-json" in command
+    assert "--approval-mode" in command
+    assert command[command.index("--approval-mode") + 1] == "plan"

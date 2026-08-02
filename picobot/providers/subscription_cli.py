@@ -104,7 +104,7 @@ class SubscriptionCLIProvider(LLMProvider):
             "--prompt",
             prompt,
             "--output-format",
-            "json",
+            "stream-json",
             "--approval-mode",
             "plan",
             "--skip-trust",
@@ -177,6 +177,29 @@ def _parse_codex_jsonl(stdout: str) -> tuple[str | None, dict[str, int]]:
 
 
 def _parse_gemini_json(stdout: str) -> tuple[str | None, dict[str, int]]:
+    # The official CLI's stream-json mode emits one event per line. Keep the
+    # parser tolerant of the older single-object JSON mode as well so a CLI
+    # upgrade cannot turn a valid response into an opaque provider failure.
+    stream_content: str | None = None
+    stream_usage: dict[str, int] = {}
+    saw_stream_event = False
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or "type" not in event:
+            continue
+        saw_stream_event = True
+        if event.get("type") == "message" and event.get("role") == "assistant":
+            value = event.get("content")
+            if isinstance(value, str) and value.strip():
+                stream_content = value
+        if event.get("type") == "result":
+            stream_usage = _usage_from_payload(event)
+    if saw_stream_event:
+        return stream_content, stream_usage
+
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError:
@@ -190,15 +213,17 @@ def _parse_gemini_json(stdout: str) -> tuple[str | None, dict[str, int]]:
 
 
 def _usage_from_payload(payload: dict[str, Any]) -> dict[str, int]:
-    raw = payload.get("usage") or payload.get("usageMetadata") or {}
+    raw = payload.get("usage") or payload.get("usageMetadata") or payload.get("stats") or {}
     mapping = {
         "promptTokenCount": "input_tokens",
         "candidatesTokenCount": "output_tokens",
         "totalTokenCount": "total_tokens",
+        "input_tokens": "input_tokens",
+        "output_tokens": "output_tokens",
+        "total_tokens": "total_tokens",
     }
     result: dict[str, int] = {}
     for source, target in mapping.items():
         if isinstance(raw.get(source), (int, float)):
             result[target] = int(raw[source])
     return result
-
