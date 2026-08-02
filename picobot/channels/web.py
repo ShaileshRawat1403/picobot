@@ -967,6 +967,30 @@ class WebChannel(BaseChannel):
                     )
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/feedback":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    if method == "GET":
+                        session_id = self._single_query_value(query, "session_id")
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps(
+                                {"feedback": self._list_browser_feedback(client_id, session_id)},
+                                ensure_ascii=False,
+                            ).encode(),
+                        )
+                    elif method == "POST":
+                        feedback = self._record_browser_feedback(client_id, self._json_body(body))
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps({"feedback": asdict(feedback)}, ensure_ascii=False).encode(),
+                        )
+                    else:
+                        raise ValueError("Feedback route supports GET or POST only")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/memory":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1732,6 +1756,40 @@ class WebChannel(BaseChannel):
         from picobot.learning.store import SkillProposalStore
 
         return SkillProposalStore(self._runtime_config().workspace_path)
+
+    def _feedback_store(self):
+        from picobot.learning.feedback import ResponseFeedbackStore
+
+        return ResponseFeedbackStore(self._runtime_config().workspace_path)
+
+    def _list_browser_feedback(self, client_id: str, session_id: object = None) -> list[dict[str, Any]]:
+        session_key = None
+        if session_id:
+            valid_session_id = self._valid_browser_id(session_id)
+            self._require_browser_session(client_id, valid_session_id)
+            session_key = self._session_key(client_id, valid_session_id)
+        return [
+            asdict(item)
+            for item in self._feedback_store().list(
+                self._memory_owner(client_id), session_key=session_key
+            )
+        ]
+
+    def _record_browser_feedback(self, client_id: str, payload: dict[str, Any]):
+        session_id = self._valid_browser_id(payload.get("session_id"))
+        self._require_browser_session(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session_key = self._session_key(client_id, session_id)
+        run = self._run_store().get(owner_id, payload.get("run_id"))
+        if run.session_key != session_key:
+            raise ValueError("Feedback run does not belong to this session")
+        return self._feedback_store().record(
+            owner_id=owner_id,
+            session_key=session_key,
+            run_id=run.id,
+            kind=payload.get("kind"),
+            note=payload.get("note"),
+        )
 
     def _tool_activity_store(self):
         from picobot.operations.activity import ToolActivityStore

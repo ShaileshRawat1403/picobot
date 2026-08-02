@@ -14,6 +14,7 @@ from picobot.cron.service import CronService
 from picobot.cron.types import CronSchedule
 from picobot.memory.store import PersonalMemoryStore
 from picobot.missions import MissionStore
+from picobot.runs import RunStore
 from picobot.session.manager import SessionManager
 from picobot.tasks import TaskStore
 
@@ -391,3 +392,42 @@ def test_browser_learning_requires_a_session_owned_by_the_browser(tmp_path: Path
     channel._require_browser_session(CLIENT_A, SESSION_A)
     with pytest.raises(ValueError, match="Session was not found"):
         channel._require_browser_session(CLIENT_B, SESSION_A)
+
+
+def test_browser_feedback_is_bound_to_the_owned_session_run(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_B, SESSION_B)))
+
+    runs = RunStore(workspace)
+    own_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        capability_profile="personal-work",
+    )
+    other_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_B),
+        capability_profile="personal-work",
+    )
+    feedback = channel._record_browser_feedback(
+        CLIENT_A,
+        {
+            "session_id": SESSION_A,
+            "run_id": own_run.id,
+            "kind": "correction",
+            "note": "Lead with the decision.",
+        },
+    )
+    assert feedback.run_id == own_run.id
+    assert channel._list_browser_feedback(CLIENT_A, SESSION_A)[0]["kind"] == "correction"
+
+    with pytest.raises(ValueError, match="does not belong to this session"):
+        channel._record_browser_feedback(
+            CLIENT_A,
+            {"session_id": SESSION_A, "run_id": other_run.id, "kind": "useful"},
+        )
