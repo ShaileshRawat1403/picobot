@@ -407,6 +407,124 @@
     button[disabled], input[disabled], select[disabled], textarea[disabled] { cursor:not-allowed; opacity:.58; }
     .run-detail-head .title-action { color:#756d63; }
     .run-detail-head .title-action:hover { color:#365e58; }
+    /* The atelier: a focused AI workspace with a dark navigation spine and a luminous work canvas. */
+    :root { --ink:#171923; --muted:#707486; --line:#e5e5ec; --paper:#f6f6f4; --panel:#ffffff; --pico:#6d5ce7; --pico-dark:#5444c8; --pico-pale:#eeecff; --good:#35876e; --bad:#c45d68; --rail:274px; --night:#14151c; --night-soft:#1b1d27; --night-line:#292c3a; }
+    body { min-width:320px; background:radial-gradient(circle at 80% -10%,#e9e5ff 0,transparent 29%),radial-gradient(circle at 43% 82%,#e2f3ed 0,transparent 26%),var(--paper); color:var(--ink); font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.32; background-image:linear-gradient(#ffffff55 1px,transparent 1px),linear-gradient(90deg,#ffffff42 1px,transparent 1px); background-size:32px 32px; mask-image:linear-gradient(to bottom,black,transparent 70%); }
+    .rail { z-index:4; width:var(--rail); padding:19px 13px 15px; gap:18px; color:#b8bac8; background:linear-gradient(165deg,#171820 0%,#111218 72%); border-right:1px solid var(--night-line); box-shadow:20px 0 45px #0c0d1217; }
+    .rail::before { content:""; position:absolute; inset:0 0 auto; height:280px; pointer-events:none; background:radial-gradient(circle at 23% 0%,#7b6bf333,transparent 49%); }
+    .rail > * { position:relative; }
+    .brand { padding:3px 9px 8px; gap:10px; color:#f5f4f9; font-family:Iowan Old Style,Georgia,serif; font-size:22px; font-weight:620; letter-spacing:-.05em; }
+    .mark { width:29px; height:29px; border:1px solid #a399ff55; border-radius:9px; background:linear-gradient(145deg,#9c90ff,#6655e8 62%,#4b3ab7); box-shadow:0 8px 22px #7664f34d, inset 0 1px #ffffff55; color:white; font-family:Inter,ui-sans-serif,sans-serif; font-size:13px; }
+    .new-session { min-height:41px; justify-content:center; border:1px solid #9a8eff66; border-radius:11px; background:linear-gradient(135deg,#8474f3,#6654dd); box-shadow:0 11px 24px #05050c4d,inset 0 1px #ffffff44; color:#fff; font-size:13px; font-weight:690; transition:transform .18s ease,box-shadow .18s ease,background .18s ease; }
+    .new-session:hover { transform:translateY(-1px); background:linear-gradient(135deg,#9284fb,#6f5de9); box-shadow:0 14px 28px #05050c63,inset 0 1px #ffffff55; color:#fff; }
+    .nav, .sessions { gap:3px; }
+    .nav { padding-top:2px; }
+    .nav-button, .session-button { position:relative; min-height:35px; border-radius:8px; color:#aeb1c0; font-size:12.5px; transition:background .16s ease,color .16s ease,transform .16s ease; }
+    .nav-button { padding:8px 10px; font-weight:570; }
+    .nav-button:hover { color:#f5f5fa; background:#ffffff0c; transform:translateX(2px); }
+    .nav-button.active { color:#fff; background:linear-gradient(90deg,#7463e839,#7463e812); }
+    .nav-button.active::before { content:""; position:absolute; left:-13px; top:8px; bottom:8px; width:3px; border-radius:0 3px 3px 0; background:#9a8dff; box-shadow:0 0 12px #927fff; }
+    .nav-icon { opacity:.9; }
+    .section-label { padding:9px 9px 5px; color:#737789; font-size:9px; letter-spacing:.18em; }
+    .session-search { border-color:#303442; border-radius:8px; padding:8px 9px; background:#ffffff08; color:#edeef4; font-size:11px; }
+    .session-search::placeholder { color:#74798b; }
+    .session-search:focus { border-color:#8f83f5; box-shadow:0 0 0 3px #7c6bf222; }
+    .session-archive-toggle { color:#848898; }
+    .session-button { padding:8px 9px; color:#b9bdca; }
+    .session-button:hover, .session-button.active { color:#f8f8fb; background:#ffffff0c; }
+    .session-button.active { box-shadow:inset 2px 0 #8072ed; }
+    .session-title { font-weight:590; }
+    .session-meta, .rail-footer { color:#777c8d; }
+    .session-work { color:#a69cff; }
+    .session-run.active { color:#7ac7aa; }
+    .rail-footer { padding:13px 9px 1px; border-top-color:#2a2d39; font-size:11px; }
+    .runtime { color:#aeb3c1; }
+    .dot { width:7px; height:7px; background:#a75562; }
+    .dot.ready { background:#66be9a; box-shadow:0 0 0 4px #66be9a1a,0 0 12px #66be9a55; }
+    main { position:relative; margin-left:var(--rail); width:calc(100% - var(--rail)); background:transparent; }
+    .topbar { position:sticky; top:0; z-index:3; height:70px; padding:0 36px; border-bottom:1px solid #e6e5ebaa; background:#f8f8f5d9; backdrop-filter:blur(18px) saturate(1.1); }
+    .eyebrow { color:#8b8498; font-size:9px; font-weight:760; letter-spacing:.18em; }
+    h1 { color:#20212b; font-family:Iowan Old Style,Georgia,serif; font-size:21px; font-weight:620; letter-spacing:-.04em; }
+    .title-line { gap:10px; }
+    .title-action { color:#777586; font-size:11px; }
+    .title-action:hover { color:#5a49ce; text-decoration:none; }
+    .title-action.primary { border-color:#6d5ce7; border-radius:7px; background:#6d5ce7; box-shadow:0 4px 12px #6d5ce733; }
+    .connection { gap:7px; padding:7px 10px; border:1px solid #e6e4ef; border-radius:999px; background:#ffffffa8; color:#727585; font-size:11px; box-shadow:0 2px 8px #28283a08; }
+    .cockpit-wrapper { padding:22px 34px 0; }
+    .cockpit-bar { overflow:hidden; width:min(980px,100%); border:1px solid #292c3a; border-radius:18px; background:linear-gradient(118deg,#1b1c26,#171821 48%,#202038); box-shadow:0 20px 46px #26223720,inset 0 1px #ffffff12; }
+    .cockpit-bar::before { content:"Session pulse"; display:block; padding:11px 17px 8px; border-bottom:1px solid #ffffff12; color:#8f91a5; font-size:9px; font-weight:750; letter-spacing:.17em; text-transform:uppercase; }
+    .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; }
+    button.cockpit-action { min-height:60px; margin:0; padding:12px 14px; border-radius:0; border-right:1px solid #ffffff0d; border-bottom:1px solid #ffffff0d; color:inherit; transition:background .16s ease; }
+    button.cockpit-action:hover { background:#ffffff0d; color:#fff; }
+    .cockpit-label { color:#84889d; font-size:9px; letter-spacing:.13em; }
+    .cockpit-value { margin-top:2px; color:#f2f1f5; font-size:12px; font-weight:610; }
+    .cockpit-value.cockpit-active { color:#9a8eff; }
+    .cockpit-value.cockpit-waiting { color:#f3ba74; }
+    .cockpit-value.cockpit-alert, .cockpit-value.cockpit-blocked { color:#f28a96; }
+    .cockpit-context-only { color:#c2bdff; }
+    .cockpit-badge { border-radius:999px; }
+    .transcript { width:min(930px,100%); padding:45px 34px 28px; gap:25px; }
+    .welcome { position:relative; max-width:720px; padding:25px 27px 25px 29px; border:1px solid #e3dffe; border-radius:18px; background:linear-gradient(135deg,#fff 0%,#f6f3ff 100%); box-shadow:0 15px 35px #6554e70b; overflow:hidden; }
+    .welcome::after { content:"✦"; position:absolute; right:25px; top:18px; color:#a296eb; font-size:24px; }
+    .welcome h2 { max-width:520px; color:#292736; font-family:Iowan Old Style,Georgia,serif; font-size:28px; font-weight:620; letter-spacing:-.052em; }
+    .welcome p { max-width:520px; color:#686a7b; line-height:1.6; }
+    .welcome-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:18px; }
+    .welcome-action { border:1px solid #ddd9f7; border-radius:999px; padding:6px 10px; background:#fff; color:#6256b2; font-size:11px; font-weight:620; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+    .welcome-action:hover { border-color:#bcb3f7; background:#f1efff; transform:translateY(-1px); }
+    .message { max-width:86%; gap:12px; animation:message-in .28s ease both; }
+    @keyframes message-in { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
+    .avatar { width:29px; height:29px; border:1px solid #9b90f044; border-radius:10px; background:linear-gradient(145deg,#8576f2,#5c4bd2); box-shadow:0 5px 12px #6554e733; color:#fff; }
+    .message.user .avatar { border-color:#d9d9e2; background:#ececf1; color:#575969; box-shadow:none; }
+    .bubble { padding:2px 2px 2px 0; border:0; border-radius:0; background:transparent; color:#252632; font-size:14px; line-height:1.64; }
+    .bubble h4 { margin:6px 0 8px; font-size:15px; }
+    .bubble p, .bubble div { margin-bottom:9px; }
+    .bubble ul, .bubble ol { margin-bottom:10px; padding-left:22px; }
+    .bubble code { border-color:#dedbea; border-radius:6px; background:#f0eff7; color:#4d418d; }
+    .bubble pre { border:1px solid #2c2f40; border-radius:12px; padding:13px 14px; background:#1e202c; box-shadow:0 10px 22px #1d1e2c21; }
+    .bubble a { color:#5a49ce; font-weight:570; }
+    .message.user .bubble { padding:12px 15px; border:1px solid #dedaf9; border-radius:16px 5px 16px 16px; background:linear-gradient(135deg,#f2efff,#ebe9ff); box-shadow:0 8px 18px #6654e70d; color:#302c4c; }
+    .message-time { color:#9898a5; }
+    .message-feedback button { border-color:#e3e1eb; border-radius:999px; padding:4px 8px; background:#fff; color:#777586; transition:.16s; }
+    .message-feedback button:hover, .message-feedback button.selected { border-color:#b9b0fa; background:#f1efff; color:#5949c7; }
+    .composer-area { position:sticky; bottom:0; z-index:2; padding:18px 34px 24px; background:linear-gradient(0deg,#f6f6f4 76%,#f6f6f400); }
+    .composer { width:min(930px,100%); min-height:64px; padding:8px 8px 8px 17px; border:1px solid #dbd9e6; border-radius:18px; background:#fff; box-shadow:0 15px 36px #2a293716,0 2px 6px #2a29370a; transition:border .16s,box-shadow .16s,transform .16s; }
+    .composer:focus-within { border-color:#9c90f1; box-shadow:0 0 0 4px #7768ea16,0 18px 42px #2a29371b; transform:translateY(-1px); }
+    textarea { color:#242530; font-size:14px; }
+    textarea::placeholder { color:#9a9aa6; }
+    .send { width:43px; height:43px; border-radius:13px; background:linear-gradient(145deg,#8172ef,#6250da); box-shadow:0 8px 18px #6554e73d; transition:transform .16s ease,box-shadow .16s ease; }
+    .send:not(:disabled):hover { transform:translateY(-1px); box-shadow:0 11px 22px #6554e755; }
+    .composer-hint { display:flex; justify-content:space-between; width:min(930px,100%); margin-top:8px; color:#92929e; font-size:10.5px; }
+    .composer-hint::after { content:"Local-first · memory stays explicit"; }
+    .run-status { width:min(930px,100%); margin-bottom:9px; padding:7px 10px; border:1px solid #e7e4f6; border-radius:9px; background:#fbfaff; color:#747381; }
+    .run-status.active { border-color:#d1caf9; background:#f4f1ff; }
+    .run-detail-panel { width:min(930px,100%); border-radius:14px; border-color:#e4e2ed; box-shadow:0 12px 27px #2726330e; }
+    .workspace-view { padding:46px 38px; }
+    .workspace { width:min(980px,100%); }
+    .workspace-head { margin-bottom:27px; }
+    .workspace-head h2 { color:#292838; font-family:Iowan Old Style,Georgia,serif; font-size:36px; font-weight:620; letter-spacing:-.055em; }
+    .workspace-head p { max-width:650px; color:#717383; font-size:14px; line-height:1.6; }
+    .card { border-color:#e6e5eb; border-radius:16px; background:#ffffffd9; box-shadow:0 10px 28px #27263308; }
+    .action { border-radius:9px; background:linear-gradient(135deg,#7565e9,#5e4cd7); box-shadow:0 6px 15px #6554e72b; font-weight:680; transition:transform .16s ease,box-shadow .16s ease; }
+    .action:hover { transform:translateY(-1px); box-shadow:0 9px 19px #6554e73d; }
+    .action.secondary { border:1px solid #dedaf9; background:#f3f1ff; color:#5949c7; box-shadow:none; }
+    .memory-card, .skill-card, .artifact-card, .mission-card, .operation-card, .provider-card, .learning-card, .skill-proposal-card { border-color:#e7e6ed; border-radius:12px; background:#fff; box-shadow:0 2px 7px #24232d05; transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease; }
+    .memory-card:hover, .skill-card:hover, .artifact-card:hover, .mission-card:hover, .mission-card.active, .skill-proposal-card:hover, .skill-proposal-card.active, .search-result:hover { border-color:#c7c0fa; background:#fcfbff; box-shadow:0 9px 20px #6454e712; transform:translateY(-1px); }
+    .memory-action { border-color:#e0dfe7; border-radius:8px; background:#fff; color:#5d5c69; }
+    .memory-action:hover { border-color:#bfb6f7; background:#f4f2ff; color:#5949c7; }
+    .memory-action.reject, .memory-action.forget { background:#fff5f5; color:#ad5864; }
+    .artifact-preview { border-color:#e4e2ed; border-radius:13px; background:#20212c; color:#e9e8f3; box-shadow:0 10px 22px #25242d13; }
+    .empty { border-color:#dedbea; border-radius:12px; background:#fbfbfd; }
+    .policy-panel, .stance-panel { width:min(930px,100%); }
+    .stance-option { border-color:#e3e1eb; border-radius:11px; background:#fff; }
+    .stance-option:hover, .stance-option.active { border-color:#bcb3f7; background:#f5f2ff; }
+    .utility-bar { min-height:42px; padding:5px 24px; border-top-color:#e4e3e9; background:#f8f8f6cc; backdrop-filter:blur(14px); }
+    .utility-action { color:#757583; border-radius:7px; }
+    .utility-action:hover, button.cockpit-action:hover { background:#eeebff; color:#5645c9; }
+    .toast { border-radius:12px; background:#242431; box-shadow:0 18px 40px #1c1c2929; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color:#8171ef; }
+    @media (max-width:900px) { :root { --rail:226px; } .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .cockpit-grid .cockpit-action { min-height:57px; } .topbar { padding:0 24px; } }
+    @media (max-width:760px) { .rail { position:static; width:100%; height:auto; padding:10px 12px; flex-direction:row; overflow:visible; background:#171820; } .rail::before,.sessions,.rail-footer { display:none; } .brand { padding:0; font-size:19px; } .new-session { width:38px; min-height:38px; padding:0; font-size:0; } .new-session::before { content:"+"; font-size:20px; } .nav { display:flex; min-width:0; overflow:auto; padding:0; } .nav-button { width:38px; min-width:38px; padding:9px 11px; } .nav-button.active::before { left:6px; right:6px; top:auto; bottom:0; width:auto; height:2px; } .nav-button > span:last-child { display:none; } main { margin-left:0; width:100%; } .topbar { height:62px; padding:0 16px; } .connection { padding:6px 8px; } .connection #connection-text { display:none; } .cockpit-wrapper { padding:13px 16px 0; } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .cockpit-bar::before { padding-left:13px; } button.cockpit-action { min-height:56px; padding:10px 12px; } .transcript { padding:28px 17px 20px; } .welcome { padding:21px 20px; } .welcome h2 { font-size:25px; } .message { max-width:96%; } .composer-area { padding:14px 16px 18px; } .composer-hint::after { display:none; } .workspace-view { padding:31px 16px; } .workspace-head h2 { font-size:31px; } .card { border-radius:13px; } .utility-bar { padding:5px 10px; } }
   </style>
 </head>
 <body>
@@ -568,7 +686,7 @@
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); reconnectTimer = setTimeout(connect, 1000); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); loadPolicy(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content, null, data.metadata?.run_id || null); loadSessions(); if (currentView === 'context') loadSessionContext(); if (currentView === 'learning') loadLearning(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); pollRuns(); } }
     function setSession(nextSession) { sessionId = nextSession; latestAssistantRunId = null; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); loadStance(); loadPolicy(); }
-    function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Make a little room for the work.</h2><p>Bring a question, keep the useful trace, and decide what should become memory.</p></div>`; }
+    function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Make a little room for the work.</h2><p>Bring a question, keep the useful trace, and decide what should become memory.</p><div class="welcome-actions"><button class="welcome-action" type="button" data-prompt="Help me think through a decision. First, ask what matters most.">Think it through</button><button class="welcome-action" type="button" data-prompt="Turn this into a practical plan with the next smallest step: ">Make a plan</button><button class="welcome-action" type="button" data-prompt="Help me turn this into a concise durable note: ">Capture a note</button></div></div>`; $('transcript').querySelectorAll('[data-prompt]').forEach((button) => button.onclick = () => { const input = $('message-input'); input.value = button.dataset.prompt || ''; input.dispatchEvent(new Event('input')); input.focus(); }); }
     function formatInlineMarkdown(value) { return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>'); }
     function renderMessageContent(value) { const lines = escapeHtml(value || '').split('\n'), output = []; let listType = null, codeLines = null; const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = null; } }; const closeCode = () => { if (codeLines !== null) { output.push(`<pre><code>${codeLines.join('\n')}</code></pre>`); codeLines = null; } }; lines.forEach((line) => { if (line.trim().startsWith('```')) { if (codeLines === null) { closeList(); codeLines = []; } else closeCode(); return; } if (codeLines !== null) { codeLines.push(line); return; } const bullet = line.match(/^\s*[-*]\s+(.+)$/), ordered = line.match(/^\s*\d+[.)]\s+(.+)$/), heading = line.match(/^\s*#{1,3}\s+(.+)$/); if (bullet) { if (listType !== 'ul') { closeList(); output.push('<ul>'); listType = 'ul'; } output.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`); } else if (ordered) { if (listType !== 'ol') { closeList(); output.push('<ol>'); listType = 'ol'; } output.push(`<li>${formatInlineMarkdown(ordered[1])}</li>`); } else { closeList(); if (!line.trim()) output.push('<br>'); else if (heading) output.push(`<h4>${formatInlineMarkdown(heading[1])}</h4>`); else output.push(`<div>${formatInlineMarkdown(line)}</div>`); } }); closeList(); closeCode(); return output.join(''); }
     function appendMessage(role, content, timestamp = null, runId = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; const feedback = role === 'assistant' && runId ? `<div class="message-feedback" data-feedback-run="${escapeHtml(runId)}"><button type="button" data-feedback-kind="useful">Useful</button><button type="button" data-feedback-kind="not_useful">Not useful</button><button type="button" data-feedback-kind="correction">Correct</button></div>` : ''; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${renderMessageContent(content)}</div><div class="message-time">${formatTime(timestamp)}</div>${feedback}</div>`; if (feedback) item.querySelectorAll('[data-feedback-kind]').forEach((button) => { button.onclick = () => recordResponseFeedback(runId, button.dataset.feedbackKind, button); }); $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
