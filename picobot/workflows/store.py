@@ -37,6 +37,7 @@ class WorkflowEdge:
     source: str
     target: str
     condition: str
+    note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -184,6 +185,7 @@ class WorkflowStore:
     _MAX_CONFIG_TEXT = 2_000
     _MAX_LIST = 100
     _SECRET_KEYS = {"token", "secret", "password", "api_key", "access_token", "refresh_token"}
+    _EDGE_CONDITIONS = {"success", "error", "approved", "rejected", "timeout", "true", "false"}
 
     def __init__(self, workspace: Path):
         root = workspace / "workflows"
@@ -407,7 +409,10 @@ class WorkflowStore:
             if source == target:
                 raise ValueError("Workflow edges cannot point to the same node")
             condition = cls._text(raw.get("condition") or "success", "edge condition", 80, required=True)
-            edge_records.append(WorkflowEdge(edge_id, source, target, condition))
+            if condition not in cls._EDGE_CONDITIONS:
+                raise ValueError(f"Unsupported workflow edge condition: {condition}")
+            note = cls._text(raw.get("note"), "edge note", 240, required=False)
+            edge_records.append(WorkflowEdge(edge_id, source, target, condition, note))
             adjacency[source].append(target)
 
         # The first builder slice is a DAG.  Bounded loops can be added later

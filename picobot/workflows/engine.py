@@ -56,7 +56,21 @@ class WorkflowEngine:
         if not edges:
             return None
         matching = [edge for edge in edges if edge.condition == branch]
-        return (matching or edges)[0].target
+        return matching[0].target if matching else None
+
+    @staticmethod
+    def _node_branch(node: Any, *, resume: bool) -> str:
+        if node.kind == "condition":
+            branch = node.config.get("branch", "success")
+            return str(branch) if isinstance(branch, str) and branch.strip() else "success"
+        if resume and node.kind == "approval":
+            return "approved"
+        harness = node.config.get("harness") if isinstance(node.config, dict) else None
+        if isinstance(harness, dict):
+            branch = harness.get("resume_condition")
+            if isinstance(branch, str) and branch.strip():
+                return branch.strip()
+        return "success"
 
     def step(
         self, owner_id: str, run_id: str, *, resume: bool = False, result_ref: str | None = None
@@ -79,7 +93,7 @@ class WorkflowEngine:
             run = self.store.transition_run(owner_id, run_id, "failed", failure_category="missing_cursor")
             return StepResult(run, None, "failed", "Workflow cursor did not reference a node.")
 
-        branch = str(node.config.get("branch", "success")) if node.kind == "condition" else "success"
+        branch = self._node_branch(node, resume=resume)
         prior = self.store.latest_node_run(owner_id, run_id, node.id)
         if prior and prior.state == "succeeded":
             next_id = self._next_node(workflow, node.id, branch=branch)

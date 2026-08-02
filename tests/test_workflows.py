@@ -71,6 +71,15 @@ def test_graph_validation_is_strict(tmp_path: Path):
             nodes=[{**nodes[0], "config": {"api_key": "never"}}, *nodes[1:]],
             edges=edges,
         )
+    with pytest.raises(ValueError, match="edge condition"):
+        store.create_draft(
+            owner_id=OWNER,
+            session_key=SESSION,
+            title="Unknown transition",
+            description=None,
+            nodes=nodes,
+            edges=[{**edges[0], "condition": "arbitrary_code"}, edges[1]],
+        )
 
 
 def test_lifecycle_version_and_owner_session_isolation(tmp_path: Path):
@@ -95,6 +104,33 @@ def test_lifecycle_version_and_owner_session_isolation(tmp_path: Path):
         store.start_run(OWNER, workflow.id, "web:web:test-owner:other")
 
 
+def test_transition_note_and_node_harness_round_trip(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, edges = graph()
+    nodes[1]["config"] = {
+        "harness": {
+            "profile_id": "research",
+            "toolset": "research",
+            "approval_required": True,
+            "retry_limit": 1,
+            "timeout_seconds": 180,
+        }
+    }
+    edges[0]["condition"] = "approved"
+    edges[0]["note"] = "Only continue after the owner approves the findings."
+    workflow = store.create_draft(
+        owner_id=OWNER,
+        session_key=SESSION,
+        title="Governed transition",
+        description=None,
+        nodes=nodes,
+        edges=edges,
+    )
+    assert workflow.edges[0].condition == "approved"
+    assert workflow.edges[0].note == "Only continue after the owner approves the findings."
+    assert workflow.nodes[1].config["harness"]["profile_id"] == "research"
+
+
 def test_engine_pauses_for_approval_then_completes(tmp_path: Path):
     store = make_store(tmp_path)
     nodes, edges = graph()
@@ -112,6 +148,24 @@ def test_engine_pauses_for_approval_then_completes(tmp_path: Path):
     detail = store.detail(OWNER, run.id)
     assert detail["run"]["state"] == "completed"
     assert any(event["event_type"] == "run_waiting_for_approval" for event in detail["events"])
+
+
+def test_engine_uses_approval_transition_condition(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, _ = graph()
+    edges = [
+        {"id": "e1", "source": "start", "target": "approval", "condition": "success"},
+        {"id": "e2", "source": "approval", "target": "finish", "condition": "approved"},
+    ]
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title="Approval path", description=None, nodes=nodes, edges=edges
+    )
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    first = WorkflowEngine(store).run_until_wait(OWNER, run.id)[-1]
+    assert first.run.state == "waiting_for_approval"
+    resumed = WorkflowEngine(store).run_until_wait(OWNER, run.id, resume=True)[-1]
+    assert resumed.run.state == "completed"
 
 
 def test_external_agent_node_waits_without_provider_execution(tmp_path: Path):
