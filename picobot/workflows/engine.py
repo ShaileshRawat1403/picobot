@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from picobot.artifacts import ArtifactStore
+
 from .store import WorkflowDefinition, WorkflowRun, WorkflowStore
 
 
@@ -44,8 +46,9 @@ class WorkflowEngine:
         "wait": "Wait nodes require an explicit resume signal.",
     }
 
-    def __init__(self, store: WorkflowStore):
+    def __init__(self, store: WorkflowStore, artifact_store: ArtifactStore | None = None):
         self.store = store
+        self.artifact_store = artifact_store
 
     @staticmethod
     def _next_node(workflow: WorkflowDefinition, node_id: str, *, branch: str = "success") -> str | None:
@@ -55,7 +58,9 @@ class WorkflowEngine:
         matching = [edge for edge in edges if edge.condition == branch]
         return (matching or edges)[0].target
 
-    def step(self, owner_id: str, run_id: str, *, resume: bool = False) -> StepResult:
+    def step(
+        self, owner_id: str, run_id: str, *, resume: bool = False, result_ref: str | None = None
+    ) -> StepResult:
         run = self.store.get_run(owner_id, run_id)
         workflow = self.store.get(owner_id, run.workflow_id)
         if run.state == "queued":
@@ -87,12 +92,34 @@ class WorkflowEngine:
             run = self.store.transition_run(owner_id, run_id, waiting_state)
             return StepResult(run, node.id, waiting_state, self._EXTERNAL_NODES[node.kind])
 
+        result_ref = result_ref or (node.config.get("result_ref") if isinstance(node.config.get("result_ref"), str) else None)
+        if node.kind == "artifact":
+            if self.artifact_store is None:
+                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", result_ref="Artifact adapter is unavailable.")
+                run = self.store.transition_run(owner_id, run_id, "waiting_for_input")
+                return StepResult(run, node.id, "waiting_for_input", "Artifact adapter is unavailable.")
+            content = node.config.get("content")
+            if not isinstance(content, str) or not content.strip():
+                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", result_ref="Artifact content is required.")
+                run = self.store.transition_run(owner_id, run_id, "waiting_for_input")
+                return StepResult(run, node.id, "waiting_for_input", "Artifact content is required in the node inspector.")
+            artifact = self.artifact_store.create(
+                owner_id=owner_id,
+                session_key=run.session_key,
+                title=str(node.config.get("title") or node.title),
+                content=content,
+                kind=str(node.config.get("kind") or "note"),
+                content_type=str(node.config.get("content_type") or "text/markdown"),
+                source_run_id=run.id,
+            )
+            result_ref = artifact.id
+
         self.store.record_node_run(
             owner_id,
             run_id,
             node.id,
             "succeeded",
-            result_ref=node.config.get("result_ref") if isinstance(node.config.get("result_ref"), str) else None,
+            result_ref=result_ref,
         )
         branch = str(node.config.get("branch", "success")) if node.kind == "condition" else "success"
         next_id = self._next_node(workflow, node.id, branch=branch)
@@ -104,14 +131,21 @@ class WorkflowEngine:
         return StepResult(run, node.id, "succeeded", f"Advanced to {next_id}.")
 
     def run_until_wait(
-        self, owner_id: str, run_id: str, *, max_steps: int = 40, resume: bool = False
+        self,
+        owner_id: str,
+        run_id: str,
+        *,
+        max_steps: int = 40,
+        resume: bool = False,
+        result_ref: str | None = None,
     ) -> list[StepResult]:
         if isinstance(max_steps, bool) or not 1 <= max_steps <= 40:
             raise WorkflowEngineError("Workflow step limit must be between 1 and 40")
         results: list[StepResult] = []
         for _ in range(max_steps):
-            result = self.step(owner_id, run_id, resume=resume)
+            result = self.step(owner_id, run_id, resume=resume, result_ref=result_ref)
             resume = False
+            result_ref = None
             results.append(result)
             if result.run.state in {"waiting_for_approval", "waiting_for_input", "completed", "failed", "cancelled"}:
                 break

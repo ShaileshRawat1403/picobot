@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from picobot.workflows import WorkflowEngine, WorkflowStore
+from picobot.artifacts import ArtifactStore
 
 
 OWNER = "web:browser:test-owner"
@@ -124,3 +125,24 @@ def test_external_agent_node_waits_without_provider_execution(tmp_path: Path):
     result = WorkflowEngine(store).run_until_wait(OWNER, run.id)[-1]
     assert result.run.state == "waiting_for_input"
     assert "task adapter" in result.summary
+
+
+def test_artifact_node_creates_durable_output(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes = [
+        {"id": "start", "kind": "manual_trigger", "title": "Start"},
+        {"id": "artifact", "kind": "artifact", "title": "Capture", "config": {"content": "A durable note", "kind": "note"}},
+        {"id": "finish", "kind": "end", "title": "Finish"},
+    ]
+    edges = [
+        {"id": "e1", "source": "start", "target": "artifact"},
+        {"id": "e2", "source": "artifact", "target": "finish"},
+    ]
+    workflow = store.create_draft(owner_id=OWNER, session_key=SESSION, title="Capture", description=None, nodes=nodes, edges=edges)
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    results = WorkflowEngine(store, ArtifactStore(tmp_path)).run_until_wait(OWNER, run.id)
+    assert results[-1].run.state == "completed"
+    artifacts = ArtifactStore(tmp_path).list(OWNER, session_key=SESSION)
+    assert len(artifacts) == 1
+    assert ArtifactStore(tmp_path).read_content(OWNER, artifacts[0].id) == "A durable note"

@@ -456,7 +456,13 @@ class WebChannel(BaseChannel):
                         results = self._workflow_engine().run_until_wait(owner_id, run_id)
                         self._write_response(writer, 200, json.dumps({"steps": [item.to_dict() for item in results]}, ensure_ascii=False).encode())
                     elif method == "POST" and operation == "resume":
-                        result = self._workflow_engine().run_until_wait(owner_id, run_id, resume=True)
+                        payload = self._json_body(body)
+                        result = self._workflow_engine().run_until_wait(
+                            owner_id,
+                            run_id,
+                            resume=True,
+                            result_ref=payload.get("result_ref"),
+                        )
                         self._write_response(writer, 200, json.dumps({"steps": [item.to_dict() for item in result]}, ensure_ascii=False).encode())
                     elif method == "POST" and operation == "cancel":
                         updated = self._workflow_store().transition_run(owner_id, run_id, "cancelled")
@@ -1888,8 +1894,9 @@ class WebChannel(BaseChannel):
 
     def _workflow_engine(self):
         from picobot.workflows import WorkflowEngine
+        from picobot.artifacts import ArtifactStore
 
-        return WorkflowEngine(self._workflow_store())
+        return WorkflowEngine(self._workflow_store(), ArtifactStore(self._runtime_config().workspace_path))
 
     def _sync_action_task_outcome(self, owner_id: str, session_key: str, action: Any) -> None:
         if not getattr(action, "initiating_run_id", None):
