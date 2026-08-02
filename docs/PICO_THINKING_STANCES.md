@@ -22,3 +22,8 @@ profile. Unknown or corrupted values fail closed to `explore`.
 The chat cockpit exposes the current stance as a compact session-intent
 control. The four choices are intentionally phrased as work modes, not claims
 about Pico's identity or autonomy.
+
+Every stance also shares a response discipline: lead with the useful answer,
+make only material assumptions visible, ask one focused question when blocked,
+and suggest one concrete next step when it helps. This is guidance rather than
+a rigid response template, so ordinary conversation remains natural.

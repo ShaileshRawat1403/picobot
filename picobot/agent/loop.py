@@ -1723,6 +1723,10 @@ class AgentLoop:
         stance_prompt = (
             "\n\n# Working stance for this session\n\n"
             f"Current stance: {stance.label}. {stance.prompt}\n"
+            "Response discipline: lead with the useful answer. State assumptions only when "
+            "they materially affect the outcome; if the request is blocked by missing "
+            "information, ask one focused question. When work remains, offer one concrete "
+            "next step. Keep natural prose and do not mechanically add headings to every reply.\n"
             "This stance shapes communication only; preserve the active capability profile "
             "and approval boundaries."
         )

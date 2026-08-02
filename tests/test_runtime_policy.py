@@ -471,6 +471,9 @@ class TestLoopAttachesPolicy:
         decide_prompt = agent._context_snapshot(session, agent._effective_policy(session))
         assert "Current stance: Decide." in decide_prompt
         assert "criteria, tradeoffs" in decide_prompt
+        assert "lead with the useful answer" in decide_prompt
+        assert "ask one focused question" in decide_prompt
+        assert "do not mechanically add headings" in decide_prompt
 
         session.metadata["pico_session_stance"] = "not-a-stance"
         safe_prompt = agent._context_snapshot(session, agent._effective_policy(session))
