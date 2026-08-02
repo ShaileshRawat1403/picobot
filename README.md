@@ -144,6 +144,8 @@ revision remains inside the configured workspace and can be downloaded with a
 format-aware filename or exported as a safe standalone HTML share view. See
 [`docs/PICO_ARTIFACTS.md`](docs/PICO_ARTIFACTS.md) for the validation and
 sharing contract, including portable ZIP bundles with an integrity manifest.
+For a practical release check using real weekly work, see
+[`docs/PICO_PERSONAL_WORKFLOW_TESTS.md`](docs/PICO_PERSONAL_WORKFLOW_TESTS.md).
 
 ### Credentials
 
