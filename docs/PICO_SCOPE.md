@@ -101,29 +101,35 @@ them.
 
 ## Provider decision
 
-Pico currently contains more provider specifications than the product needs.
-The supported set is intentionally **not decided by this document**. The
-owner will select the small set of provider families to support before the
-provider registry is simplified.
+Pico's official provider surface is intentionally small and matches the
+owner's real working setup:
 
-Candidate shape for discussion:
+### API connections
 
-1. one primary hosted API provider;
-2. one secondary hosted API provider;
-3. one OpenAI-compatible or local endpoint;
-4. optional additional provider only if it supports a proven personal
-   workflow.
+1. **OpenAI API** — primary hosted API.
+2. **Gemini API** — secondary hosted API.
+3. **Anthropic API** — supported hosted API; no Anthropic subscription OAuth.
+4. **One local/OpenAI-compatible endpoint** — Ollama is the first-class local
+   preset; a single custom OpenAI-compatible endpoint may be used instead.
 
-Provider policy remains explicit:
+The local slot is one active endpoint, not a catalogue of local runtimes.
 
-- API keys and supported provider-owned OAuth are separate connection types;
-- a consumer ChatGPT or Gemini subscription is not treated as a general model
-  API credential;
-- Pico never captures browser cookies, private login tokens, or hidden CLI
-  entitlements;
-- fallback routing is a runtime mechanic, not a reason to advertise every
-  provider;
-- an unselected provider must not be probed or shown as ready by default.
+### Subscription connections
+
+1. **OpenAI Codex OAuth** — ChatGPT/Codex subscription connection.
+2. **Gemini OAuth** — the owner's supported Gemini subscription connection.
+
+Subscription connections are distinct from API keys. They must use a
+provider-owned, explicit OAuth flow with local token storage, expiry/refresh
+handling, disconnect, and readiness diagnostics. Pico must never capture
+browser cookies, reuse private web endpoints, or present a subscription as a
+general API credential. Anthropic subscription OAuth is outside Pico's
+supported boundary.
+
+Fallback routing is a runtime mechanic, not a reason to advertise every
+provider. An unselected provider must not be probed or shown as ready by
+default. The existing registry entries outside this set are compatibility
+inventory until they are quarantined or removed in a separate review.
 
 ## Adapter admission checklist
 
@@ -155,13 +161,16 @@ should implement a narrow contract behind the existing capability registry.
 
 Before more feature coding:
 
-1. Select the provider families Pico will officially support.
-2. Select whether one messaging channel is needed in addition to Web/CLI.
+1. Build the API connection slice for OpenAI, Gemini, Anthropic, and the one
+   local/OpenAI-compatible endpoint.
+2. Build the subscription connection slice for OpenAI Codex OAuth and Gemini
+   OAuth, including secure lifecycle and readiness behavior.
 3. Mark the current channel/provider inventory as supported, optional, or
-   deferred in the registry.
-4. Finish the learning proof workflow: correction → candidate → approval →
+   deferred in the runtime registry.
+4. Select whether one messaging channel is needed in addition to Web/CLI.
+5. Finish the learning proof workflow: correction → candidate → approval →
    later usage/effectiveness evidence.
-5. Perform a maintainability pass without changing the product boundary.
+6. Perform a maintainability pass without changing the product boundary.
 
 This contract is the gate for future Pico slices. A feature can be broad in
 mechanics while remaining narrow in integrations.
