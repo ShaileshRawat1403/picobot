@@ -29,6 +29,7 @@ def test_artifacts_are_owned_versioned_and_kept_inside_workspace(tmp_path: Path)
 
     revised = store.revise("web:browser:owner-a", artifact.id, "# Revised\n\nNow with history.")
     assert revised.revision == 2
+    assert revised.status == "draft"
     assert revised.verification_status == "stale"
     assert revised.source_run_id == artifact.source_run_id
     assert revised.source_mission_id == artifact.source_mission_id
@@ -45,6 +46,31 @@ def test_artifacts_are_owned_versioned_and_kept_inside_workspace(tmp_path: Path)
 
     with pytest.raises(KeyError):
         store.get("web:browser:owner-b", artifact.id)
+
+
+def test_artifact_lifecycle_is_explicit_and_separate_from_verification(tmp_path: Path):
+    store = ArtifactStore(tmp_path)
+    artifact = store.create(
+        owner_id="owner",
+        session_key="session",
+        title="Shareable brief",
+        content="# Brief",
+        kind="brief",
+    )
+
+    final = store.set_status("owner", artifact.id, "final")
+    assert final.status == "final"
+    assert final.verification_status == "unverified"
+
+    archived = store.set_status("owner", artifact.id, "archived")
+    assert archived.status == "archived"
+    with pytest.raises(ValueError, match="cannot move"):
+        store.set_status("owner", artifact.id, "final")
+    restored = store.set_status("owner", artifact.id, "draft")
+    assert restored.status == "draft"
+
+    with pytest.raises(ValueError, match="lifecycle status"):
+        store.set_status("owner", artifact.id, "published")
 
 def test_artifact_store_rejects_unsupported_types_and_oversized_titles(tmp_path: Path):
     store = ArtifactStore(tmp_path)

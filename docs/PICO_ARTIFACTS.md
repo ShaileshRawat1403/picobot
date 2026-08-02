@@ -26,7 +26,19 @@ Every artifact records:
 - unverified, verified, or stale verification state.
 
 Revising an artifact creates a new revision and marks the current artifact
-stale. Verification is an explicit owner action.
+draft and stale. Verification is an explicit owner action.
+
+## Lifecycle
+
+Lifecycle and verification are separate owner decisions:
+
+- draft — still being shaped;
+- final — ready to share as a work product;
+- archived — retained for history but no longer active.
+
+An artifact can return from final to draft for further work. An archived
+artifact must first return to draft before it can become final again.
+Verification does not automatically make an artifact final.
 
 ## Supported formats
 

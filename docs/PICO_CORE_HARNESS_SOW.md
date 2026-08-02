@@ -235,8 +235,9 @@ lexical search across those three sources with owner-scoped inspectable result
 references. Artifacts retain optional source run/mission references and support
 versioned notes, briefs, plans, reports, data, code/config text, and validated
 HTTP(S) link lists. Structured JSON, YAML, CSV, TSV, and JSONL formats are
-validated before storage. They also expose a compact verification status:
-`verified`, `stale`, or `unverified`.
+validated before storage. Artifacts have an explicit draft/final/archived
+lifecycle separate from their compact verification status: `verified`,
+`stale`, or `unverified`.
 
 Expose existing cron jobs as a small personal scheduler: create, pause, run
 now, inspect last result, and view delivery target. **Implemented now:** the

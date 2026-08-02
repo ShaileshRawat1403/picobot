@@ -275,6 +275,13 @@ class WebChannel(BaseChannel):
                         self._write_response(
                             writer, 200, json.dumps({"artifact": asdict(artifact)}).encode()
                         )
+                    elif artifact_path.endswith("/status") and method == "POST":
+                        artifact_id = artifact_path.removesuffix("/status").rstrip("/")
+                        status = self._json_body(body).get("status")
+                        artifact = store.set_status(owner_id, artifact_id, status)
+                        self._write_response(
+                            writer, 200, json.dumps({"artifact": asdict(artifact)}).encode()
+                        )
                     elif artifact_path.endswith("/revisions") and method == "POST":
                         artifact_id = artifact_path.removesuffix("/revisions").rstrip("/")
                         payload = self._json_body(body)

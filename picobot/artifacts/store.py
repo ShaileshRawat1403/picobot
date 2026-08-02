@@ -76,6 +76,12 @@ class ArtifactStore:
         "text/uri-list": "url",
     }
     _VERIFICATION_STATES = {"verified", "stale", "unverified"}
+    _STATUS_STATES = {"draft", "final", "archived"}
+    _STATUS_TRANSITIONS = {
+        "draft": {"draft", "final", "archived"},
+        "final": {"draft", "final", "archived"},
+        "archived": {"draft", "archived"},
+    }
 
     def __init__(self, workspace: Path):
         self.root = workspace / "artifacts"
@@ -427,7 +433,8 @@ class ArtifactStore:
                 connection.execute(
                     """
                     UPDATE artifacts
-                    SET revision = ?, relative_path = ?, verification_status = 'stale', updated_at = ?
+                    SET revision = ?, relative_path = ?, status = 'draft',
+                        verification_status = 'stale', updated_at = ?
                     WHERE id = ? AND owner_id = ?
                     """,
                     (next_revision, relative_path, now, artifact_id, owner_id),
@@ -458,6 +465,28 @@ class ArtifactStore:
                 WHERE id = ? AND owner_id = ?
                 """,
                 (verification_status, now, artifact_id, owner_id),
+            )
+        if updated.rowcount != 1:
+            raise KeyError("Artifact was not found for this user")
+        return self.get(owner_id, artifact_id)
+
+    def set_status(self, owner_id: str, artifact_id: str, status: str) -> Artifact:
+        """Move an artifact through its explicit sharing lifecycle."""
+        if status not in self._STATUS_STATES:
+            raise ValueError("Unsupported artifact lifecycle status")
+        artifact = self.get(owner_id, artifact_id)
+        allowed = self._STATUS_TRANSITIONS.get(artifact.status, {"draft"})
+        if status not in allowed:
+            raise ValueError(f"Artifact cannot move from {artifact.status} to {status}")
+        now = self._now()
+        with self._connect() as connection:
+            updated = connection.execute(
+                """
+                UPDATE artifacts
+                SET status = ?, updated_at = ?
+                WHERE id = ? AND owner_id = ?
+                """,
+                (status, now, artifact_id, owner_id),
             )
         if updated.rowcount != 1:
             raise KeyError("Artifact was not found for this user")
