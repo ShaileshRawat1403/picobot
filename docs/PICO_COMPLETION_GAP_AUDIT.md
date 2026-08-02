@@ -18,6 +18,9 @@ an integration catalogue.
   revision/export workflows.
 - Owner-visible learning proof: response reviews, correction candidates,
   explicit memory/skill approval, run evidence links, and memory-use counts.
+- Session cockpit and evidence spine: latest run state, approval state, mission
+  and task state, and source-run links from artifacts are visible from the
+  daily workbench.
 
 ## Missing but intentionally deferred
 
@@ -33,18 +36,15 @@ an integration catalogue.
   multi-user enterprise deployment. These require a separate security and
   tenancy project.
 
-## Highest-value UX work now
+## Remaining product-quality work
 
-1. Make the session cockpit the primary navigation surface: active profile,
-   mission/task state, approvals, and latest run should be understandable at a
-   glance.
-2. Turn run detail into a compact, reusable evidence drawer from chat, Mission
-   Detail, and task rows.
-3. Make provider setup honest and low-friction: supported API providers first,
+1. Make provider setup honest and low-friction: supported API providers first,
    subscription CLI setup clearly separated, and disconnect/status actions
    visible without exposing credentials.
-4. Reduce Operations density by separating profile selection, browser sharing,
+2. Reduce Operations density by separating profile selection, browser sharing,
    approvals, and recent activity into clear sections with state-specific copy.
+3. Improve thinking-partner response quality and context explanations without
+   expanding the integration boundary.
 
 The learning proof workflow is now a first-class surface. The remaining
 learning work is measurement of approved skill use; Pico must add that only
