@@ -89,7 +89,9 @@ canonical content inside an escaped `<pre>` block, so Markdown, HTML, and code
 remain content rather than executable markup. The exported page includes the
 artifact title, kind, format, revision, lifecycle, and verification status, but
 does not include internal run or mission identifiers. Pico does not upload
-artifacts to an external sharing service.
+artifacts to an external sharing service. A portable bundle combines the
+selected canonical revision, its HTML preview, and a share-safe manifest with
+SHA-256 integrity hashes.
 
 ## HTML export
 
@@ -99,6 +101,15 @@ filename such as `research-brief-v2.html`, and preserves the selected revision.
 It is intentionally a lightweight share view rather than a second canonical
 storage format. PDF, DOCX, XLSX, and ICS remain deferred until their rendering
 and verification contracts are separately defined.
+
+## Portable bundles
+
+Use **Export bundle** when an artifact needs to travel as one local asset. The
+ZIP contains three files: the canonical revision in its original format, the
+standalone HTML preview, and `manifest.json`. The manifest records only
+share-safe presentation metadata and per-file SHA-256 hashes; owner, session,
+run, mission, and credential data are deliberately excluded. Bundle timestamps
+and member ordering are stable so the same revision produces the same bytes.
 
 ## Deferred exports
 

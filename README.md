@@ -143,7 +143,7 @@ include Markdown, plain text, JSON, YAML, CSV, TSV, JSONL, and URI lists. Each
 revision remains inside the configured workspace and can be downloaded with a
 format-aware filename or exported as a safe standalone HTML share view. See
 [`docs/PICO_ARTIFACTS.md`](docs/PICO_ARTIFACTS.md) for the validation and
-sharing contract.
+sharing contract, including portable ZIP bundles with an integrity manifest.
 
 ### Credentials
 

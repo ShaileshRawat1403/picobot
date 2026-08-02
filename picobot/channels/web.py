@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from datetime import datetime
+import hashlib
 import html
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,7 @@ import shutil
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
+import zipfile
 
 import websockets
 from loguru import logger
@@ -282,6 +285,21 @@ class WebChannel(BaseChannel):
                             200,
                             document,
                             "text/html",
+                            f'attachment; filename="{filename}"',
+                        )
+                    elif artifact_path.endswith("/export/bundle") and method == "GET":
+                        artifact_id = artifact_path.removesuffix("/export/bundle").rstrip("/")
+                        artifact = store.get(owner_id, artifact_id)
+                        revision_value = self._single_query_value(query, "revision")
+                        revision = int(revision_value) if revision_value is not None else artifact.revision
+                        content = store.read_content(owner_id, artifact_id, revision)
+                        bundle = self._artifact_bundle_export(artifact, content, revision)
+                        filename = self._artifact_download_name(artifact, revision).rsplit(".", 1)[0] + ".zip"
+                        self._write_raw_response(
+                            writer,
+                            200,
+                            bundle,
+                            "application/zip",
                             f'attachment; filename="{filename}"',
                         )
                     elif artifact_path.endswith("/verification") and method == "POST":
@@ -1405,7 +1423,7 @@ class WebChannel(BaseChannel):
         status_text = {200: "OK", 201: "Created"}.get(status, "Error")
         headers = [
             f"HTTP/1.1 {status} {status_text}",
-            f"Content-Type: {content_type}; charset=utf-8",
+            f"Content-Type: {content_type}{'; charset=utf-8' if content_type.startswith(('text/', 'application/json')) else ''}",
             f"Content-Length: {len(response)}",
         ]
         if content_disposition:
@@ -1466,6 +1484,55 @@ class WebChannel(BaseChannel):
             f"<h1>{title}</h1><div class=\"meta\">{kind} · {content_type} · revision {revision} · {status} · {verification}</div>"
             f"<pre>{body}</pre></body></html>\n"
         )
+
+    @classmethod
+    def _artifact_bundle_export(cls, artifact, content: str, revision: int) -> bytes:
+        """Build a deterministic, share-safe bundle for one artifact revision."""
+        canonical_name = cls._artifact_download_name(artifact, revision)
+        html_name = canonical_name.rsplit(".", 1)[0] + ".html"
+        canonical_bytes = content.encode("utf-8")
+        html_bytes = cls._artifact_html_export(artifact, content, revision).encode("utf-8")
+        manifest = {
+            "schema_version": 1,
+            "title": artifact.title,
+            "kind": artifact.kind,
+            "content_type": artifact.content_type,
+            "revision": revision,
+            "status": artifact.status,
+            "verification_status": artifact.verification_status,
+            "files": [
+                {
+                    "name": canonical_name,
+                    "role": "canonical",
+                    "content_type": artifact.content_type,
+                    "bytes": len(canonical_bytes),
+                    "sha256": hashlib.sha256(canonical_bytes).hexdigest(),
+                },
+                {
+                    "name": html_name,
+                    "role": "html-preview",
+                    "content_type": "text/html",
+                    "bytes": len(html_bytes),
+                    "sha256": hashlib.sha256(html_bytes).hexdigest(),
+                },
+            ],
+        }
+        manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+            "utf-8"
+        )
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
+            for name, payload in (
+                ("manifest.json", manifest_bytes),
+                (canonical_name, canonical_bytes),
+                (html_name, html_bytes),
+            ):
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.create_system = 3
+                info.external_attr = 0o600 << 16
+                bundle.writestr(info, payload)
+        return output.getvalue()
 
     def _browser_artifact_source(
         self, client_id: str, session_id: str, source_run_id: object

@@ -239,7 +239,8 @@ validated before storage. Artifacts have an explicit draft/final/archived
 lifecycle separate from their compact verification status: `verified`,
 `stale`, or `unverified`. The workbench can also produce a safe standalone HTML
 share view for a selected artifact revision without exposing internal run or
-mission identifiers.
+mission identifiers, or package that revision with its canonical content and
+integrity manifest as a portable local bundle.
 
 Expose existing cron jobs as a small personal scheduler: create, pause, run
 now, inspect last result, and view delivery target. **Implemented now:** the

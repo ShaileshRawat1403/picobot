@@ -1,9 +1,12 @@
 """Contract tests for the local browser chat channel."""
 
 import asyncio
+import hashlib
+import io
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import zipfile
 
 import pytest
 
@@ -498,6 +501,44 @@ def test_artifact_html_export_escapes_content_and_omits_internal_provenance():
     assert "run-secret-internal" not in document
     assert "mission-secret-internal" not in document
     assert "revision 2" in document
+
+
+def test_artifact_bundle_export_is_deterministic_and_contains_safe_manifest():
+    artifact = SimpleNamespace(
+        title="Decision / pack",
+        kind="report",
+        content_type="text/markdown",
+        status="final",
+        verification_status="verified",
+        relative_path="artifact-id/v2.md",
+        source_run_id="run-secret-internal",
+        source_mission_id="mission-secret-internal",
+    )
+    content = "<script>alert('x')</script>\n# Decision"
+
+    first = WebChannel._artifact_bundle_export(artifact, content, 2)
+    second = WebChannel._artifact_bundle_export(artifact, content, 2)
+
+    assert first == second
+    with zipfile.ZipFile(io.BytesIO(first)) as bundle:
+        assert bundle.namelist() == [
+            "manifest.json",
+            "Decision-pack-v2.md",
+            "Decision-pack-v2.html",
+        ]
+        manifest = json.loads(bundle.read("manifest.json"))
+        assert manifest["title"] == artifact.title
+        assert manifest["revision"] == 2
+        assert "owner_id" not in manifest
+        assert "source_run_id" not in manifest
+        assert "source_mission_id" not in manifest
+        canonical = bundle.read("Decision-pack-v2.md")
+        preview = bundle.read("Decision-pack-v2.html").decode("utf-8")
+        canonical_entry = next(item for item in manifest["files"] if item["role"] == "canonical")
+        assert canonical_entry["sha256"] == hashlib.sha256(canonical).hexdigest()
+        assert "&lt;script&gt;alert('x')&lt;/script&gt;" in preview
+        assert "run-secret-internal" not in preview
+        assert "mission-secret-internal" not in preview
 
 
 def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(tmp_path: Path):
