@@ -2540,6 +2540,10 @@ class WebChannel(BaseChannel):
             active_task = self._get_browser_session_active_task(client_id, session_id).get(
                 "active_task"
             )
+            latest_runs = self._run_store().list(
+                self._memory_owner(client_id), session_key=key, limit=1
+            )
+            latest_run = latest_runs[0].turn_receipt() if latest_runs else None
             result.append(
                 {
                     "id": session_id,
@@ -2569,6 +2573,7 @@ class WebChannel(BaseChannel):
                         if active_task
                         else None
                     ),
+                    "latest_run": latest_run,
                 }
             )
         return result

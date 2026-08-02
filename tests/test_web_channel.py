@@ -185,6 +185,7 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
             "archived": False,
             "active_mission": None,
             "active_task": None,
+            "latest_run": None,
         }
     ]
     transcript = channel._browser_transcript(CLIENT_A, SESSION_A)
@@ -715,3 +716,30 @@ def test_browser_run_detail_links_safe_evidence_without_private_payloads(tmp_pat
     assert "payload" not in detail["approvals"][0]
     assert detail["artifacts"][0]["id"] == artifact.id
     assert "do-not-return" not in json.dumps(detail)
+
+
+def test_browser_session_list_includes_safe_latest_run_state(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    owner = channel._memory_owner(CLIENT_A)
+    session_key = channel._session_key(CLIENT_A, SESSION_A)
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(session_key))
+    run_store = RunStore(workspace)
+    run = run_store.create(
+        owner_id=owner,
+        session_key=session_key,
+        capability_profile="personal-work",
+        provider="openai",
+        model="gpt-test",
+    )
+    run_store.mark_running(owner, run.id)
+    run = run_store.fail(owner, run.id, error_summary="A bounded test failure")
+
+    listed = channel._list_browser_sessions(CLIENT_A)
+    assert listed[0]["latest_run"]["run_id"] == run.id
+    assert listed[0]["latest_run"]["state"] == "failed"
+    assert listed[0]["latest_run"]["error_summary"] == "A bounded test failure"
+    assert "owner_id" not in json.dumps(listed)

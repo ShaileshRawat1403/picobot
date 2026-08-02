@@ -21,6 +21,9 @@ an integration catalogue.
 - Session cockpit and evidence spine: latest run state, approval state, mission
   and task state, and source-run links from artifacts are visible from the
   daily workbench.
+- Resume-oriented session navigation: the session rail now shows a safe latest
+  run receipt, including active, waiting, failed, and provider state, without
+  exposing private run payloads.
 - Run-linked context evidence: each completed turn records bounded history,
   recalled memory references, actually supplied skill names, context planning
   outcome, token estimates, and compaction references without storing prompt
