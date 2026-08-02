@@ -25,6 +25,8 @@ an integration catalogue.
   recalled memory references, actually supplied skill names, context planning
   outcome, token estimates, and compaction references without storing prompt
   text or hidden reasoning.
+- Memory provenance inspector: the owner can review a memory's source,
+  confidence, usage signal, and lifecycle history from the daily workbench.
 
 ## Missing but intentionally deferred
 
