@@ -237,7 +237,9 @@ versioned notes, briefs, plans, reports, data, code/config text, and validated
 HTTP(S) link lists. Structured JSON, YAML, CSV, TSV, and JSONL formats are
 validated before storage. Artifacts have an explicit draft/final/archived
 lifecycle separate from their compact verification status: `verified`,
-`stale`, or `unverified`.
+`stale`, or `unverified`. The workbench can also produce a safe standalone HTML
+share view for a selected artifact revision without exposing internal run or
+mission identifiers.
 
 Expose existing cron jobs as a small personal scheduler: create, pause, run
 now, inspect last result, and view delivery target. **Implemented now:** the

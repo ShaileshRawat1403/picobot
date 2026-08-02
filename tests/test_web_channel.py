@@ -476,6 +476,30 @@ def test_artifact_download_name_is_safe_and_keeps_the_format_extension():
     assert WebChannel._artifact_download_name(artifact, 1) == "Quarterly-decision-pack-v1.yaml"
 
 
+def test_artifact_html_export_escapes_content_and_omits_internal_provenance():
+    artifact = SimpleNamespace(
+        title="Brief <share>",
+        kind="report",
+        content_type="text/markdown",
+        status="final",
+        verification_status="verified",
+        source_run_id="run-secret-internal",
+        source_mission_id="mission-secret-internal",
+    )
+
+    document = WebChannel._artifact_html_export(
+        artifact,
+        "<script>alert('x')</script>\n# Safe",
+        2,
+    )
+
+    assert "&lt;script&gt;alert('x')&lt;/script&gt;" in document
+    assert "<script>alert('x')</script>" not in document
+    assert "run-secret-internal" not in document
+    assert "mission-secret-internal" not in document
+    assert "revision 2" in document
+
+
 def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

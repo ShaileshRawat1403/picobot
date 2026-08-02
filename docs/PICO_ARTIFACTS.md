@@ -83,13 +83,27 @@ embedded credentials, and other non-HTTP(S) URLs are rejected.
 
 The local workbench can download an artifact with a meaningful, format-aware
 filename such as research-brief-v2.md or source-pack-v1.json. The download
-contains only the selected artifact revision. Pico does not upload artifacts to
-an external sharing service.
+contains only the selected artifact revision. Pico can also export any selected
+revision as a standalone HTML file for easy sharing. HTML export renders the
+canonical content inside an escaped `<pre>` block, so Markdown, HTML, and code
+remain content rather than executable markup. The exported page includes the
+artifact title, kind, format, revision, lifecycle, and verification status, but
+does not include internal run or mission identifiers. Pico does not upload
+artifacts to an external sharing service.
+
+## HTML export
+
+Use the artifact's **Export HTML** action after selecting the current artifact
+or a specific revision. The export is deterministic, has a safe title-based
+filename such as `research-brief-v2.html`, and preserves the selected revision.
+It is intentionally a lightweight share view rather than a second canonical
+storage format. PDF, DOCX, XLSX, and ICS remain deferred until their rendering
+and verification contracts are separately defined.
 
 ## Deferred exports
 
-PDF, DOCX, XLSX, HTML, and ICS are intentionally derived-export work for a
-later slice. Pico should keep a small, inspectable canonical artifact first,
-then add exporters with their own rendering, dependency, and verification
-tests. Binary uploads, executable files, and automatic code execution are not
-part of the artifact store.
+PDF, DOCX, XLSX, and ICS are intentionally deferred derived exports. Pico
+should keep a small, inspectable canonical artifact first, then add exporters
+with their own rendering, dependency, and verification tests. Binary uploads,
+executable files, and automatic code execution are not part of the artifact
+store.

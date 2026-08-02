@@ -141,8 +141,9 @@ Pico can save versioned owner-scoped notes, briefs, plans, reports, checklists,
 structured data, code/config text, and source-link bundles. Supported formats
 include Markdown, plain text, JSON, YAML, CSV, TSV, JSONL, and URI lists. Each
 revision remains inside the configured workspace and can be downloaded with a
-format-aware filename. See [`docs/PICO_ARTIFACTS.md`](docs/PICO_ARTIFACTS.md)
-for the validation and sharing contract.
+format-aware filename or exported as a safe standalone HTML share view. See
+[`docs/PICO_ARTIFACTS.md`](docs/PICO_ARTIFACTS.md) for the validation and
+sharing contract.
 
 ### Credentials
 

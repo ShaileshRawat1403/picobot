@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from datetime import datetime
+import html
 import json
 import os
 from pathlib import Path
@@ -267,6 +268,21 @@ class WebChannel(BaseChannel):
                             content,
                             artifact.content_type,
                             f'attachment; filename="{self._artifact_download_name(artifact, revision)}"',
+                        )
+                    elif artifact_path.endswith("/export/html") and method == "GET":
+                        artifact_id = artifact_path.removesuffix("/export/html").rstrip("/")
+                        artifact = store.get(owner_id, artifact_id)
+                        revision_value = self._single_query_value(query, "revision")
+                        revision = int(revision_value) if revision_value is not None else artifact.revision
+                        content = store.read_content(owner_id, artifact_id, revision)
+                        document = self._artifact_html_export(artifact, content, revision).encode("utf-8")
+                        filename = self._artifact_download_name(artifact, revision).rsplit(".", 1)[0] + ".html"
+                        self._write_raw_response(
+                            writer,
+                            200,
+                            document,
+                            "text/html",
+                            f'attachment; filename="{filename}"',
                         )
                     elif artifact_path.endswith("/verification") and method == "POST":
                         artifact_id = artifact_path.removesuffix("/verification").rstrip("/")
@@ -1428,6 +1444,28 @@ class WebChannel(BaseChannel):
         stem = title or "pico-artifact"
         suffix = Path(artifact.relative_path).suffix or ".txt"
         return f"{stem}-v{revision or artifact.revision}{suffix}"
+
+    @staticmethod
+    def _artifact_html_export(artifact, content: str, revision: int) -> str:
+        """Render a share-safe HTML wrapper without executing artifact content."""
+        title = html.escape(artifact.title, quote=True)
+        kind = html.escape(artifact.kind, quote=True)
+        content_type = html.escape(artifact.content_type, quote=True)
+        status = html.escape(artifact.status, quote=True)
+        verification = html.escape(artifact.verification_status, quote=True)
+        body = html.escape(content, quote=False)
+        return (
+            "<!doctype html>\n"
+            '<html lang="en"><head><meta charset="utf-8">'
+            f"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            f"<title>{title}</title>"
+            "<style>body{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#20242a}"
+            "h1{font-size:28px;margin-bottom:4px}.meta{color:#66717c;font-size:13px;margin-bottom:24px}"
+            "pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f9;border:1px solid #dfe3e8;"
+            "border-radius:8px;padding:18px}</style></head><body>"
+            f"<h1>{title}</h1><div class=\"meta\">{kind} · {content_type} · revision {revision} · {status} · {verification}</div>"
+            f"<pre>{body}</pre></body></html>\n"
+        )
 
     def _browser_artifact_source(
         self, client_id: str, session_id: str, source_run_id: object
