@@ -1,0 +1,126 @@
+"""Tests for Pico's bounded workflow graph and execution ledger."""
+
+from pathlib import Path
+
+import pytest
+
+from picobot.workflows import WorkflowEngine, WorkflowStore
+
+
+OWNER = "web:browser:test-owner"
+SESSION = "web:web:test-owner:session-1"
+
+
+def graph(*, include_agent: bool = False):
+    nodes = [
+        {"id": "start", "kind": "manual_trigger", "title": "Start", "x": 40, "y": 80},
+        {"id": "approval", "kind": "approval", "title": "Review", "x": 280, "y": 80},
+        {"id": "finish", "kind": "end", "title": "Finish", "x": 520, "y": 80},
+    ]
+    if include_agent:
+        nodes.insert(1, {"id": "agent", "kind": "agent", "title": "Think", "x": 160, "y": 80})
+        edges = [
+            {"id": "e1", "source": "start", "target": "agent"},
+            {"id": "e2", "source": "agent", "target": "approval"},
+            {"id": "e3", "source": "approval", "target": "finish"},
+        ]
+    else:
+        edges = [
+            {"id": "e1", "source": "start", "target": "approval"},
+            {"id": "e2", "source": "approval", "target": "finish"},
+        ]
+    return nodes, edges
+
+
+def make_store(tmp_path: Path) -> WorkflowStore:
+    return WorkflowStore(tmp_path)
+
+
+def test_graph_validation_is_strict(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, edges = graph()
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title="Weekly review", description=None, nodes=nodes, edges=edges
+    )
+    assert workflow.version == 1
+    with pytest.raises(ValueError, match="exactly one trigger"):
+        store.create_draft(
+            owner_id=OWNER,
+            session_key=SESSION,
+            title="Bad",
+            description=None,
+            nodes=nodes + [{"id": "other", "kind": "manual_trigger", "title": "Other"}],
+            edges=edges,
+        )
+    with pytest.raises(ValueError, match="cycles"):
+        store.create_draft(
+            owner_id=OWNER,
+            session_key=SESSION,
+            title="Cycle",
+            description=None,
+            nodes=nodes,
+            edges=edges + [{"id": "e3", "source": "finish", "target": "start"}],
+        )
+    with pytest.raises(ValueError, match="secret-like"):
+        store.create_draft(
+            owner_id=OWNER,
+            session_key=SESSION,
+            title="Secret",
+            description=None,
+            nodes=[{**nodes[0], "config": {"api_key": "never"}}, *nodes[1:]],
+            edges=edges,
+        )
+
+
+def test_lifecycle_version_and_owner_session_isolation(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, edges = graph()
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title="Draft", description=None, nodes=nodes, edges=edges
+    )
+    updated = store.save_draft(
+        OWNER,
+        workflow.id,
+        title="Updated",
+        description="A small durable flow",
+        nodes=nodes,
+        edges=edges,
+    )
+    assert updated.version == 2
+    assert store.transition(OWNER, workflow.id, "approved").state == "approved"
+    with pytest.raises(KeyError):
+        store.get("web:browser:other", workflow.id)
+    with pytest.raises(ValueError, match="session"):
+        store.start_run(OWNER, workflow.id, "web:web:test-owner:other")
+
+
+def test_engine_pauses_for_approval_then_completes(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, edges = graph()
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title="Review flow", description=None, nodes=nodes, edges=edges
+    )
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    engine = WorkflowEngine(store)
+    first = engine.run_until_wait(OWNER, run.id)[-1]
+    assert first.run.state == "waiting_for_approval"
+    assert first.node_id == "approval"
+    resumed = engine.run_until_wait(OWNER, run.id, resume=True)[-1]
+    assert resumed.run.state == "completed"
+    detail = store.detail(OWNER, run.id)
+    assert detail["run"]["state"] == "completed"
+    assert any(event["event_type"] == "run_waiting_for_approval" for event in detail["events"])
+
+
+def test_external_agent_node_waits_without_provider_execution(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes, edges = graph(include_agent=True)
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title="Agent flow", description=None, nodes=nodes, edges=edges
+    )
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    result = WorkflowEngine(store).run_until_wait(OWNER, run.id)[-1]
+    assert result.run.state == "waiting_for_input"
+    assert "task adapter" in result.summary

@@ -354,6 +354,117 @@ class WebChannel(BaseChannel):
                         self._write_response(writer, 404, self._json_error("Artifact route was not found"))
                 except (ValueError, KeyError, FileNotFoundError) as exc:
                     self._write_response(writer, 404, self._json_error(str(exc)))
+            elif path == "/api/workflows":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    if method == "GET":
+                        session_id = self._single_query_value(query, "session_id")
+                        workflows = self._workflow_store().list(owner_id)
+                        if session_id:
+                            session_key = self._session_key(client_id, self._valid_browser_id(session_id))
+                            workflows = [item for item in workflows if item.session_key == session_key]
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps({"workflows": [item.to_dict() for item in workflows]}, ensure_ascii=False).encode(),
+                        )
+                    elif method == "POST":
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        self._require_browser_session(client_id, session_id)
+                        workflow = self._workflow_store().create_draft(
+                            owner_id=owner_id,
+                            session_key=self._session_key(client_id, session_id),
+                            title=payload.get("title"),
+                            description=payload.get("description"),
+                            nodes=payload.get("nodes"),
+                            edges=payload.get("edges"),
+                        )
+                        self._write_response(
+                            writer, 201, json.dumps({"workflow": workflow.to_dict()}, ensure_ascii=False).encode()
+                        )
+                    else:
+                        raise ValueError("Workflows route supports GET or POST")
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/workflows/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    workflow_path = path.removeprefix("/api/workflows/").strip("/")
+                    workflow_id, _, operation = workflow_path.partition("/")
+                    if not workflow_id:
+                        raise ValueError("Workflow route was not found")
+                    workflow = self._workflow_store().get(owner_id, workflow_id)
+                    session_id = self._single_query_value(query, "session_id")
+                    if session_id:
+                        session_key = self._session_key(client_id, self._valid_browser_id(session_id))
+                        if workflow.session_key != session_key:
+                            raise ValueError("Workflow session does not match the active session")
+                    if method == "GET" and not operation:
+                        self._write_response(writer, 200, json.dumps({"workflow": workflow.to_dict()}, ensure_ascii=False).encode())
+                    elif method in {"PUT", "POST"} and operation in {"draft", "save"}:
+                        payload = self._json_body(body)
+                        updated = self._workflow_store().save_draft(
+                            owner_id,
+                            workflow_id,
+                            title=payload.get("title"),
+                            description=payload.get("description"),
+                            nodes=payload.get("nodes"),
+                            edges=payload.get("edges"),
+                        )
+                        self._write_response(writer, 200, json.dumps({"workflow": updated.to_dict()}, ensure_ascii=False).encode())
+                    elif method == "POST" and operation in {"approve", "archive"}:
+                        updated = self._workflow_store().transition(owner_id, workflow_id, "approved" if operation == "approve" else "archived")
+                        self._write_response(writer, 200, json.dumps({"workflow": updated.to_dict()}, ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "run":
+                        payload = self._json_body(body)
+                        run_session_id = self._valid_browser_id(payload.get("session_id") or session_id)
+                        self._require_browser_session(client_id, run_session_id)
+                        run = self._workflow_store().start_run(owner_id, workflow_id, self._session_key(client_id, run_session_id))
+                        self._write_response(writer, 201, json.dumps({"run": run.to_dict()}, ensure_ascii=False).encode())
+                    else:
+                        raise ValueError("Workflow route was not found")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 404 if isinstance(exc, KeyError) else 400, self._json_error(str(exc)))
+            elif path == "/api/workflow-runs":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    workflow_id = self._single_query_value(query, "workflow_id")
+                    runs = self._workflow_store().list_runs(owner_id, workflow_id)
+                    self._write_response(writer, 200, json.dumps({"runs": [run.to_dict() for run in runs]}, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/workflow-runs/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    run_path = path.removeprefix("/api/workflow-runs/").strip("/")
+                    run_id, _, operation = run_path.partition("/")
+                    run = self._workflow_store().get_run(owner_id, run_id)
+                    session_id = self._single_query_value(query, "session_id")
+                    if session_id and run.session_key != self._session_key(client_id, self._valid_browser_id(session_id)):
+                        raise ValueError("Workflow run session does not match the active session")
+                    if method == "GET" and not operation:
+                        self._write_response(writer, 200, json.dumps(self._workflow_store().detail(owner_id, run_id), ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "step":
+                        result = self._workflow_engine().step(owner_id, run_id)
+                        self._write_response(writer, 200, json.dumps(result.to_dict(), ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "run-until-wait":
+                        results = self._workflow_engine().run_until_wait(owner_id, run_id)
+                        self._write_response(writer, 200, json.dumps({"steps": [item.to_dict() for item in results]}, ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "resume":
+                        result = self._workflow_engine().run_until_wait(owner_id, run_id, resume=True)
+                        self._write_response(writer, 200, json.dumps({"steps": [item.to_dict() for item in result]}, ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "cancel":
+                        updated = self._workflow_store().transition_run(owner_id, run_id, "cancelled")
+                        self._write_response(writer, 200, json.dumps({"run": updated.to_dict()}, ensure_ascii=False).encode())
+                    else:
+                        raise ValueError("Workflow run route was not found")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 404 if isinstance(exc, KeyError) else 400, self._json_error(str(exc)))
             elif path == "/api/missions":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1769,6 +1880,16 @@ class WebChannel(BaseChannel):
         from picobot.tasks import TaskStore
 
         return TaskStore(self._runtime_config().workspace_path)
+
+    def _workflow_store(self):
+        from picobot.workflows import WorkflowStore
+
+        return WorkflowStore(self._runtime_config().workspace_path)
+
+    def _workflow_engine(self):
+        from picobot.workflows import WorkflowEngine
+
+        return WorkflowEngine(self._workflow_store())
 
     def _sync_action_task_outcome(self, owner_id: str, session_key: str, action: Any) -> None:
         if not getattr(action, "initiating_run_id", None):
