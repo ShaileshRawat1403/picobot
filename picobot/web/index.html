@@ -64,6 +64,12 @@
     .run-status.active .run-status-dot { background:var(--pico); animation:pulse 1.1s ease-in-out infinite; }
     .run-status.active .run-status-label { color:var(--pico); }
     .run-status-text { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .run-detail-button { border:0; background:transparent; color:#315a9e; font-size:11px; padding:2px 0; white-space:nowrap; }
+    .run-detail-button:hover { text-decoration:underline; }
+    .run-detail-panel { width:min(900px,100%); margin:0 auto 8px; border:1px solid #dfe3e8; border-radius:5px; padding:10px 12px; background:#fff; color:#59616d; font-size:12px; }
+    .run-detail-panel[hidden] { display:none; }
+    .run-detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px 14px; }
+    .run-detail-label { color:#8a919a; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
     .stop-button { margin-left:auto; flex:none; border:1px solid #d9d9e7; border-radius:10px; padding:4px 11px; background:#fff; color:var(--ink); font-size:11px; cursor:pointer; }
     .stop-button:hover { border-color:#e0a1ab; color:#c94a5c; }
     .stop-button:disabled { opacity:.5; cursor:not-allowed; }
@@ -395,7 +401,7 @@
           <p class="provider-note">The effective policy is resolved before each new run and applies only to later turns — it never rewrites past runs. Only providers already configured in this local profile can be selected, and reasoning effort is applied only where the selected provider actually forwards it.</p>
         </div>
         <div class="transcript" id="transcript"></div>
-        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="stop-button" id="stop-run" type="button">Stop</button></div><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
+        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
       </section>
       <section class="view workspace-view" id="view-search"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Personal retrieval</div><h2>Find work</h2><p>Search your sessions, saved memory, and local artifacts without leaving Pico.</p></div></div><div class="card"><form class="search-controls" id="work-search-form"><input id="work-search-input" autocomplete="off" placeholder="Search across your Pico workbench"><button class="action" type="submit">Search</button></form><div class="memory-summary" id="search-summary"></div><div class="memory-list" id="search-list"><div class="empty">Search across your durable Pico work.</div></div></div></div></section>
       <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep notes, briefs, plans, reports, structured data, code, configs, and source links as local versioned work products.</p></div></div><div class="artifact-layout"><div class="card"><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="report">Report</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option><option value="link">Source links</option><option value="code">Code</option><option value="config">Config</option></select></div><div class="form-row"><label class="memory-meta" for="artifact-format">Format<select id="artifact-format" aria-label="Artifact format"><option value="text/markdown">Markdown</option><option value="text/plain">Plain text</option><option value="application/json">JSON</option><option value="application/yaml">YAML</option><option value="text/csv">CSV</option><option value="text/tab-separated-values">TSV</option><option value="application/x-ndjson">JSONL</option><option value="text/uri-list">URI list</option></select></label></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><a class="action secondary" id="download-artifact" hidden>Download</a><a class="action secondary" id="export-html-artifact" hidden>Export HTML</a><a class="action secondary" id="export-bundle-artifact" hidden>Export bundle</a></div></form><div class="provider-row" style="margin-top:12px"><label class="memory-meta" for="artifact-status">Lifecycle<select id="artifact-status" disabled><option value="draft">Draft</option><option value="final">Final — ready to share</option><option value="archived">Archived</option></select></label><button class="memory-action" id="save-artifact-status" type="button" disabled>Set lifecycle</button></div><div class="provider-row" style="margin-top:8px"><label class="memory-meta" for="artifact-verification">Verification</label><select id="artifact-verification" disabled><option value="unverified">Unverified</option><option value="verified">Verified</option><option value="stale">Stale</option></select><button class="memory-action" id="save-artifact-verification" type="button" disabled>Set verification</button></div></div><div><div class="skills-list" id="artifact-list"></div><div class="artifact-revisions" id="artifact-revisions"></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></section>
@@ -444,8 +450,8 @@
     const RUN_ACTIVE = new Set(['queued', 'running', 'waiting_for_approval']);
     function formatElapsed(ms) { if (!ms || ms < 0 || Number.isNaN(ms)) return ''; if (ms < 1000) return `${Math.round(ms)}ms`; return `${(ms / 1000).toFixed(1)}s`; }
     function renderRunStatus(receipt) {
-      const status = $('run-status'), text = $('run-status-text'), stop = $('stop-run');
-      if (!receipt || !receipt.state) { status.hidden = true; return; }
+      const status = $('run-status'), text = $('run-status-text'), stop = $('stop-run'), details = $('view-run-detail');
+      if (!receipt || !receipt.state) { status.hidden = true; details.hidden = true; $('run-detail-panel').hidden = true; return; }
       const active = RUN_ACTIVE.has(receipt.state);
       const bits = [RUN_LABELS[receipt.state] || receipt.state];
       if (receipt.provider && receipt.model) bits.push(`${receipt.provider}/${receipt.model}`);
@@ -462,6 +468,30 @@
       status.classList.toggle('active', active);
       status.hidden = false;
       stop.hidden = !active;
+      details.hidden = false;
+      details.onclick = () => loadRunDetail(receipt.run_id);
+    }
+    function renderRunDetail(data) {
+      const panel = $('run-detail-panel'), run = data.run || {}, task = data.task;
+      const tools = data.tools || [], approvals = data.approvals || [], artifacts = data.artifacts || [];
+      const usage = run.usage ? Object.entries(run.usage).map(([key, value]) => `${escapeHtml(key.replace('_tokens', ''))}: ${Number(value).toLocaleString()}`).join(' · ') : 'not reported';
+      const toolList = tools.length ? tools.map((item) => `<span>${escapeHtml(item.tool_name)} · ${escapeHtml(item.outcome)}</span>`).join(' · ') : 'none';
+      const approvalList = approvals.length ? approvals.map((item) => `${escapeHtml(item.status)} · ${escapeHtml(item.summary)}`).join(' · ') : 'none';
+      const artifactList = artifacts.length ? artifacts.map((item) => `${escapeHtml(item.title)} (${escapeHtml(item.kind)})`).join(' · ') : 'none';
+      const retry = data.retryable ? 'A bounded retry is available from the linked task.' : 'No retry is currently available.';
+      panel.innerHTML = `<div class="run-detail-grid"><div><div class="run-detail-label">Outcome</div><div>${escapeHtml(RUN_LABELS[run.state] || run.state || 'Unknown')}</div></div><div><div class="run-detail-label">Provider / model</div><div>${escapeHtml(run.provider || '—')} / ${escapeHtml(run.model || '—')}</div></div><div><div class="run-detail-label">Profile</div><div>${escapeHtml(run.capability_profile || '—')}</div></div><div><div class="run-detail-label">Elapsed / usage</div><div>${escapeHtml(formatElapsed(run.elapsed_ms) || 'in progress')} · ${usage}</div></div></div><div style="margin-top:8px"><div class="run-detail-label">Tools used</div><div>${toolList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Approvals</div><div>${approvalList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Artifacts changed</div><div>${artifactList}</div></div><div style="margin-top:6px"><div class="run-detail-label">Links</div><div>${task ? `Task ${escapeHtml(task.title || task.id)} · ${escapeHtml(task.state)}` : 'No task'}${run.mission_id ? ` · Mission ${escapeHtml(run.mission_id.slice(0, 8))}` : ''} · ${escapeHtml(retry)}</div></div>${data.failure_category || run.error_summary ? `<div style="margin-top:6px;color:var(--bad)"><div class="run-detail-label">Safe failure</div><div>${escapeHtml(data.failure_category || run.error_summary)}</div></div>` : ''}`;
+      panel.hidden = false;
+    }
+    async function loadRunDetail(runId) {
+      if (!runId) return;
+      const panel = $('run-detail-panel');
+      panel.hidden = false;
+      panel.textContent = 'Loading run evidence…';
+      try {
+        const response = await api(`/api/runs/${encodeURIComponent(runId)}?session_id=${encodeURIComponent(sessionId)}`);
+        if (!response.ok) throw new Error();
+        renderRunDetail(await response.json());
+      } catch { panel.textContent = 'Run evidence is unavailable for this session.'; }
     }
     async function pollRuns(waitForStart = false) {
       if (waitForStart) runStartPollsRemaining = 12;
@@ -512,7 +542,7 @@
         ? events.map((item) => `<div class="mission-checkpoint"><div class="memory-value">${escapeHtml(item.summary)}</div><div class="memory-meta">${escapeHtml(formatTime(item.created_at))}</div></div>`).join('')
         : '<div class="empty">No lifecycle record yet.</div>';
       const runList = runs.length
-        ? runs.map((item) => `<div class="mission-checkpoint"><div class="memory-value">Run ${escapeHtml(item.id.slice(0, 8))} · ${escapeHtml(item.state)}${item.blueprint_step_id ? ` · step:${escapeHtml(item.blueprint_step_id)}` : ''}</div><div class="memory-meta">${escapeHtml(item.provider || '')}/${escapeHtml(item.model || '')} · ${escapeHtml(formatTime(item.created_at))}${item.error_summary ? ` · ${escapeHtml(item.error_summary)}` : ''}</div></div>`).join('')
+        ? runs.map((item) => `<div class="mission-checkpoint"><div class="memory-value">Run ${escapeHtml((item.run_id || '').slice(0, 8))} · ${escapeHtml(item.state)}${item.blueprint_step_id ? ` · step:${escapeHtml(item.blueprint_step_id)}` : ''}</div><div class="memory-meta">${escapeHtml(item.provider || '')}/${escapeHtml(item.model || '')} · ${escapeHtml(formatTime(item.created_at))}${item.error_summary ? ` · ${escapeHtml(item.error_summary)}` : ''}</div><button class="memory-action" data-run-detail="${escapeHtml(item.run_id || '')}" type="button">View evidence</button></div>`).join('')
         : '<div class="empty">No runs linked to this mission yet.</div>';
 
       let blueprintHtml = '';
@@ -571,6 +601,7 @@
       detail.querySelectorAll('[data-task-run]').forEach((btn) => { btn.onclick = () => runMissionTask(mission.id, btn.dataset.taskRun); });
       detail.querySelectorAll('[data-task-cancel]').forEach((btn) => { btn.onclick = () => cancelMissionTask(mission.id, btn.dataset.taskCancel); });
       detail.querySelectorAll('[data-task-retry]').forEach((btn) => { btn.onclick = () => retryMissionTask(mission.id, btn.dataset.taskRetry); });
+      detail.querySelectorAll('[data-run-detail]').forEach((btn) => { btn.onclick = () => { showView('chat'); loadRunDetail(btn.dataset.runDetail); }; });
       const createTaskBtn = $('create-mission-task-btn');
       if (createTaskBtn) createTaskBtn.onclick = () => createMissionTask(mission.id);
       if (!terminal) {

@@ -520,6 +520,15 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, response)
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path.startswith("/api/runs/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    run_id = path.removeprefix("/api/runs/").strip("/")
+                    session_id = self._single_query_value(query, "session_id")
+                    detail = self._browser_run_detail(client_id, session_id, run_id)
+                    self._write_response(writer, 200, json.dumps(detail, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 404, self._json_error(str(exc)))
             elif path == "/api/search":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1743,6 +1752,67 @@ class WebChannel(BaseChannel):
         return {
             "runs": [run.turn_receipt() for run in runs],
             "active": active,
+        }
+
+    def _browser_run_detail(self, client_id: str, session_id: object, run_id: object) -> dict[str, Any]:
+        """Return one safe run projection with linked evidence only."""
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        session_key = self._session_key(client_id, session_id)
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("Run ID is required")
+        run = self._run_store().get(owner_id, run_id.strip())
+        if run.session_key != session_key:
+            raise KeyError("Run was not found for this session")
+
+        activities = self._tool_activity_store().list(owner_id, session_key, run_id=run.id, limit=100)
+        actions = [
+            action.to_dict()
+            for action in self._action_store().list(owner_id, session_key, limit=100)
+            if action.initiating_run_id == run.id
+        ]
+        artifacts = [
+            asdict(artifact)
+            for artifact in self._artifact_store().list(owner_id, session_key=session_key, limit=100)
+            if artifact.source_run_id == run.id
+        ]
+        task = None
+        failure_category = None
+        retryable = False
+        if run.task_id:
+            try:
+                task_record = self._task_store().get(owner_id, run.task_id)
+                if task_record.session_key != session_key:
+                    raise KeyError("Task was not found for this session")
+                task = task_record.to_dict()
+                failure_category = task.get("failure_category")
+                retryable = (
+                    task.get("state") in {"failed", "cancelled"}
+                    and int(task.get("attempts_count") or 0) < int(task.get("max_attempts") or 0)
+                )
+            except KeyError:
+                task = None
+        if not failure_category:
+            failure_category = next(
+                (item.get("failure_category") for item in actions if item.get("failure_category")),
+                None,
+            )
+        mission = None
+        if run.mission_id:
+            try:
+                mission = self._mission_store().get(owner_id, run.mission_id).to_dict()
+            except KeyError:
+                mission = None
+        return {
+            "run": run.turn_receipt(),
+            "tools": [item.to_dict() for item in activities],
+            "approvals": actions,
+            "artifacts": artifacts,
+            "task": task,
+            "mission": mission,
+            "failure_category": failure_category,
+            "retryable": retryable,
         }
 
     def _mission_evidence(self, owner_id: str, session_key: str, mission_id: str) -> dict[str, int]:

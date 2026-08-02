@@ -455,6 +455,7 @@ class AgentLoop:
                             tool_name=tool_call.name,
                             risk=tool_risk,
                             outcome=outcome,
+                            run_id=activity_context.get("run_id"),
                         )
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
@@ -1090,6 +1091,7 @@ class AgentLoop:
             )
         run_task_id = task_id or getattr(run, "task_id", None)
         run = self.runs.mark_running(owner_id, run.id, provider=provider, model=model)
+        activity_context["run_id"] = run.id
         self._set_tool_context(
             activity_context.get("channel", "web"),
             activity_context.get("chat_id") or "direct",

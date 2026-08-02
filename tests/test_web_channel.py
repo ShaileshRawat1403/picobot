@@ -12,6 +12,7 @@ import pytest
 
 from picobot.bus.events import OutboundMessage
 from picobot.bus.queue import MessageBus
+from picobot.artifacts.store import ArtifactStore
 from picobot.channels.web import WebChannel
 from picobot.cron.service import CronService
 from picobot.cron.types import CronSchedule
@@ -20,6 +21,7 @@ from picobot.missions import MissionStore
 from picobot.runs import RunStore
 from picobot.session.manager import SessionManager
 from picobot.tasks import TaskStore
+from picobot.operations import ProposedActionStore, ToolActivityStore
 
 
 CLIENT_A = "browser_identity_0001"
@@ -624,3 +626,60 @@ def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(
             useful.id,
             {"session_id": SESSION_A, "candidate_type": "memory"},
         )
+
+
+def test_browser_run_detail_links_safe_evidence_without_private_payloads(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    owner = channel._memory_owner(CLIENT_A)
+    session_key = channel._session_key(CLIENT_A, SESSION_A)
+    session_manager = SessionManager(workspace)
+    session_manager.save(session_manager.get_or_create(session_key))
+    run_store = RunStore(workspace)
+    run = run_store.create(
+        owner_id=owner,
+        session_key=session_key,
+        capability_profile="personal-work",
+        mission_id="mission-safe",
+    )
+    run_store.mark_running(owner, run.id)
+    run = run_store.complete(owner, run.id, result_ref="message:safe")
+    ToolActivityStore(workspace).record(
+        owner_id=owner,
+        session_key=session_key,
+        profile_id="personal-work",
+        capability_id="skills.list",
+        tool_name="list_skills",
+        risk="read",
+        outcome="success",
+        run_id=run.id,
+    )
+    action = ProposedActionStore(workspace).stage(
+        owner_id=owner,
+        session_key=session_key,
+        profile_id="workspace-build",
+        capability_id="workspace.propose_change",
+        tool_name="propose_workspace_change",
+        target="notes.txt",
+        summary="Draft notes",
+        payload_data={"secret": "do-not-return"},
+        initiating_run_id=run.id,
+    )
+    artifact = ArtifactStore(workspace).create(
+        owner_id=owner,
+        session_key=session_key,
+        title="Run brief",
+        content="# Safe",
+        kind="brief",
+        source_run_id=run.id,
+    )
+    detail = channel._browser_run_detail(CLIENT_A, SESSION_A, run.id)
+    assert detail["run"]["run_id"] == run.id
+    assert detail["run"]["mission_id"] == "mission-safe"
+    assert detail["tools"][0]["run_id"] == run.id
+    assert detail["approvals"][0]["id"] == action.id
+    assert "payload" not in detail["approvals"][0]
+    assert detail["artifacts"][0]["id"] == artifact.id
+    assert "do-not-return" not in json.dumps(detail)

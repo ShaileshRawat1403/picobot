@@ -65,6 +65,7 @@ class RunRecord:
             "elapsed_ms": self.elapsed_ms,
             "provider": self.provider,
             "model": self.model,
+            "mission_id": self.mission_id,
             "capability_profile": self.capability_profile,
             "policy_revision": self.policy_revision,
             "usage": self.usage or None,
