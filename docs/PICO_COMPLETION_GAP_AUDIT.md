@@ -24,6 +24,9 @@ an integration catalogue.
 - Resume-oriented session navigation: the session rail now shows a safe latest
   run receipt, including active, waiting, failed, and provider state, without
   exposing private run payloads.
+- Governed Operations clarity: the workbench makes the Propose → Inspect →
+  Approve → Execute → Audit flow explicit and summarizes proposed versus
+  approved actions without changing the underlying authorization checks.
 - Run-linked context evidence: each completed turn records bounded history,
   recalled memory references, actually supplied skill names, context planning
   outcome, token estimates, and compaction references without storing prompt
