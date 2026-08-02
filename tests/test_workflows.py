@@ -146,3 +146,20 @@ def test_artifact_node_creates_durable_output(tmp_path: Path):
     artifacts = ArtifactStore(tmp_path).list(OWNER, session_key=SESSION)
     assert len(artifacts) == 1
     assert ArtifactStore(tmp_path).read_content(OWNER, artifacts[0].id) == "A durable note"
+
+
+def test_node_result_is_idempotent_when_a_run_is_retried(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes = [
+        {"id": "start", "kind": "manual_trigger", "title": "Start"},
+        {"id": "finish", "kind": "end", "title": "Finish"},
+    ]
+    workflow = store.create_draft(owner_id=OWNER, session_key=SESSION, title="Retry safe", description=None, nodes=nodes, edges=[{"id": "e1", "source": "start", "target": "finish"}])
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    store.transition_run(OWNER, run.id, "running")
+    store.record_node_run(OWNER, run.id, "start", "succeeded", result_ref="triggered")
+    result = WorkflowEngine(store).run_until_wait(OWNER, run.id)[-1]
+    assert result.run.state == "completed"
+    node_runs = store.detail(OWNER, run.id)["nodes"]
+    assert sum(node["node_id"] == "start" for node in node_runs) == 1

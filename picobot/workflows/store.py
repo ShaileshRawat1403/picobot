@@ -776,6 +776,22 @@ class WorkflowStore:
             ).fetchone()
         return self._node_run(row)
 
+    def latest_node_run(self, owner_id: str, run_id: str, node_id: str) -> WorkflowNodeRun | None:
+        """Return the latest attempt for a node without exposing private payloads."""
+        run = self.get_run(owner_id, run_id)
+        node_id = self._required_identifier(node_id, "node id")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM workflow_node_runs
+                WHERE workflow_run_id = ? AND node_id = ?
+                ORDER BY attempt DESC, updated_at DESC
+                LIMIT 1
+                """,
+                (run.id, node_id),
+            ).fetchone()
+        return self._node_run(row) if row else None
+
     def advance_run(self, owner_id: str, run_id: str, next_node_id: str | None) -> WorkflowRun:
         run = self.get_run(owner_id, run_id)
         next_node_id = self._text(next_node_id, "next node id", self._MAX_IDENTIFIER, required=False)

@@ -79,6 +79,17 @@ class WorkflowEngine:
             run = self.store.transition_run(owner_id, run_id, "failed", failure_category="missing_cursor")
             return StepResult(run, None, "failed", "Workflow cursor did not reference a node.")
 
+        branch = str(node.config.get("branch", "success")) if node.kind == "condition" else "success"
+        prior = self.store.latest_node_run(owner_id, run_id, node.id)
+        if prior and prior.state == "succeeded":
+            next_id = self._next_node(workflow, node.id, branch=branch)
+            if node.kind == "end" or next_id is None:
+                self.store.advance_run(owner_id, run_id, None)
+                run = self.store.transition_run(owner_id, run_id, "completed")
+                return StepResult(run, node.id, "succeeded", "Workflow completed from a durable node result.")
+            run = self.store.advance_run(owner_id, run_id, next_id)
+            return StepResult(run, node.id, "succeeded", f"Resumed from the durable result; advanced to {next_id}.")
+
         self.store.record_node_run(owner_id, run_id, node.id, "running")
         if node.kind in self._EXTERNAL_NODES and not resume:
             waiting_state = "waiting_for_approval" if node.kind in {"approval", "browser_action"} else "waiting_for_input"
@@ -121,7 +132,6 @@ class WorkflowEngine:
             "succeeded",
             result_ref=result_ref,
         )
-        branch = str(node.config.get("branch", "success")) if node.kind == "condition" else "success"
         next_id = self._next_node(workflow, node.id, branch=branch)
         if node.kind == "end" or next_id is None:
             run = self.store.advance_run(owner_id, run_id, None)
