@@ -735,7 +735,21 @@
     .section-label { padding-left:0; padding-right:0; }
     @media (max-width:1120px) { .workspace-view { padding-left:24px; padding-right:24px; } .workspace { width:min(100%,900px); } .transcript { width:min(100%,980px); } .composer, .composer-hint, .run-status, .run-detail-panel { width:min(100%,980px); } }
     @media (max-width:760px) { .transcript { width:100%; padding:26px 16px 16px; gap:18px; } .message.user { max-width:96%; } .composer-area { padding:8px 16px 13px; } .workspace-view { padding:24px 16px 30px; } .workspace-head { margin-bottom:16px; } .workspace-head h2 { font-size:29px; } .artifact-layout, .mission-layout { grid-template-columns:1fr; gap:12px; } .artifact-form textarea { min-height:140px; } }
-  </style>
+    /* Context disclosure: orientation first, evidence on demand. */
+    .cockpit-bar { overflow:hidden; padding:0; }
+    .cockpit-head { display:flex; align-items:center; justify-content:space-between; min-height:22px; padding:4px 11px 2px; border-bottom:1px solid #e8edf4; }
+    .cockpit-kicker { color:#9ba5b6; font-size:7.5px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+    .cockpit-toggle { border:1px solid #dce4f2; border-radius:5px; padding:2px 6px; background:#ffffff9c; color:#7180a1; font:9px ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+    .cockpit-toggle:hover, .cockpit-toggle[aria-expanded="true"] { border-color:#bdcaf0; background:#f2f5ff; color:#4c68c8; }
+    .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:0; }
+    .cockpit-grid .cockpit-action { display:none; }
+    .cockpit-grid .cockpit-action:nth-child(2), .cockpit-grid .cockpit-action:nth-child(3), .cockpit-grid .cockpit-action:nth-child(4), .cockpit-grid .cockpit-action:nth-child(6) { display:flex; }
+    .cockpit-bar.is-expanded .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .cockpit-bar.is-expanded .cockpit-grid .cockpit-action { display:flex; }
+    .cockpit-bar.is-expanded button.cockpit-action { border-bottom:1px solid #ebeff6; }
+    button.cockpit-action { min-height:38px; padding:5px 10px; }
+    @media (max-width:760px) { .cockpit-grid, .cockpit-bar.is-expanded .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+   </style>
 </head>
 <body>
   <div class="app">
@@ -768,6 +782,7 @@
       <section class="view chat-view active" id="view-chat">
         <div class="cockpit-wrapper">
           <div class="cockpit-bar" id="session-cockpit" aria-label="Session cockpit">
+            <div class="cockpit-head"><span class="cockpit-kicker">Working context</span><button class="cockpit-toggle" id="cockpit-toggle" type="button" aria-expanded="false" aria-controls="cockpit-grid">Details <span aria-hidden="true">⌄</span></button></div>
             <div class="cockpit-grid">
               <button class="cockpit-item cockpit-action" id="cockpit-session-btn" type="button" title="Current session title">
                 <span class="cockpit-label">Session</span>
@@ -1345,6 +1360,7 @@
     $('command-input').onkeydown = (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); moveCommandSelection(1); } else if (event.key === 'ArrowUp') { event.preventDefault(); moveCommandSelection(-1); } else if (event.key === 'Enter') { event.preventDefault(); runSelectedCommand(); } else if (event.key === 'Escape') { event.preventDefault(); closeCommandPalette(); } };
     document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('command-palette').hidden ? openCommandPalette() : closeCommandPalette(); } else if (event.key === 'Escape' && !$('command-palette').hidden) closeCommandPalette(); });
     document.querySelectorAll('.nav-button').forEach((button) => button.onclick = () => showView(button.dataset.view));
+    $('cockpit-toggle').onclick = () => { const bar = $('session-cockpit'), toggle = $('cockpit-toggle'), expanded = bar.classList.toggle('is-expanded'); toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false'); toggle.innerHTML = expanded ? 'Less <span aria-hidden="true">⌃</span>' : 'Details <span aria-hidden="true">⌄</span>'; };
     $('cockpit-session-btn').onclick = () => showView('chat');
     $('cockpit-profile-btn').onclick = () => showView('operations');
     $('cockpit-mission-btn').onclick = () => showView('missions');
