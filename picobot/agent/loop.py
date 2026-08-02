@@ -1369,7 +1369,7 @@ class AgentLoop:
                 queued_run_id=queued_run_id,
                 mission_id=active_mission.id if active_mission else None,
             )
-            self._save_turn(session, all_msgs, 1 + len(history))
+            self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
             return OutboundMessage(
                 channel=channel,
@@ -1559,7 +1559,7 @@ class AgentLoop:
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
-        self._save_turn(session, all_msgs, 1 + len(history))
+        self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
         self.sessions.save(session)
 
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
@@ -1832,7 +1832,14 @@ class AgentLoop:
             ),
         )
 
-    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
+    def _save_turn(
+        self,
+        session: Session,
+        messages: list[dict],
+        skip: int,
+        *,
+        run_id: str | None = None,
+    ) -> None:
         """Save new-turn messages into session, truncating large tool results."""
         from datetime import datetime
 
@@ -1841,6 +1848,11 @@ class AgentLoop:
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
+            if role == "assistant" and isinstance(run_id, str) and run_id:
+                # Keep provenance in the durable transcript for artifact capture.
+                # Session.get_history() intentionally strips this UI-only field
+                # before messages are sent back to a provider.
+                entry["run_id"] = run_id
             if (
                 role == "tool"
                 and isinstance(content, str)

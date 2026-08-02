@@ -2526,16 +2526,20 @@ class WebChannel(BaseChannel):
         if not any(item["key"] == key for item in manager.list_sessions()):
             raise ValueError("Session was not found for this browser identity")
         session = manager.get_or_create(key)
-        messages = [
-            {
+        messages = []
+        for message in session.messages:
+            if message.get("role") not in {"user", "assistant"}:
+                continue
+            if not isinstance(message.get("content"), str):
+                continue
+            entry = {
                 "role": message["role"],
                 "content": message.get("content", ""),
                 "timestamp": message.get("timestamp"),
             }
-            for message in session.messages
-            if message.get("role") in {"user", "assistant"}
-            and isinstance(message.get("content"), str)
-        ]
+            if message.get("role") == "assistant" and isinstance(message.get("run_id"), str):
+                entry["run_id"] = message["run_id"]
+            messages.append(entry)
         return {"id": session_id, "messages": messages}
 
     def _browser_session_context(self, client_id: str, session_id: str) -> dict[str, Any]:

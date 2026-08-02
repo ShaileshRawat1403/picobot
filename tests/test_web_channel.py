@@ -168,7 +168,7 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
     other_key = channel._session_key(CLIENT_B, SESSION_B)
     own = sessions.get_or_create(own_key)
     own.add_message("user", "Plan Pico's personal workbench")
-    own.add_message("assistant", "I will prepare the first slice.")
+    own.add_message("assistant", "I will prepare the first slice.", run_id="run-123")
     sessions.save(own)
     other = sessions.get_or_create(other_key)
     other.add_message("user", "Private other identity conversation")
@@ -192,6 +192,7 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
         "Plan Pico's personal workbench",
         "I will prepare the first slice.",
     ]
+    assert transcript["messages"][1]["run_id"] == "run-123"
 
     store = PersonalMemoryStore(workspace)
     own_memory = store.remember(channel._memory_owner(CLIENT_A), "I prefer short updates")
