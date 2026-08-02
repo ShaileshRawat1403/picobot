@@ -45,6 +45,15 @@
     .avatar { width:29px; height:29px; flex:none; border-radius:9px; display:grid; place-items:center; background:var(--pico-pale); }
     .message.user .avatar { background:#e8e9f1; font-size:11px; font-weight:750; }
     .bubble { padding:11px 13px; border:1px solid var(--line); border-radius:4px 14px 14px; background:#fff; white-space:pre-wrap; }
+    .bubble h4 { margin:0 0 7px; font-size:14px; line-height:1.35; }
+    .bubble p, .bubble div { margin:0 0 7px; }
+    .bubble p:last-child, .bubble div:last-child { margin-bottom:0; }
+    .bubble ul, .bubble ol { margin:0 0 8px; padding-left:20px; }
+    .bubble li { margin:2px 0; }
+    .bubble code { padding:1px 4px; border:1px solid #e0e1ea; border-radius:4px; background:#f4f4f8; font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .bubble pre { margin:0 0 8px; padding:9px 10px; overflow:auto; border-radius:7px; background:#202238; color:#f5f5ff; white-space:pre; }
+    .bubble pre code { padding:0; border:0; background:transparent; color:inherit; }
+    .bubble a { color:var(--pico-dark); text-decoration:underline; text-underline-offset:2px; }
     .message.user .bubble { border-color:#dad8ff; background:var(--pico-pale); border-radius:14px 4px 14px 14px; }
     .message-time { margin-top:4px; color:#999bad; font-size:11px; }
     .progress { color:var(--muted); font-size:12px; display:flex; align-items:center; gap:8px; }
@@ -443,7 +452,9 @@
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; } if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content); loadSessions(); if (currentView === 'context') loadSessionContext(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.'); pollRuns(); } }
     function setSession(nextSession) { sessionId = nextSession; latestAssistantRunId = null; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); if (!$('policy-panel').hidden) loadPolicy(); }
     function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Start a piece of work.</h2><p>Pico keeps this conversation separate, and personal memory stays visible and editable.</p></div>`; }
-    function appendMessage(role, content, timestamp = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${escapeHtml(content)}</div><div class="message-time">${formatTime(timestamp)}</div></div>`; $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
+    function formatInlineMarkdown(value) { return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>'); }
+    function renderMessageContent(value) { const lines = escapeHtml(value || '').split('\n'), output = []; let listType = null, codeLines = null; const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = null; } }; const closeCode = () => { if (codeLines !== null) { output.push(`<pre><code>${codeLines.join('\n')}</code></pre>`); codeLines = null; } }; lines.forEach((line) => { if (line.trim().startsWith('```')) { if (codeLines === null) { closeList(); codeLines = []; } else closeCode(); return; } if (codeLines !== null) { codeLines.push(line); return; } const bullet = line.match(/^\s*[-*]\s+(.+)$/), ordered = line.match(/^\s*\d+[.)]\s+(.+)$/), heading = line.match(/^\s*#{1,3}\s+(.+)$/); if (bullet) { if (listType !== 'ul') { closeList(); output.push('<ul>'); listType = 'ul'; } output.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`); } else if (ordered) { if (listType !== 'ol') { closeList(); output.push('<ol>'); listType = 'ol'; } output.push(`<li>${formatInlineMarkdown(ordered[1])}</li>`); } else { closeList(); if (!line.trim()) output.push('<br>'); else if (heading) output.push(`<h4>${formatInlineMarkdown(heading[1])}</h4>`); else output.push(`<div>${formatInlineMarkdown(line)}</div>`); } }); closeList(); closeCode(); return output.join(''); }
+    function appendMessage(role, content, timestamp = null) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${renderMessageContent(content)}</div><div class="message-time">${formatTime(timestamp)}</div></div>`; $('transcript').appendChild(item); $('transcript').scrollTop = $('transcript').scrollHeight; }
     function showProgress() { removeProgress(); progress = document.createElement('div'); progress.className = 'progress'; progress.innerHTML = '<span class="spinner"></span> Pico is working'; $('transcript').appendChild(progress); $('transcript').scrollTop = $('transcript').scrollHeight; }
     function removeProgress() { if (progress) { progress.remove(); progress = null; } }
     const RUN_LABELS = { queued:'Queued', running:'Running', waiting_for_approval:'Waiting for approval', completed:'Completed', failed:'Failed', cancelled:'Stopped' };
@@ -645,9 +656,9 @@
     function renderUtilityBar(operations, missions) {
       const profileValue = $('utility-profile-value'), missionsValue = $('utility-missions-value'), approvalsValue = $('utility-approvals-value');
       if (!operations || !missions) {
-        profileValue.textContent = 'Unavailable';
-        missionsValue.textContent = 'Unavailable';
-        approvalsValue.textContent = 'Unavailable';
+        profileValue.textContent = 'Sync unavailable';
+        missionsValue.textContent = 'Sync unavailable';
+        approvalsValue.textContent = 'Sync unavailable';
         missionsValue.classList.remove('utility-alert');
         approvalsValue.classList.remove('utility-alert');
         return;
@@ -665,10 +676,10 @@
       if ($('cockpit-session-title')) $('cockpit-session-title').textContent = currentSessionTitle || 'New session';
       const profileEl = $('cockpit-profile-value'), missionValEl = $('cockpit-mission-value'), taskValEl = $('cockpit-task-value'), approvalsEl = $('cockpit-approvals-value');
       if (!operations || !missions) {
-        profileEl.textContent = 'Unavailable';
-        missionValEl.textContent = 'Unavailable';
-        taskValEl.textContent = 'Unavailable';
-        approvalsEl.textContent = 'Unavailable';
+        profileEl.textContent = 'Sync unavailable';
+        missionValEl.textContent = 'Sync unavailable';
+        taskValEl.textContent = 'Sync unavailable';
+        approvalsEl.textContent = 'Sync unavailable';
         missionValEl.className = 'cockpit-value';
         taskValEl.className = 'cockpit-value';
         approvalsEl.className = 'cockpit-value';

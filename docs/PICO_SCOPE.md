@@ -119,15 +119,15 @@ The connection lifecycle and readiness contract are documented in
 
 ### Subscription connections
 
-1. **OpenAI Codex OAuth** — ChatGPT/Codex subscription connection.
-2. **Gemini OAuth** — the owner's supported Gemini subscription connection.
+1. **OpenAI Codex subscription** — ChatGPT/Codex access through the official CLI.
+2. **Gemini CLI subscription** — the owner's supported Gemini subscription connection through the official CLI.
 
-Subscription connections are distinct from API keys. They must use a
-provider-owned, explicit OAuth flow with local token storage, expiry/refresh
-handling, disconnect, and readiness diagnostics. Pico must never capture
-browser cookies, reuse private web endpoints, or present a subscription as a
-general API credential. Anthropic subscription OAuth is outside Pico's
-supported boundary.
+Subscription connections are distinct from API keys. Pico delegates sign-in,
+credential storage, refresh, and disconnect to the provider-owned CLI and
+observes only redacted readiness metadata. Pico must never capture browser
+cookies, reuse private web endpoints, or present a subscription as a general
+API credential. Anthropic subscription OAuth is outside Pico's supported
+boundary.
 
 Fallback routing is a runtime mechanic, not a reason to advertise every
 provider. An unselected provider must not be probed or shown as ready by

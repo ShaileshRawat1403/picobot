@@ -266,12 +266,13 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         strip_model_prefix=False,
         model_overrides=(),
     ),
-    # OpenAI Codex: uses OAuth, not API key.
+    # OpenAI Codex subscription: authentication and transport stay inside the
+    # official CLI; Pico never reads or stores its credentials.
     ProviderSpec(
         name="openai_codex",
         keywords=("openai-codex",),
         env_key="",  # OAuth-based, no API key
-        display_name="OpenAI Codex",
+        display_name="OpenAI Codex subscription",
         litellm_prefix="",  # Not routed through LiteLLM
         skip_prefixes=(),
         env_extras=(),
@@ -373,12 +374,13 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         strip_model_prefix=False,
         model_overrides=(),
     ),
-    # Gemini OAuth: Reuses DAX's OAuth credentials for Gemini API access.
+    # Gemini subscription: authentication and transport stay inside the
+    # official Gemini CLI; this is not a Pico-managed OAuth adapter.
     ProviderSpec(
         name="gemini_oauth",
         keywords=("gemini-oauth", "gemini-2.5", "gemini-pro"),
         env_key="GEMINI_OAUTH_CLIENT_ID",  # Checked in provider constructor
-        display_name="Gemini OAuth",
+        display_name="Gemini CLI subscription",
         litellm_prefix="",  # We handle model naming directly
         is_gateway=False,
         is_local=False,

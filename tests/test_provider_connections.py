@@ -19,6 +19,7 @@ from picobot.providers.subscription_cli import (
     _parse_codex_jsonl,
     _parse_gemini_json,
 )
+from picobot.providers.registry import find_by_name
 
 
 def test_legacy_direct_oauth_transports_are_not_importable():
@@ -48,6 +49,11 @@ def test_supported_provider_surface_is_small_and_explicit():
         "openai_codex",
         "gemini_oauth",
     )
+
+
+def test_subscription_labels_describe_provider_owned_cli_transport():
+    assert find_by_name("openai_codex").label == "OpenAI Codex subscription"
+    assert find_by_name("gemini_oauth").label == "Gemini CLI subscription"
 
 
 def test_connection_lifecycle_is_redacted_and_closed():
