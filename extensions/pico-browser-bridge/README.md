@@ -1,9 +1,10 @@
 # Pico Browser Bridge
 
-This is a local, read-only Chrome extension for Pico's `browser-review`
-profile. It only receives Chrome's `activeTab` permission when you press its
-popup button. It does not request access to browser history, cookies,
-passwords, downloads, all tabs, or remote hosts.
+This is a local Chrome extension for Pico's `browser-review` and
+`browser-action` profiles. It only receives Chrome's `activeTab` permission
+when you press its popup button. It does not request access to browser history,
+cookies, passwords, downloads, or remote hosts. Browser actions are limited to
+typed navigate/click/type commands that were approved in Pico Operations.
 
 ## Load locally
 
@@ -17,4 +18,6 @@ passwords, downloads, all tabs, or remote hosts.
 
 The code expires after five minutes and can be used once. Pico stores a
 redacted, bounded visible-text snapshot for that one session. Revoke the share
-from Operations when the work is done.
+from Operations when the work is done. The extension polls only for commands
+bound to the exact shared tab and returns a bounded result; it never executes
+arbitrary JavaScript received from Pico.

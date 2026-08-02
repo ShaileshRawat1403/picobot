@@ -41,6 +41,7 @@ class WebChannel(BaseChannel):
         "web_search",
         "web_fetch",
         "browser_read_shared_tab",
+        "browser_action",
         "github_pr",
         "calendar",
         "read_file",
@@ -703,6 +704,30 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps({"share": tab.to_dict()}, ensure_ascii=False).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path == "/api/browser-bridge/commands/next":
+                try:
+                    command = self._browser_bridge_store().claim_next(
+                        self._single_query_value(query, "share_id"),
+                        headers.get("x-pico-bridge-token"),
+                    )
+                    self._write_response(writer, 200, json.dumps({"command": command}, ensure_ascii=False).encode())
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path.startswith("/api/browser-bridge/commands/") and path.endswith("/result"):
+                try:
+                    command_id = path.removeprefix("/api/browser-bridge/commands/").removesuffix("/result").strip("/")
+                    payload = self._json_body(body)
+                    command = self._browser_bridge_store().complete_command(
+                        payload.get("share_id"),
+                        headers.get("x-pico-bridge-token"),
+                        command_id,
+                        success=payload.get("success") is True,
+                        result_summary=payload.get("result_summary"),
+                        failure_category=payload.get("failure_category"),
+                    )
+                    self._write_response(writer, 200, json.dumps({"command": command.to_dict()}, ensure_ascii=False).encode())
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path == "/api/browser-bridge/revoke":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -769,6 +794,20 @@ class WebChannel(BaseChannel):
                                 session.metadata.get("pico_operation_profile")
                             )
                             result = await self._workspace_executor().execute_action(
+                                owner_id,
+                                session_key,
+                                action_id,
+                                payload_fingerprint=payload.get("payload_fingerprint"),
+                                profile_id=profile.id,
+                            )
+                        elif action.profile_id == "browser-action":
+                            from picobot.operations.browser_executor import BrowserActionExecutor
+
+                            session = self._session_manager().get_or_create(session_key)
+                            profile = CapabilityRegistry().resolve(
+                                session.metadata.get("pico_operation_profile")
+                            )
+                            result = await BrowserActionExecutor(self._runtime_config().workspace_path).execute_action(
                                 owner_id,
                                 session_key,
                                 action_id,

@@ -1,12 +1,15 @@
+import asyncio
 from pathlib import Path
 
 import pytest
 
 from picobot.agent.loop import AgentLoop
 from picobot.agent.tools.browser import BrowserReadSharedTabTool
+from picobot.agent.tools.browser_action import BrowserActionTool
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.operations.browser_bridge import BrowserBridgeStore
+from picobot.operations.browser_executor import BrowserActionExecutor
 from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 
@@ -67,6 +70,54 @@ def test_browser_bridge_requires_one_time_pairing_and_exact_share_token(tmp_path
     assert refreshed.snapshot_text == "Fresh visible text"
 
 
+def test_browser_commands_are_owner_bound_typed_and_token_gated(tmp_path: Path):
+    store = BrowserBridgeStore(tmp_path / "workspace")
+    shared, token = _share(store)
+    command = store.queue_command(
+        "web:browser:owner-a",
+        "web:web:owner-a:session-a",
+        shared.id,
+        "click",
+        {"selector": "button#continue"},
+        "fingerprint-1",
+    )
+
+    assert command.status == "queued"
+    assert "payload" not in command.to_dict()
+    with pytest.raises(ValueError, match="no longer shared"):
+        store.claim_next(shared.id, "wrong-token")
+    assert store.claim_next(shared.id, token)["payload"] == {"selector": "button#continue"}
+    with pytest.raises(ValueError, match="no longer shared"):
+        store.complete_command(shared.id, "wrong-token", command.id, success=True, result_summary="done")
+
+    completed = store.complete_command(
+        shared.id,
+        token,
+        command.id,
+        success=True,
+        result_summary="Click dispatched.",
+    )
+    assert completed.status == "succeeded"
+    assert store.command("web:browser:owner-a", "web:web:owner-a:session-a", command.id).status == "succeeded"
+    with pytest.raises(KeyError):
+        store.command("web:browser:owner-b", "web:web:owner-b:session-b", command.id)
+
+
+def test_browser_commands_reject_sensitive_targets_and_inputs(tmp_path: Path):
+    store = BrowserBridgeStore(tmp_path / "workspace")
+    shared, _ = _share(store)
+    common = ("web:browser:owner-a", "web:web:owner-a:session-a", shared.id)
+    with pytest.raises(ValueError, match="Sensitive"):
+        store.queue_command(*common, "navigate", {"url": "https://example.com/login"}, "fingerprint")
+    with pytest.raises(ValueError, match="secret"):
+        store.queue_command(
+            *common,
+            "type",
+            {"selector": "#notes", "text": "api_key: sk-example-secret"},
+            "fingerprint",
+        )
+
+
 @pytest.mark.asyncio
 async def test_browser_bridge_blocks_sensitive_tabs_and_tool_reads_only_bound_session(tmp_path: Path):
     workspace = tmp_path / "workspace"
@@ -87,6 +138,142 @@ async def test_browser_bridge_blocks_sensitive_tabs_and_tool_reads_only_bound_se
 
     tool.set_context("web", "web:owner-b:session-a")
     assert "No browser tab is shared" in await tool.execute()
+
+
+@pytest.mark.asyncio
+async def test_browser_action_tool_only_stages_from_explicit_browser_action_profile(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    store = BrowserBridgeStore(workspace)
+    shared, _ = _share(store)
+    tool = BrowserActionTool(workspace)
+    tool.set_turn_context(
+        owner_id="web:browser:owner-a",
+        session_key="web:web:owner-a:session-a",
+        profile_id="browser-review",
+    )
+    assert "browser-action profile" in await tool.execute(
+        operation="click", selector="button#continue", summary="Continue the public workflow"
+    )
+
+    tool.set_turn_context(
+        owner_id="web:browser:owner-a",
+        session_key="web:web:owner-a:session-a",
+        profile_id="browser-action",
+        queued_run_id="run-browser-1",
+    )
+    result = await tool.execute(
+        operation="click", selector="button#continue", summary="Continue the public workflow"
+    )
+    assert "proposed for review" in result
+    action = tool.action_store.list("web:browser:owner-a", "web:web:owner-a:session-a")[0]
+    assert action.tool_name == "browser_action"
+    assert action.profile_id == "browser-action"
+    assert action.initiating_run_id == "run-browser-1"
+    assert shared.id in (action.payload or "")
+
+
+@pytest.mark.asyncio
+async def test_browser_executor_requires_approval_and_dispatches_only_typed_command(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    bridge = BrowserBridgeStore(workspace)
+    shared, token = _share(bridge)
+    tool = BrowserActionTool(workspace)
+    tool.set_turn_context(
+        owner_id="web:browser:owner-a",
+        session_key="web:web:owner-a:session-a",
+        profile_id="browser-action",
+        queued_run_id="run-browser-2",
+    )
+    await tool.execute(operation="click", selector="button#continue", summary="Continue the public workflow")
+    action = tool.action_store.list("web:browser:owner-a", "web:web:owner-a:session-a")[0]
+    executor = BrowserActionExecutor(workspace, timeout_s=2)
+
+    blocked = await executor.execute_action(
+        "web:browser:owner-a",
+        "web:web:owner-a:session-a",
+        action.id,
+        payload_fingerprint=action.payload_fingerprint,
+        profile_id="browser-action",
+    )
+    assert blocked["failure_category"] == "approval_required"
+
+    approved = tool.action_store.resolve(
+        "web:browser:owner-a",
+        action.id,
+        "web:web:owner-a:session-a",
+        "approve",
+        payload_fingerprint=action.payload_fingerprint,
+    )
+    running = asyncio.create_task(
+        executor.execute_action(
+            "web:browser:owner-a",
+            "web:web:owner-a:session-a",
+            approved.id,
+            payload_fingerprint=approved.payload_fingerprint,
+            profile_id="browser-action",
+        )
+    )
+    command = None
+    for _ in range(50):
+        command = bridge.claim_next(shared.id, token)
+        if command:
+            break
+        await asyncio.sleep(0.02)
+    assert command and command["operation"] == "click"
+    assert command["tab_id"] == shared.extension_tab_id
+    assert "owner_id" not in command and "session_key" not in command
+    bridge.complete_command(shared.id, token, command["id"], success=True, result_summary="Click dispatched")
+    result = await running
+    assert result["status"] == "executed"
+
+
+@pytest.mark.asyncio
+async def test_browser_executor_rechecks_fingerprint_and_revoked_share(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    bridge = BrowserBridgeStore(workspace)
+    shared, _ = _share(bridge)
+    tool = BrowserActionTool(workspace)
+    tool.set_turn_context(
+        owner_id="web:browser:owner-a",
+        session_key="web:web:owner-a:session-a",
+        profile_id="browser-action",
+    )
+    await tool.execute(operation="click", selector="button#continue", summary="Continue the public workflow")
+    action = tool.action_store.list("web:browser:owner-a", "web:web:owner-a:session-a")[0]
+    tool.action_store.resolve(
+        "web:browser:owner-a",
+        action.id,
+        "web:web:owner-a:session-a",
+        "approve",
+        payload_fingerprint=action.payload_fingerprint,
+    )
+    mismatch = await BrowserActionExecutor(workspace, timeout_s=0.1).execute_action(
+        "web:browser:owner-a",
+        "web:web:owner-a:session-a",
+        action.id,
+        payload_fingerprint="wrong",
+        profile_id="browser-action",
+    )
+    assert mismatch["failure_category"] == "payload_mismatch"
+
+    await tool.execute(operation="click", selector="button#continue", summary="Continue again")
+    second = tool.action_store.list("web:browser:owner-a", "web:web:owner-a:session-a")[0]
+    tool.action_store.resolve(
+        "web:browser:owner-a",
+        second.id,
+        "web:web:owner-a:session-a",
+        "approve",
+        payload_fingerprint=second.payload_fingerprint,
+    )
+    bridge.revoke("web:browser:owner-a", "web:web:owner-a:session-a")
+    revoked = await BrowserActionExecutor(workspace, timeout_s=0.1).execute_action(
+        "web:browser:owner-a",
+        "web:web:owner-a:session-a",
+        second.id,
+        payload_fingerprint=second.payload_fingerprint,
+        profile_id="browser-action",
+    )
+    assert revoked["failure_category"] == "browser_precondition"
 
 
 @pytest.mark.asyncio

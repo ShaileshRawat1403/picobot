@@ -21,6 +21,7 @@ from picobot.agent.subagent import SubagentManager
 from picobot.artifacts.store import ArtifactStore
 from picobot.agent.tools.calendar import CalendarTool
 from picobot.agent.tools.browser import BrowserReadSharedTabTool
+from picobot.agent.tools.browser_action import BrowserActionTool
 from picobot.agent.tools.cron import CronTool
 from picobot.agent.tools.dax import DaxTool
 from picobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -160,6 +161,12 @@ class AgentLoop:
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(GitHubPullRequestTool())
         self.tools.register(BrowserReadSharedTabTool(workspace=self.workspace))
+        self.tools.register(
+            BrowserActionTool(
+                workspace=self.workspace,
+                action_store=self.proposed_actions,
+            )
+        )
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
@@ -270,6 +277,7 @@ class AgentLoop:
             "spawn",
             "cron",
             "browser_read_shared_tab",
+            "browser_action",
             "save_mission_artifact_draft",
             "propose_workspace_change",
         ):

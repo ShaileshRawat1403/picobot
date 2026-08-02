@@ -9,9 +9,11 @@ web workbench.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 import sqlite3
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -39,12 +41,42 @@ class SharedBrowserTab:
         return data
 
 
+@dataclass(frozen=True)
+class BrowserCommand:
+    """A bounded command waiting for the explicitly shared tab."""
+
+    id: str
+    share_id: str
+    owner_id: str
+    session_key: str
+    extension_tab_id: int
+    operation: str
+    target: str
+    status: str
+    created_at: str
+    updated_at: str
+    expires_at: str
+    payload_fingerprint: str
+    result_summary: str | None = None
+    failure_category: str | None = None
+    payload: str | None = None
+
+    def to_dict(self) -> dict:
+        data = asdict(self)
+        data.pop("payload", None)
+        return data
+
+
 class BrowserBridgeStore:
     """Persist one explicitly shared tab per owner session."""
 
     _PAIRING_LIFETIME = timedelta(minutes=5)
     _MAX_TITLE = 240
     _MAX_SNAPSHOT = 12_000
+    _MAX_TARGET = 320
+    _MAX_TEXT_INPUT = 2_000
+    _COMMAND_LIFETIME = timedelta(seconds=45)
+    _COMMAND_OPERATIONS = {"navigate", "click", "type"}
     _SENSITIVE_PATH_RE = re.compile(
         r"(?:login|sign[ -]?in|auth|password|recovery|payment|checkout|billing)", re.IGNORECASE
     )
@@ -93,6 +125,25 @@ class BrowserBridgeStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS shared_browser_tabs_active_owner_session_idx
                     ON shared_browser_tabs(owner_id, session_key) WHERE status = 'active';
+                CREATE TABLE IF NOT EXISTS browser_commands (
+                    id TEXT PRIMARY KEY,
+                    share_id TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    session_key TEXT NOT NULL,
+                    extension_tab_id INTEGER NOT NULL,
+                    operation TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    payload_fingerprint TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    result_summary TEXT,
+                    failure_category TEXT
+                );
+                CREATE INDEX IF NOT EXISTS browser_commands_share_status_idx
+                    ON browser_commands(share_id, status, created_at);
                 """
             )
 
@@ -220,3 +271,209 @@ class BrowserBridgeStore:
                 "UPDATE shared_browser_tabs SET status = 'revoked', updated_at = ? WHERE owner_id = ? AND session_key = ? AND status = 'active'",
                 (self._iso(self._now()), owner_id, session_key),
             )
+
+    @classmethod
+    def validate_command_payload(cls, operation: object, payload: object) -> tuple[str, str, dict]:
+        """Validate one typed browser operation and return its safe target."""
+        if operation not in cls._COMMAND_OPERATIONS:
+            raise ValueError("Unsupported browser command")
+        if not isinstance(payload, dict):
+            raise ValueError("Browser command payload must be an object")
+        if operation == "navigate":
+            url = payload.get("url")
+            parsed = urlparse(url) if isinstance(url, str) else None
+            if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise ValueError("Browser navigation requires an absolute HTTP(S) URL")
+            if parsed.username or parsed.password or cls._SENSITIVE_PATH_RE.search(parsed.path):
+                raise ValueError("Sensitive browser destinations are blocked")
+            target = url.strip()
+            return target, {"url": target}
+
+        selector = payload.get("selector")
+        if not isinstance(selector, str) or not selector.strip():
+            raise ValueError("Browser command selector is required")
+        selector = " ".join(selector.split())
+        if len(selector) > cls._MAX_TARGET or cls._SENSITIVE_PATH_RE.search(selector):
+            raise ValueError("Sensitive browser controls are blocked")
+        if operation == "click":
+            return selector, {"selector": selector}
+
+        text = payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Browser text input is required")
+        if len(text) > cls._MAX_TEXT_INPUT or cls._SECRET_RE.search(text):
+            raise ValueError("Browser text input appears to contain a secret")
+        return selector, {"selector": selector, "text": text}
+
+    @staticmethod
+    def _command(row: sqlite3.Row) -> BrowserCommand:
+        return BrowserCommand(**dict(row))
+
+    def queue_command(
+        self,
+        owner_id: str,
+        session_key: str,
+        share_id: str,
+        operation: str,
+        payload: dict,
+        payload_fingerprint: str,
+    ) -> BrowserCommand:
+        tab = self.get(owner_id, session_key)
+        if tab.id != share_id:
+            raise ValueError("Browser share changed before dispatch")
+        target, clean_payload = self.validate_command_payload(operation, payload)
+        now = self._now()
+        command = BrowserCommand(
+            id=str(uuid.uuid4()),
+            share_id=share_id,
+            owner_id=owner_id,
+            session_key=session_key,
+            extension_tab_id=tab.extension_tab_id,
+            operation=operation,
+            target=target,
+            status="queued",
+            created_at=self._iso(now),
+            updated_at=self._iso(now),
+            expires_at=self._iso(now + self._COMMAND_LIFETIME),
+            payload_fingerprint=payload_fingerprint,
+            payload=json.dumps(clean_payload, ensure_ascii=False, sort_keys=True),
+        )
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO browser_commands(
+                    id, share_id, owner_id, session_key, extension_tab_id,
+                    operation, target, status, created_at, updated_at, expires_at,
+                    payload_fingerprint, payload, result_summary, failure_category
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+                """,
+                (
+                    command.id,
+                    command.share_id,
+                    command.owner_id,
+                    command.session_key,
+                    command.extension_tab_id,
+                    command.operation,
+                    command.target,
+                    command.status,
+                    command.created_at,
+                    command.updated_at,
+                    command.expires_at,
+                    command.payload_fingerprint,
+                    command.payload,
+                ),
+            )
+        return command
+
+    def claim_next(self, share_id: object, bridge_token: object) -> dict | None:
+        clean_share = self._required(share_id, "share ID")
+        clean_token = self._required(bridge_token, "share token")
+        now = self._now()
+        with self._connect() as connection:
+            shared = connection.execute(
+                "SELECT * FROM shared_browser_tabs WHERE id = ? AND token_hash = ? AND status = 'active'",
+                (clean_share, self._hash(clean_token)),
+            ).fetchone()
+            if shared is None:
+                raise ValueError("This browser tab is no longer shared with Pico")
+            connection.execute(
+                "UPDATE browser_commands SET status = 'expired', updated_at = ?, failure_category = 'expired' WHERE share_id = ? AND status IN ('queued', 'dispatched') AND expires_at <= ?",
+                (self._iso(now), clean_share, self._iso(now)),
+            )
+            row = connection.execute(
+                "SELECT * FROM browser_commands WHERE share_id = ? AND status = 'queued' ORDER BY created_at LIMIT 1",
+                (clean_share,),
+            ).fetchone()
+            if row is None:
+                return None
+            updated = connection.execute(
+                "UPDATE browser_commands SET status = 'dispatched', updated_at = ? WHERE id = ? AND status = 'queued'",
+                (self._iso(now), row["id"]),
+            )
+            if updated.rowcount != 1:
+                return None
+            command = self._command(connection.execute("SELECT * FROM browser_commands WHERE id = ?", (row["id"],)).fetchone())
+        return {
+            "id": command.id,
+            "share_id": command.share_id,
+            "tab_id": command.extension_tab_id,
+            "operation": command.operation,
+            "target": command.target,
+            "payload": json.loads(command.payload or "{}"),
+            "expires_at": command.expires_at,
+        }
+
+    def complete_command(
+        self,
+        share_id: object,
+        bridge_token: object,
+        command_id: object,
+        *,
+        success: bool,
+        result_summary: object,
+        failure_category: str | None = None,
+    ) -> BrowserCommand:
+        clean_share = self._required(share_id, "share ID")
+        clean_token = self._required(bridge_token, "share token")
+        clean_command = self._required(command_id, "command ID")
+        summary = " ".join(str(result_summary or "").split())[:600]
+        if not summary:
+            raise ValueError("Browser command result is required")
+        with self._connect() as connection:
+            shared = connection.execute(
+                "SELECT id FROM shared_browser_tabs WHERE id = ? AND token_hash = ? AND status = 'active'",
+                (clean_share, self._hash(clean_token)),
+            ).fetchone()
+            if shared is None:
+                raise ValueError("This browser tab is no longer shared with Pico")
+            now = self._iso(self._now())
+            updated = connection.execute(
+                """
+                UPDATE browser_commands
+                SET status = ?, updated_at = ?, result_summary = ?, failure_category = ?
+                WHERE id = ? AND share_id = ? AND status = 'dispatched'
+                """,
+                (
+                    "succeeded" if success else "failed",
+                    now,
+                    summary,
+                    None if success else (failure_category or "browser_error"),
+                    clean_command,
+                    clean_share,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise ValueError("Browser command is no longer awaiting a result")
+            row = connection.execute("SELECT * FROM browser_commands WHERE id = ?", (clean_command,)).fetchone()
+        return self._command(row)
+
+    def command(self, owner_id: str, session_key: str, command_id: str) -> BrowserCommand:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM browser_commands WHERE id = ? AND owner_id = ? AND session_key = ?",
+                (command_id, owner_id, session_key),
+            ).fetchone()
+        if row is None:
+            raise KeyError("Browser command was not found for this session")
+        command = self._command(row)
+        if command.status in {"queued", "dispatched"} and datetime.fromisoformat(command.expires_at) <= self._now():
+            now = self._iso(self._now())
+            with self._connect() as connection:
+                connection.execute(
+                    "UPDATE browser_commands SET status = 'expired', updated_at = ?, failure_category = 'expired' WHERE id = ? AND status IN ('queued', 'dispatched')",
+                    (now, command.id),
+                )
+            return self.command(owner_id, session_key, command_id)
+        return command
+
+    def cancel_command(self, owner_id: str, session_key: str, command_id: str, reason: str) -> BrowserCommand:
+        command = self.command(owner_id, session_key, command_id)
+        if command.status not in {"queued", "dispatched"}:
+            return command
+        now = self._iso(self._now())
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE browser_commands SET status = 'cancelled', updated_at = ?, result_summary = ?, failure_category = 'cancelled' WHERE id = ? AND owner_id = ? AND session_key = ? AND status IN ('queued', 'dispatched')",
+                (now, " ".join(reason.split())[:600], command_id, owner_id, session_key),
+            )
+        return self.command(owner_id, session_key, command_id)

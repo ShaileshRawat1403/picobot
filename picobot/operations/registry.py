@@ -75,6 +75,12 @@ class CapabilityRegistry:
             description="Read one browser tab you explicitly share with this session. No browser writes.",
             tool_names=("list_skills", "get_skill", "browser_read_shared_tab"),
         ),
+        "browser-action": SessionProfile(
+            id="browser-action",
+            label="Browser action",
+            description="Propose bounded navigate, click, or non-sensitive type actions on one shared tab. Every write requires approval.",
+            tool_names=("list_skills", "get_skill", "browser_read_shared_tab", "browser_action"),
+        ),
         "mission-work": SessionProfile(
             id="mission-work",
             label="Mission work",
@@ -126,7 +132,7 @@ class CapabilityRegistry:
             label="Inspect installed skills",
             risk="read",
             approval="none",
-            profiles=("personal-work", "research", "browser-review", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
+            profiles=("personal-work", "research", "browser-review", "browser-action", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
         ),
         CapabilitySpec(
             id="skills.read",
@@ -135,7 +141,7 @@ class CapabilityRegistry:
             label="Read a skill guide",
             risk="read",
             approval="none",
-            profiles=("personal-work", "research", "browser-review", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
+            profiles=("personal-work", "research", "browser-review", "browser-action", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
         ),
         CapabilitySpec(
             id="research.search",
@@ -155,6 +161,16 @@ class CapabilityRegistry:
             risk="read",
             approval="none",
             profiles=("browser-review",),
+            requires_browser_share=True,
+        ),
+        CapabilitySpec(
+            id="browser.write",
+            tool_name="browser_action",
+            toolset="browser",
+            label="Propose a bounded browser action",
+            risk="mutating",
+            approval="explicit",
+            profiles=("browser-action",),
             requires_browser_share=True,
         ),
         CapabilitySpec(
