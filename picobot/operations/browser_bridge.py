@@ -171,7 +171,8 @@ class BrowserBridgeStore:
         parsed = urlparse(clean_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("Only http/https browser tabs can be shared")
-        if cls._SENSITIVE_PATH_RE.search(parsed.path):
+        sensitive_target = parsed.path + "?" + parsed.query + "#" + parsed.fragment
+        if cls._SENSITIVE_PATH_RE.search(sensitive_target):
             raise ValueError("Sensitive authentication or payment pages cannot be shared with Pico")
         clean_title = " ".join(cls._required(title, "title").split())[: cls._MAX_TITLE]
         if not isinstance(text, str):
@@ -284,7 +285,8 @@ class BrowserBridgeStore:
             parsed = urlparse(url) if isinstance(url, str) else None
             if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.hostname:
                 raise ValueError("Browser navigation requires an absolute HTTP(S) URL")
-            if parsed.username or parsed.password or cls._SENSITIVE_PATH_RE.search(parsed.path):
+            sensitive_target = parsed.path + "?" + parsed.query + "#" + parsed.fragment
+            if parsed.username or parsed.password or cls._SENSITIVE_PATH_RE.search(sensitive_target):
                 raise ValueError("Sensitive browser destinations are blocked")
             target = url.strip()
             return target, {"url": target}
@@ -431,7 +433,7 @@ class BrowserBridgeStore:
                 """
                 UPDATE browser_commands
                 SET status = ?, updated_at = ?, result_summary = ?, failure_category = ?
-                WHERE id = ? AND share_id = ? AND status = 'dispatched'
+                WHERE id = ? AND share_id = ? AND status = 'dispatched' AND expires_at > ?
                 """,
                 (
                     "succeeded" if success else "failed",
@@ -440,10 +442,15 @@ class BrowserBridgeStore:
                     None if success else (failure_category or "browser_error"),
                     clean_command,
                     clean_share,
+                    now,
                 ),
             )
             if updated.rowcount != 1:
-                raise ValueError("Browser command is no longer awaiting a result")
+                connection.execute(
+                    "UPDATE browser_commands SET status = 'expired', updated_at = ?, failure_category = 'expired' WHERE id = ? AND share_id = ? AND status = 'dispatched'",
+                    (now, clean_command, clean_share),
+                )
+                raise ValueError("Browser command is expired or no longer awaiting a result")
             row = connection.execute("SELECT * FROM browser_commands WHERE id = ?", (clean_command,)).fetchone()
         return self._command(row)
 

@@ -118,6 +118,29 @@ def test_browser_commands_reject_sensitive_targets_and_inputs(tmp_path: Path):
         )
 
 
+def test_browser_command_result_is_refused_after_expiry(tmp_path: Path):
+    store = BrowserBridgeStore(tmp_path / "workspace")
+    shared, token = _share(store)
+    command = store.queue_command(
+        "web:browser:owner-a",
+        "web:web:owner-a:session-a",
+        shared.id,
+        "click",
+        {"selector": "button#continue"},
+        "fingerprint-expiry",
+    )
+    claimed = store.claim_next(shared.id, token)
+    assert claimed and claimed["id"] == command.id
+    with store._connect() as connection:
+        connection.execute(
+            "UPDATE browser_commands SET expires_at = ? WHERE id = ?",
+            ("2000-01-01T00:00:00+00:00", command.id),
+        )
+    with pytest.raises(ValueError, match="expired"):
+        store.complete_command(shared.id, token, command.id, success=True, result_summary="late")
+    assert store.command("web:browser:owner-a", "web:web:owner-a:session-a", command.id).status == "expired"
+
+
 @pytest.mark.asyncio
 async def test_browser_bridge_blocks_sensitive_tabs_and_tool_reads_only_bound_session(tmp_path: Path):
     workspace = tmp_path / "workspace"
