@@ -525,6 +525,117 @@
     button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color:#8171ef; }
     @media (max-width:900px) { :root { --rail:226px; } .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } .cockpit-grid .cockpit-action { min-height:57px; } .topbar { padding:0 24px; } }
     @media (max-width:760px) { .rail { position:static; width:100%; height:auto; padding:10px 12px; flex-direction:row; overflow:visible; background:#171820; } .rail::before,.sessions,.rail-footer { display:none; } .brand { padding:0; font-size:19px; } .new-session { width:38px; min-height:38px; padding:0; font-size:0; } .new-session::before { content:"+"; font-size:20px; } .nav { display:flex; min-width:0; overflow:auto; padding:0; } .nav-button { width:38px; min-width:38px; padding:9px 11px; } .nav-button.active::before { left:6px; right:6px; top:auto; bottom:0; width:auto; height:2px; } .nav-button > span:last-child { display:none; } main { margin-left:0; width:100%; } .topbar { height:62px; padding:0 16px; } .connection { padding:6px 8px; } .connection #connection-text { display:none; } .cockpit-wrapper { padding:13px 16px 0; } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .cockpit-bar::before { padding-left:13px; } button.cockpit-action { min-height:56px; padding:10px 12px; } .transcript { padding:28px 17px 20px; } .welcome { padding:21px 20px; } .welcome h2 { font-size:25px; } .message { max-width:96%; } .composer-area { padding:14px 16px 18px; } .composer-hint::after { display:none; } .workspace-view { padding:31px 16px; } .workspace-head h2 { font-size:31px; } .card { border-radius:13px; } .utility-bar { padding:5px 10px; } }
+    /* Quiet canvas mode: spacious, translucent, and modular instead of dashboard-heavy. */
+    :root { --ink:#303341; --muted:#858a9a; --line:#e5e9f1; --paper:#f7f9fd; --panel:#ffffffb8; --pico:#5276ee; --pico-dark:#3d62d6; --pico-pale:#edf2ff; --rail:296px; }
+    body { background:radial-gradient(ellipse 70% 62% at 72% 18%,#ffffff 0%,#f6f9ffcc 45%,transparent 76%),radial-gradient(ellipse 64% 74% at 52% 88%,#eaf4ff7d 0%,transparent 72%),linear-gradient(135deg,#f7f9ff,#f4f7fc 54%,#f8fbff); letter-spacing:-.006em; }
+    body::before { opacity:.55; background-image:radial-gradient(#b9c9ed46 .7px,transparent .8px),radial-gradient(#ffffff99 .7px,transparent .8px); background-position:0 0,12px 12px; background-size:24px 24px; mask-image:radial-gradient(ellipse at 55% 32%,black,transparent 74%); }
+    .rail { padding:21px 15px 17px; color:#697082; background:linear-gradient(180deg,#f6f9ffdf,#edf2fbd9); border-right:1px solid #dde4f0; box-shadow:18px 0 40px #a9bad410; backdrop-filter:blur(22px) saturate(1.25); }
+    .rail::before { height:360px; background:radial-gradient(circle at 10% 0%,#c9dcff8f,transparent 55%),radial-gradient(circle at 100% 30%,#eee6ff7a,transparent 47%); }
+    .brand { padding:3px 10px 11px; color:#5276ee; font-family:Inter,ui-sans-serif,sans-serif; font-size:12px; font-weight:780; letter-spacing:.2em; text-transform:uppercase; }
+    .mark { width:12px; height:12px; border:0; border-radius:3px; background:linear-gradient(135deg,#6c92ff,#4d70e6); box-shadow:0 3px 8px #5276ee42; color:transparent; font-size:0; }
+    .new-session { min-height:37px; justify-content:flex-start; padding:8px 11px; border:1px solid #d6ddeb; border-radius:7px; background:#ffffffb8; box-shadow:0 3px 10px #6d87bb0d; color:#4c6edf; font-size:12px; font-weight:650; }
+    .new-session:hover { transform:none; border-color:#b8c8ed; background:#fff; box-shadow:0 6px 16px #6d87bb17; color:#3859c9; }
+    .nav { gap:1px; padding-top:6px; }
+    .nav-button, .session-button { min-height:32px; border-radius:6px; color:#72798a; font-size:12px; }
+    .nav-button { padding:7px 10px; font-weight:560; }
+    .nav-button:hover { transform:none; color:#4568d6; background:#ffffffa8; }
+    .nav-button.active { color:#4266d6; background:#e6eeffab; box-shadow:inset 0 0 0 1px #dce6ff; }
+    .nav-button.active::before { left:-15px; top:8px; bottom:8px; width:2px; background:#5879ec; box-shadow:none; }
+    .nav-icon { transform:scale(.92); opacity:.72; }
+    .section-label { padding:11px 10px 5px; color:#9aa2b2; font-size:9px; letter-spacing:.16em; }
+    .session-search { border-color:#d9e0ec; border-radius:6px; background:#ffffff8a; color:#4b5260; }
+    .session-search::placeholder { color:#9ea6b5; }
+    .session-search:focus { border-color:#a9bbed; box-shadow:0 0 0 3px #6281e212; }
+    .session-archive-toggle { color:#929aaa; }
+    .session-button { padding:7px 9px; color:#6b7384; }
+    .session-button:hover, .session-button.active { color:#4266d6; background:#ffffff9e; box-shadow:inset 2px 0 #7794f4; }
+    .session-meta, .rail-footer { color:#98a0ae; }
+    .session-work { color:#6380e1; }
+    .session-run.active { color:#478e75; }
+    .rail-footer { border-top-color:#dfe5ef; color:#8e97a7; }
+    .runtime { color:#7d8697; }
+    .dot { background:#ca8090; }
+    .dot.ready { background:#68ae91; box-shadow:0 0 0 4px #68ae9117; }
+    main { background:transparent; }
+    .topbar { height:64px; padding:0 42px; border-bottom:1px solid #e8edf5a8; background:#f9fbffab; backdrop-filter:blur(16px) saturate(1.15); }
+    .eyebrow { color:#9ba4b5; font-size:9px; letter-spacing:.16em; }
+    h1 { color:#3a3e4b; font-family:Inter,ui-sans-serif,sans-serif; font-size:14px; font-weight:590; letter-spacing:-.02em; }
+    .title-action { color:#9ca3b0; font-size:10px; }
+    .title-action:hover { color:#4c6ed8; }
+    .title-action.primary { border-radius:5px; background:#5276ee; box-shadow:none; }
+    .connection { padding:5px 8px; border:0; border-radius:5px; background:transparent; box-shadow:none; color:#a0a6b1; font-size:10px; }
+    .cockpit-wrapper { padding:14px 42px 0; }
+    .cockpit-bar { width:min(1000px,100%); border:1px solid #e2e7f1; border-radius:10px; background:#ffffff71; box-shadow:0 8px 26px #64718e08; backdrop-filter:blur(16px) saturate(1.12); }
+    .cockpit-bar::before { content:"Working context"; padding:8px 13px 6px; border-bottom-color:#e8edf4; color:#9ba5b6; font-size:8px; letter-spacing:.16em; }
+    .cockpit-grid { grid-template-columns:repeat(8,minmax(0,1fr)); }
+    button.cockpit-action { min-height:43px; padding:8px 11px; border-right-color:#ebeff6; border-bottom:0; }
+    button.cockpit-action:hover { background:#f4f7ffad; color:inherit; }
+    .cockpit-label { color:#a4acbb; font-size:8px; letter-spacing:.12em; }
+    .cockpit-value { margin-top:1px; color:#5a6070; font-size:10.5px; font-weight:590; }
+    .cockpit-value.cockpit-active { color:#4b6bd7; }
+    .cockpit-value.cockpit-waiting { color:#b4773e; }
+    .cockpit-value.cockpit-alert, .cockpit-value.cockpit-blocked { color:#bd6571; }
+    .cockpit-context-only { color:#657dc8; }
+    .transcript { width:min(900px,100%); padding:52px 32px 34px; gap:29px; }
+    .welcome { max-width:660px; padding:0 0 0 17px; border:0; border-left:1px solid #b7caf6; border-radius:0; background:transparent; box-shadow:none; overflow:visible; }
+    .welcome::after { right:auto; left:-6px; top:-18px; color:#a2b8ef; font-size:15px; }
+    .welcome h2 { color:#3c4050; font-family:Iowan Old Style,Georgia,serif; font-size:28px; font-weight:560; letter-spacing:-.055em; }
+    .welcome p { color:#7a8290; font-size:13px; }
+    .welcome-actions { margin-top:17px; }
+    .welcome-action { border-color:#dde5f6; border-radius:5px; background:#ffffff82; color:#6577a8; font-size:10.5px; font-weight:570; }
+    .welcome-action:hover { border-color:#b9caef; background:#f7f9ff; color:#4666cc; transform:none; }
+    .message { max-width:91%; gap:11px; }
+    .avatar { width:22px; height:22px; border:0; border-radius:6px; background:linear-gradient(135deg,#698cff,#4f72e4); box-shadow:none; font-size:11px; }
+    .message.user .avatar { background:#edf0f6; color:#7a8291; }
+    .bubble { color:#404451; font-size:14px; line-height:1.7; }
+    .bubble h4 { color:#363a48; font-size:14px; }
+    .bubble code { border:0; border-radius:4px; background:#eef2fb; color:#5770bd; }
+    .bubble pre { border:1px solid #e0e6f2; border-radius:8px; background:#f6f8fc; box-shadow:none; color:#43526b; }
+    .bubble a { color:#4d6ed6; font-weight:560; }
+    .message.user .bubble { padding:10px 13px; border-color:#e0e7f3; border-radius:9px 3px 9px 9px; background:#f6f9ffcc; box-shadow:none; color:#4b5060; }
+    .message-time { color:#a8aeba; font-size:10px; }
+    .message-feedback { gap:4px; margin-top:5px; }
+    .message-feedback button { border-color:#e4e8f0; padding:3px 7px; background:transparent; color:#9aa2af; font-size:9px; }
+    .message-feedback button:hover, .message-feedback button.selected { border-color:#c3d0f0; background:#f3f6fd; color:#5070d5; }
+    .composer-area { padding:14px 32px 23px; background:linear-gradient(0deg,#f7f9fd 73%,#f7f9fd00); }
+    .composer { display:grid; width:min(970px,100%); min-height:0; padding:0; border-color:#dce4f0; border-radius:7px; background:#ffffffbd; box-shadow:0 9px 28px #62799d10; backdrop-filter:blur(14px); }
+    .composer:focus-within { border-color:#b6c7ee; box-shadow:0 0 0 3px #6383e00e,0 10px 28px #62799d14; transform:none; }
+    .composer-meta { display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:31px; padding:0 13px; border-bottom:1px solid #e7ecf4; color:#9aa4b3; font-size:10px; }
+    .composer-meta span:first-child { color:#7181aa; font-weight:590; }
+    .composer-meta i { color:#7795ec; font-style:normal; }
+    .composer-entry { display:flex; align-items:flex-end; gap:8px; padding:5px 6px 5px 13px; }
+    .composer-entry textarea { min-height:40px; padding:10px 0; }
+    .send { width:34px; height:34px; border-radius:50%; background:#3f424d; box-shadow:none; font-size:14px; }
+    .send:not(:disabled):hover { transform:none; background:#5276ee; box-shadow:none; }
+    .composer-hint { width:min(970px,100%); padding:0 3px; color:#a0a8b6; font-size:9.5px; }
+    .composer-hint::after { display:none; }
+    .run-status { width:min(970px,100%); border-color:#e1e7f2; border-radius:6px; background:#fbfcffb8; }
+    .run-detail-panel { width:min(970px,100%); border-color:#e2e7f1; border-radius:8px; box-shadow:0 8px 22px #60728e0b; }
+    .workspace-view { padding:49px 42px; }
+    .workspace { width:min(1000px,100%); }
+    .workspace-head { margin-bottom:29px; }
+    .workspace-head h2 { color:#3c4050; font-family:Iowan Old Style,Georgia,serif; font-size:34px; font-weight:560; letter-spacing:-.052em; }
+    .workspace-head p { color:#818896; font-size:13px; }
+    .card { border-color:#e5eaf2; border-radius:9px; background:#ffffff91; box-shadow:none; backdrop-filter:blur(10px); }
+    .action { border-radius:6px; background:#5276ee; box-shadow:none; font-size:12px; font-weight:630; }
+    .action:hover { transform:none; background:#4165da; box-shadow:none; }
+    .action.secondary { border-color:#dce4f4; border-radius:6px; background:#f4f7ff; color:#526fc9; }
+    .memory-card, .skill-card, .artifact-card, .mission-card, .operation-card, .provider-card, .learning-card, .skill-proposal-card, .search-result { border-color:#e6ebf2; border-radius:7px; background:#ffffffa3; box-shadow:none; }
+    .memory-card:hover, .skill-card:hover, .artifact-card:hover, .mission-card:hover, .mission-card.active, .skill-proposal-card:hover, .skill-proposal-card.active, .search-result:hover { border-color:#cdd9f0; background:#fbfcff; box-shadow:none; transform:none; }
+    .memory-action { border-color:#dfe5ef; border-radius:5px; background:#fff9; color:#6e7788; }
+    .memory-action:hover { border-color:#c2d0ea; background:#f4f7fd; color:#4f6cd0; }
+    .artifact-preview { border-color:#e0e6ef; border-radius:7px; background:#f8faff; color:#59647a; box-shadow:none; }
+    .empty { border-color:#e0e6ef; border-radius:7px; background:#ffffff66; color:#939ba9; }
+    .policy-panel, .stance-panel { width:min(970px,100%); }
+    .stance-option { border-color:#e4e9f1; border-radius:7px; background:#ffffffa3; }
+    .stance-option:hover, .stance-option.active { border-color:#c8d5ef; background:#f5f8ff; }
+    .utility-bar { min-height:34px; padding:4px 26px; border-top-color:#e7ebf3; background:#f8faff9c; backdrop-filter:blur(12px); }
+    .utility-action { color:#97a0ad; font-size:10px; }
+    .utility-action:hover { background:#f1f5ff; color:#5272d5; }
+    .toast { border-radius:7px; background:#4b5364; box-shadow:0 12px 32px #44516c1f; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color:#7390e9; }
+    @media (max-width:1120px) { :root { --rail:252px; } .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); } button.cockpit-action { border-bottom:1px solid #ebeff6; } }
+    @media (max-width:760px) { .rail { background:#f4f7fdde; } .brand { font-size:10px; } .nav-button.active::before { left:6px; right:6px; background:#5879ec; } .topbar { padding:0 16px; } .cockpit-wrapper { padding:11px 16px 0; } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .transcript { padding:36px 18px 26px; } .composer-area { padding:12px 16px 17px; } .composer-meta span:last-child { display:none; } .workspace-view { padding:32px 17px; } }
   </style>
 </head>
 <body>
@@ -644,7 +755,7 @@
           <p class="provider-note">The effective policy is resolved before each new run and applies only to later turns — it never rewrites past runs. Only providers already configured in this local profile can be selected, and reasoning effort is applied only where the selected provider actually forwards it.</p>
         </div>
         <div class="transcript" id="transcript"></div>
-        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
+        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span>Context stays visible · memory stays explicit</span></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
       </section>
       <section class="view workspace-view" id="view-search"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Personal retrieval</div><h2>Find work</h2><p>Search your sessions, saved memory, and local artifacts without leaving Pico.</p></div></div><div class="card"><form class="search-controls" id="work-search-form"><input id="work-search-input" autocomplete="off" placeholder="Search across your Pico workbench"><button class="action" type="submit">Search</button></form><div class="memory-summary" id="search-summary"></div><div class="memory-list" id="search-list"><div class="empty">Search across your durable Pico work.</div></div></div></div></section>
       <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep notes, briefs, plans, reports, structured data, code, configs, and source links as local versioned work products.</p></div></div><div class="artifact-layout"><div class="card"><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="report">Report</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option><option value="link">Source links</option><option value="code">Code</option><option value="config">Config</option></select></div><div class="form-row"><label class="memory-meta" for="artifact-format">Format<select id="artifact-format" aria-label="Artifact format"><option value="text/markdown">Markdown</option><option value="text/plain">Plain text</option><option value="application/json">JSON</option><option value="application/yaml">YAML</option><option value="text/csv">CSV</option><option value="text/tab-separated-values">TSV</option><option value="application/x-ndjson">JSONL</option><option value="text/uri-list">URI list</option></select></label></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><a class="action secondary" id="download-artifact" hidden>Download</a><a class="action secondary" id="export-html-artifact" hidden>Export HTML</a><a class="action secondary" id="export-bundle-artifact" hidden>Export bundle</a><button class="memory-action" id="artifact-source-run" type="button" hidden>View source run</button></div></form><div class="provider-row" style="margin-top:12px"><label class="memory-meta" for="artifact-status">Lifecycle<select id="artifact-status" disabled><option value="draft">Draft</option><option value="final">Final — ready to share</option><option value="archived">Archived</option></select></label><button class="memory-action" id="save-artifact-status" type="button" disabled>Set lifecycle</button></div><div class="provider-row" style="margin-top:8px"><label class="memory-meta" for="artifact-verification">Verification</label><select id="artifact-verification" disabled><option value="unverified">Unverified</option><option value="verified">Verified</option><option value="stale">Stale</option></select><button class="memory-action" id="save-artifact-verification" type="button" disabled>Set verification</button></div></div><div><div class="skills-list" id="artifact-list"></div><div class="artifact-revisions" id="artifact-revisions"></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></section>
