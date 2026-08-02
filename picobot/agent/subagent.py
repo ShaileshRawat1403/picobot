@@ -8,9 +8,8 @@ from typing import Any
 
 from loguru import logger
 
-from picobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from picobot.agent.tools.filesystem import ListDirTool, ReadFileTool
 from picobot.agent.tools.registry import ToolRegistry
-from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
@@ -87,19 +86,14 @@ class SubagentManager:
         logger.info("Subagent [{}] starting task: {}", task_id, label)
 
         try:
-            # Build subagent tools (no message tool, no spawn tool)
+            # Delegated research is intentionally read-only.  The child can
+            # inspect the workspace and fetch/search public sources, but it
+            # cannot write files, run shell commands, message users, or spawn
+            # another child.
             tools = ToolRegistry()
             allowed_dir = self.workspace if self.restrict_to_workspace else None
             tools.register(ReadFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(WriteFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(EditFileTool(workspace=self.workspace, allowed_dir=allowed_dir))
             tools.register(ListDirTool(workspace=self.workspace, allowed_dir=allowed_dir))
-            tools.register(ExecTool(
-                working_dir=str(self.workspace),
-                timeout=self.exec_config.timeout,
-                restrict_to_workspace=self.restrict_to_workspace,
-                path_append=self.exec_config.path_append,
-            ))
             tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
             tools.register(WebFetchTool(proxy=self.web_proxy))
 

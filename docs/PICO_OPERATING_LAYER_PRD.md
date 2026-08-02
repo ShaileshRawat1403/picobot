@@ -60,14 +60,24 @@ Initial profiles:
 
 | Profile | Intended use | Capability boundary |
 | --- | --- | --- |
-| `personal-work` | Chat, memory, artifacts, approved skills | No external side effect |
+| `personal-work` | Chat, memory, artifacts, approved skills | No external side effect; no mission action tools |
 | `research` | Research and synthesis | Search, fetch, browser reading |
 | `browser-review` | Owner-supervised browser work | Shared-tab reading plus staged browser actions |
+| `mission-work` | Governed mission execution | Active mission, approved blueprint, staged draft actions, explicit approval |
+| `github-review` | Read-first pull-request review | GitHub PR overview, checks, and bounded diff through local `gh`; no comments, approvals, merges, or pushes |
+| `calendar-read` | Personal schedule review | Read upcoming Google Calendar events through the local token; no event writes |
+| `workspace-inspect` | Local workspace inspection | Read files and list directories in the configured workspace; no writes or shell |
+| `workspace-run` | Local workspace diagnostics | Bounded read-only diagnostic commands; no writes, network, installs, or shell mutation |
+| `workspace-build` | Governed local development | Draft file/command changes for explicit approval; never execute directly from chat |
 | `productivity` | Later calendar/task/note work | Connector-specific reads; writes require approval |
 | `governed-handoff` | Future Soothsayer handoff | No direct external execution in Pico |
 
 Profiles are server-owned defaults. The browser may request a profile but may
 not manufacture a tool or broaden the session's capability set.
+
+An attached mission provides bounded context only. It never changes the
+session profile automatically; governed mission action proposals require an
+explicit switch to `mission-work`.
 
 ## Chrome bridge v1
 
@@ -135,6 +145,11 @@ state, and owner/session-scoped tool outcome records. The first two profiles
 are deliberately small: approved skills only, then read-only web research.
 Calendar, browser, shell, messaging, and connector tools remain outside these
 profiles until their dedicated slices and approval rules exist.
+
+The `github-review` profile is the first focused integration slice. It requires
+the owner's local authenticated GitHub CLI and exposes only a dedicated
+read-only PR tool. Pico reports setup state without exposing `gh` credentials or
+authentication output.
 
 ### OL2 — Approval and action ledger
 

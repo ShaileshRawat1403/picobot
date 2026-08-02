@@ -183,6 +183,15 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
     detail = channel._browser_mission_detail(client_a, session_a, created["id"])
     assert detail["evidence"] == {"artifact_count": 0, "activity_count": 0, "checkpoint_count": 0, "run_count": 0}
     assert [event["event_type"] for event in detail["events"]] == ["created"]
+    assert detail["resume_brief"] == {
+        "outcome": created["objective"],
+        "current_step": created["current_step"],
+        "state": "draft",
+        "blocker": None,
+        "last_checkpoint": None,
+        "active_task": None,
+        "pending_approvals": 0,
+    }
 
 
 def test_validation_and_bounds_are_enforced(tmp_path: Path):

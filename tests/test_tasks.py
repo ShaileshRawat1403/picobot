@@ -38,7 +38,7 @@ _OWNER_A = "web:browser:owner-a"
 _SESSION_A = "web:web:owner-a:session-1"
 _OWNER_B = "web:browser:owner-b"
 _SESSION_B = "web:web:owner-b:session-2"
-_PROFILE = "personal-work"
+_PROFILE = "mission-work"
 
 
 class FakeProvider(LLMProvider):
@@ -75,6 +75,13 @@ def _setup_active_mission(workspace: Path, owner_id: str = _OWNER_A, session_key
         objective="Achieve test objective.",
     )
     return m_store.transition(owner_id, mission.id, "active")
+
+
+def _set_session_profile(sm: SessionManager, session_key: str, profile_id: str):
+    """Set the session's capability profile for authority-matching tests."""
+    session = sm.get_or_create(session_key)
+    session.metadata["pico_operation_profile"] = profile_id
+    sm.save(session)
 
 
 def test_task_owner_session_isolation(tmp_path: Path):
@@ -192,7 +199,7 @@ def test_task_atomic_claim_contention_and_race(tmp_path: Path):
 
 
 def test_task_profile_rechecked_at_claim_and_execution(tmp_path: Path):
-    """Test 4: Profile is rechecked against session profile at claim time."""
+    """Test 4: Mission attachment alone never grants task execution authority."""
     m_a = _setup_active_mission(tmp_path)
     t_store = TaskStore(tmp_path)
 
@@ -202,12 +209,15 @@ def test_task_profile_rechecked_at_claim_and_execution(tmp_path: Path):
         mission_id=m_a.id,
         title="Profile Task",
         objective="Profile Objective",
-        capability_profile="research",
+        capability_profile="personal-work",
     )
 
-    # Claim fails if current session profile ("personal-work") does not match task profile ("research")
-    with pytest.raises(ValueError, match="Task profile does not match session profile"):
+    with pytest.raises(ValueError, match="require the Mission work profile"):
         t_store.claim_for_run(_OWNER_A, task.id, _SESSION_A, "personal-work", m_a)
+    assert t_store.get(_OWNER_A, task.id).state == "draft"
+
+    with pytest.raises(ValueError, match="created without Mission work authority"):
+        t_store.claim_for_run(_OWNER_A, task.id, _SESSION_A, "mission-work", m_a)
 
 
 def test_one_active_task_per_session(tmp_path: Path):
@@ -247,6 +257,7 @@ async def test_task_to_real_run_record_linkage_and_derived_runs(tmp_path: Path):
     bus = MessageBus()
     provider = FakeProvider("Run result content")
     sessions = SessionManager(tmp_path)
+    _set_session_profile(sessions, _SESSION_A, _PROFILE)
     loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, session_manager=sessions)
 
     t_store = TaskStore(tmp_path)
@@ -290,8 +301,10 @@ async def test_task_max_elapsed_sec_timeout_budget_exhausted(tmp_path: Path):
             await asyncio.sleep(2.0)
             return LLMResponse(content="Slow response", provider_name="slow", model_name="slow-model")
 
+    sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
     loop = AgentLoop(
-        bus=bus, provider=SlowProvider(), workspace=tmp_path, session_manager=SessionManager(tmp_path)
+        bus=bus, provider=SlowProvider(), workspace=tmp_path, session_manager=sm
     )
 
     t_store = TaskStore(tmp_path)
@@ -351,8 +364,10 @@ async def test_task_proposal_yields_waiting_for_approval(tmp_path: Path):
                 )
             return LLMResponse(content="Proposal created.", provider_name="proposal", model_name="proposal-model")
 
+    sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
     loop = AgentLoop(
-        bus=bus, provider=ProposalProvider(), workspace=tmp_path, session_manager=SessionManager(tmp_path)
+        bus=bus, provider=ProposalProvider(), workspace=tmp_path, session_manager=sm
     )
 
     t_store = TaskStore(tmp_path)
@@ -567,9 +582,9 @@ def test_retry_profile_mismatch_and_atomic_duplicate_retry_rejected(tmp_path: Pa
         mission_id=m_a.id,
         title="Retry Task",
         objective="Obj",
-        capability_profile="personal-work",
+        capability_profile="mission-work",
     )
-    t_store.claim_for_run(_OWNER_A, task.id, _SESSION_A, "personal-work", m_a)
+    t_store.claim_for_run(_OWNER_A, task.id, _SESSION_A, "mission-work", m_a)
     t_store.fail(_OWNER_A, task.id, failure_category="err")
 
     # Mismatched profile is rejected
@@ -577,12 +592,12 @@ def test_retry_profile_mismatch_and_atomic_duplicate_retry_rejected(tmp_path: Pa
         t_store.retry_task(_OWNER_A, task.id, _SESSION_A, "research", m_a)
 
     # First retry succeeds
-    retried = t_store.retry_task(_OWNER_A, task.id, _SESSION_A, "personal-work", m_a)
+    retried = t_store.retry_task(_OWNER_A, task.id, _SESSION_A, "mission-work", m_a)
     assert retried.retry_of_task_id == task.id
 
     # Second retry on same terminal task is rejected
     with pytest.raises(ValueError, match="already been retried"):
-        t_store.retry_task(_OWNER_A, task.id, _SESSION_A, "personal-work", m_a)
+        t_store.retry_task(_OWNER_A, task.id, _SESSION_A, "mission-work", m_a)
 
 
 @pytest.mark.asyncio
@@ -609,7 +624,9 @@ async def test_unrelated_old_proposal_does_not_block_new_task(tmp_path: Path):
 
     bus = MessageBus()
     provider = FakeProvider("Clean run result")
-    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, session_manager=SessionManager(tmp_path))
+    sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, session_manager=sm)
 
     t_store = TaskStore(tmp_path)
     task = t_store.create(
@@ -638,7 +655,9 @@ async def test_task_cancellation_stops_active_coroutine(tmp_path: Path):
             await asyncio.sleep(10.0)
             return LLMResponse(content="Done", provider_name="h", model_name="h")
 
-    loop = AgentLoop(bus=bus, provider=HangingProvider(), workspace=tmp_path, session_manager=SessionManager(tmp_path))
+    sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
+    loop = AgentLoop(bus=bus, provider=HangingProvider(), workspace=tmp_path, session_manager=sm)
     t_store = TaskStore(tmp_path)
     task = t_store.create(
         owner_id=_OWNER_A, session_key=_SESSION_A, mission_id=m_a.id, title="Hanging", objective="Obj", capability_profile=_PROFILE
@@ -678,7 +697,9 @@ async def test_task_max_turns_enforced(tmp_path: Path):
                 model_name="m",
             )
 
-    loop = AgentLoop(bus=bus, provider=InfiniteToolProvider(), workspace=tmp_path, session_manager=SessionManager(tmp_path))
+    sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
+    loop = AgentLoop(bus=bus, provider=InfiniteToolProvider(), workspace=tmp_path, session_manager=sm)
     t_store = TaskStore(tmp_path)
     task = t_store.create(
         owner_id=_OWNER_A,
@@ -702,6 +723,7 @@ async def test_changed_profile_at_execution_fails_closed_zero_provider_calls(tmp
     m_a = _setup_active_mission(tmp_path)
     provider = FakeProvider("Should not run")
     sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
     loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, session_manager=sm)
 
     t_store = TaskStore(tmp_path)
@@ -732,6 +754,7 @@ async def test_changed_or_inactive_mission_fails_closed_zero_provider_calls(tmp_
     m_a = _setup_active_mission(tmp_path)
     provider = FakeProvider("Should not run")
     sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
     loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, session_manager=sm)
 
     t_store = TaskStore(tmp_path)
@@ -760,6 +783,7 @@ async def test_failed_mark_running_fails_closed_zero_provider_calls(tmp_path: Pa
     m_a = _setup_active_mission(tmp_path)
     provider = FakeProvider("Should not run")
     sm = SessionManager(tmp_path)
+    _set_session_profile(sm, _SESSION_A, _PROFILE)
     loop = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path, session_manager=sm)
 
     t_store = TaskStore(tmp_path)

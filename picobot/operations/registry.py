@@ -25,6 +25,8 @@ class CapabilitySpec:
     profiles: tuple[str, ...]
     requires_setup: bool = False
     requires_browser_share: bool = False
+    requires_github_cli: bool = False
+    requires_calendar_token: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,20 +60,62 @@ class CapabilityRegistry:
         "personal-work": SessionProfile(
             id="personal-work",
             label="Personal work",
-            description="Chat, explicit memory, artifacts, and approved skills. No external tools.",
-            tool_names=("list_skills", "get_skill", "save_mission_artifact_draft"),
+            description="Chat, explicit memory, artifacts, and approved skills. No external tools or mission action proposals.",
+            tool_names=("list_skills", "get_skill"),
         ),
         "research": SessionProfile(
             id="research",
             label="Research",
             description="Personal work plus web search and page fetching. No external writes.",
-            tool_names=("list_skills", "get_skill", "web_search", "web_fetch", "governed_mcp_read", "save_mission_artifact_draft"),
+            tool_names=("list_skills", "get_skill", "web_search", "web_fetch", "governed_mcp_read"),
         ),
         "browser-review": SessionProfile(
             id="browser-review",
             label="Browser review",
             description="Read one browser tab you explicitly share with this session. No browser writes.",
-            tool_names=("list_skills", "get_skill", "browser_read_shared_tab", "save_mission_artifact_draft"),
+            tool_names=("list_skills", "get_skill", "browser_read_shared_tab"),
+        ),
+        "mission-work": SessionProfile(
+            id="mission-work",
+            label="Mission work",
+            description="Governed mission work with approved workflow blueprints and explicit action approval.",
+            tool_names=("list_skills", "get_skill", "save_mission_artifact_draft"),
+        ),
+        "github-review": SessionProfile(
+            id="github-review",
+            label="GitHub review",
+            description="Read GitHub pull requests through the authenticated GitHub CLI. No comments, approvals, merges, or pushes.",
+            tool_names=("list_skills", "get_skill", "github_pr"),
+        ),
+        "delegated-research": SessionProfile(
+            id="delegated-research",
+            label="Delegated research",
+            description="Run bounded read-only parallel research through a local subagent. No file writes, shell, approvals, or external mutations.",
+            tool_names=("list_skills", "get_skill", "spawn"),
+        ),
+        "calendar-read": SessionProfile(
+            id="calendar-read",
+            label="Calendar read",
+            description="Read upcoming calendar events through the locally configured Google Calendar token. No event writes.",
+            tool_names=("list_skills", "get_skill", "calendar"),
+        ),
+        "workspace-inspect": SessionProfile(
+            id="workspace-inspect",
+            label="Workspace inspect",
+            description="Inspect files and directories in Pico's configured workspace. No file writes, shell commands, or external tools.",
+            tool_names=("list_skills", "get_skill", "read_file", "list_dir"),
+        ),
+        "workspace-run": SessionProfile(
+            id="workspace-run",
+            label="Workspace diagnostics",
+            description="Run bounded read-only workspace diagnostics. File writes, network access, package installs, and shell mutation are blocked.",
+            tool_names=("list_skills", "get_skill", "exec"),
+        ),
+        "workspace-build": SessionProfile(
+            id="workspace-build",
+            label="Workspace build",
+            description="Draft bounded workspace file and command changes for explicit owner approval. Pico never executes a change directly from chat.",
+            tool_names=("list_skills", "get_skill", "propose_workspace_change"),
         ),
     }
     CAPABILITIES = (
@@ -82,7 +126,7 @@ class CapabilityRegistry:
             label="Inspect installed skills",
             risk="read",
             approval="none",
-            profiles=("personal-work", "research"),
+            profiles=("personal-work", "research", "browser-review", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
         ),
         CapabilitySpec(
             id="skills.read",
@@ -91,7 +135,7 @@ class CapabilityRegistry:
             label="Read a skill guide",
             risk="read",
             approval="none",
-            profiles=("personal-work", "research"),
+            profiles=("personal-work", "research", "browser-review", "mission-work", "github-review", "delegated-research", "calendar-read", "workspace-inspect", "workspace-run", "workspace-build"),
         ),
         CapabilitySpec(
             id="research.search",
@@ -129,7 +173,72 @@ class CapabilityRegistry:
             label="Propose draft mission artifact",
             risk="mutating",
             approval="explicit",
-            profiles=("personal-work", "research", "browser-review"),
+            profiles=("mission-work",),
+        ),
+        CapabilitySpec(
+            id="github.pull_request",
+            tool_name="github_pr",
+            toolset="github",
+            label="Inspect GitHub pull request",
+            risk="read",
+            approval="none",
+            profiles=("github-review",),
+            requires_github_cli=True,
+        ),
+        CapabilitySpec(
+            id="delegation.spawn",
+            tool_name="spawn",
+            toolset="delegation",
+            label="Run bounded read-only delegated research",
+            risk="read",
+            approval="none",
+            profiles=("delegated-research",),
+        ),
+        CapabilitySpec(
+            id="calendar.read",
+            tool_name="calendar",
+            toolset="calendar",
+            label="Read upcoming calendar events",
+            risk="read",
+            approval="none",
+            profiles=("calendar-read",),
+            requires_calendar_token=True,
+        ),
+        CapabilitySpec(
+            id="workspace.read_file",
+            tool_name="read_file",
+            toolset="workspace",
+            label="Read a workspace file",
+            risk="read",
+            approval="none",
+            profiles=("workspace-inspect",),
+        ),
+        CapabilitySpec(
+            id="workspace.list_dir",
+            tool_name="list_dir",
+            toolset="workspace",
+            label="List a workspace directory",
+            risk="read",
+            approval="none",
+            profiles=("workspace-inspect",),
+        ),
+        CapabilitySpec(
+            id="workspace.diagnostics",
+            tool_name="exec",
+            toolset="workspace",
+            label="Run workspace diagnostics",
+            risk="read",
+            approval="none",
+            profiles=("workspace-run",),
+        ),
+        CapabilitySpec(
+            id="workspace.propose_change",
+            tool_name="propose_workspace_change",
+            toolset="workspace",
+            label="Propose a workspace change",
+            risk="draft",
+            approval="explicit",
+            profiles=("workspace-build",),
         ),
     )
 
@@ -168,6 +277,8 @@ class CapabilityRegistry:
         *,
         web_search_configured: bool,
         browser_shared: bool = False,
+        github_configured: bool = False,
+        calendar_configured: bool = False,
     ) -> list[CapabilityStatus]:
         profile = self.profile(profile_id)
         registered = set(registered_tools)
@@ -177,6 +288,10 @@ class CapabilityRegistry:
             configured = not item.requires_setup or web_search_configured
             if item.requires_browser_share:
                 configured = browser_shared
+            if item.requires_github_cli:
+                configured = github_configured
+            if item.requires_calendar_token:
+                configured = calendar_configured
             available = item.tool_name in registered and configured
             state = "ready" if permitted and available else "needs_setup" if permitted else "not_in_profile"
             hint = None
@@ -184,6 +299,10 @@ class CapabilityRegistry:
                 hint = "Configure a supported search provider before using this capability."
             elif item.requires_browser_share and not configured:
                 hint = "Share one current browser tab with this Pico session from the local Pico Browser Bridge."
+            elif item.requires_github_cli and not configured:
+                hint = "Install GitHub CLI (gh) and authenticate it locally before using this capability."
+            elif item.requires_calendar_token and not configured:
+                hint = "Complete the supported local Google Calendar OAuth setup before using this capability."
             elif permitted and item.tool_name not in registered:
                 hint = "This Pico runtime did not register the required tool."
             result.append(

@@ -336,7 +336,7 @@ class TaskStore:
         Enforces:
         - Owner, session match
         - Active mission present, matches task.mission_id, state='active'
-        - Capability profile matches task.capability_profile and matches current_session_profile
+        - Explicit ``mission-work`` authority and matching task capability snapshot
         - Depth is 0
         - Attempts count < max_attempts
         - Single active task per session
@@ -376,8 +376,21 @@ class TaskStore:
             if m_id != task.mission_id or m_state != "active" or m_skey != session_key:
                 raise ValueError("Active mission mismatch or mission is no longer active")
 
-            # Profile restriction re-check
+            # Mission attachment provides context; it does not grant authority
+            # to execute a bounded mission task. The session must explicitly
+            # choose the mission-work profile before any provider call can be
+            # claimed, and the durable task snapshot must agree.
+            if current_session_profile != "mission-work":
+                raise ValueError(
+                    "Bounded mission tasks require the Mission work profile. "
+                    "Switch to Mission work before running this task."
+                )
             if task.capability_profile != current_session_profile:
+                if task.capability_profile != "mission-work":
+                    raise ValueError(
+                        "This task was created without Mission work authority. "
+                        "Create a new task after switching to Mission work."
+                    )
                 raise ValueError("Task profile does not match session profile")
 
             # Depth check

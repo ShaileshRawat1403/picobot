@@ -16,6 +16,7 @@ def test_artifacts_are_owned_versioned_and_kept_inside_workspace(tmp_path: Path)
     )
 
     assert artifact.revision == 1
+    assert artifact.verification_status == "unverified"
     assert store.read_content("web:browser:owner-a", artifact.id).startswith("# First draft")
     assert (store.root / artifact.relative_path).is_file()
     assert store.list("web:browser:owner-a") == [artifact]
@@ -23,11 +24,17 @@ def test_artifacts_are_owned_versioned_and_kept_inside_workspace(tmp_path: Path)
 
     revised = store.revise("web:browser:owner-a", artifact.id, "# Revised\n\nNow with history.")
     assert revised.revision == 2
+    assert revised.verification_status == "stale"
     assert store.read_content("web:browser:owner-a", artifact.id) == "# Revised\n\nNow with history."
     assert store.read_content("web:browser:owner-a", artifact.id, revision=1).startswith(
         "# First draft"
     )
     assert [item.revision for item in store.revisions("web:browser:owner-a", artifact.id)] == [2, 1]
+
+    verified = store.set_verification("web:browser:owner-a", artifact.id, "verified")
+    assert verified.verification_status == "verified"
+    with pytest.raises(ValueError, match="verification status"):
+        store.set_verification("web:browser:owner-a", artifact.id, "approved")
 
     with pytest.raises(KeyError):
         store.get("web:browser:owner-b", artifact.id)

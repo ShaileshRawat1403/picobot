@@ -180,6 +180,7 @@ class TelegramChannel(BaseChannel):
         BotCommand("start", "Start the bot"),
         BotCommand("new", "Start a new conversation"),
         BotCommand("status", "Show runtime status"),
+        BotCommand("recap", "Show a local session recap"),
         BotCommand("model", "Show active model routing"),
         BotCommand("last_error", "Show the most recent LLM error"),
         BotCommand("stop", "Stop the current task"),
@@ -506,6 +507,7 @@ class TelegramChannel(BaseChannel):
             "🐈 picobot commands:\n"
             "/new — Start a new conversation\n"
             "/status — Show runtime status\n"
+            "/recap — Show a concise local session recap\n"
             "/model — Show active model routing\n"
             "/last_error — Show the most recent LLM error\n"
             "/stop — Stop the current task\n"

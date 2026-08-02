@@ -510,7 +510,7 @@ def _run_gateway(config: "Config", verbose: bool = False) -> None:
 
     cron.on_job = on_cron_job
 
-    channels = ChannelManager(config, bus)
+    channels = ChannelManager(config, bus, cron_service=cron)
 
     def _pick_heartbeat_target() -> tuple[str, str]:
         """Pick a routable channel/chat target for heartbeat-triggered messages."""

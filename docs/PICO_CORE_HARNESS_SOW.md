@@ -230,13 +230,17 @@ not an inferred progress percentage.
 claiming mysterious self-learning.
 
 Add owner-scoped local full-text search over sessions, saved memory, and
-artifacts, returning source links and dates. Add artifact/run/mission linkage
+artifacts, returning source links and dates. **Implemented now:** bounded local
+lexical search across those three sources with owner-scoped inspectable result
+references. Add artifact/run/mission linkage
 and a compact verification status: `verified`, `stale`, or `unverified`.
 
 Expose existing cron jobs as a small personal scheduler: create, pause, run
-now, inspect last result, and view delivery target. Do not add a new messaging
-matrix; use the web workbench first and add a single real delivery channel only
-after its workflow is proven.
+now, inspect last result, and view delivery target. **Implemented now:** the
+local web workbench can create owner/session-scoped schedules, pause/resume, run
+now, inspect status, and delete them. One-shot jobs are removed after
+execution. Do not add a new messaging matrix; use the web workbench first and
+add a single real delivery channel only after its workflow is proven.
 
 “Learning” stays honest: Pico may propose a memory, skill improvement, or
 workflow template and show whether it was accepted and useful. It does not

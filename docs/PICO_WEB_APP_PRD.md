@@ -53,7 +53,9 @@ Pico Personal Workbench
 - Create, list, select, and resume Pico web sessions.
 - Reload a transcript from Pico's existing session store.
 - Create, preview, revise, and download session-owned local artifacts. Artifact
-  files are versioned under the Pico workspace with manifest provenance.
+  files are versioned under the Pico workspace with manifest provenance; the
+  web view exposes revision history and allows older revisions to be inspected
+  before saving the next one.
 - Memory panel backed by `PersonalMemoryStore`: list, search, explicitly add,
   and forget facts; show lifecycle and provenance.
 - Skills panel with source, description, availability, and missing
@@ -65,7 +67,9 @@ Pico Personal Workbench
 - Per-turn activity cards for reasoning-independent progress, tool calls, and
   errors without exposing hidden model reasoning.
 - Session titles, search, and archive semantics. **Implemented now:** durable,
-  owner-scoped session titles; search and archive remain next.
+  owner-scoped session titles and unified lexical search across sessions,
+  saved memory, and local artifacts; sessions can be reversibly archived and
+  restored from the session rail.
 - A compact “context used” panel: confirmed memory references and skills
   loaded for the current task. **Implemented now:** latest-turn bounded
   history count and exactly recalled personal-memory references. Skill-loading

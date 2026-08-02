@@ -10,8 +10,12 @@ import pytest
 from picobot.bus.events import OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.channels.web import WebChannel
+from picobot.cron.service import CronService
+from picobot.cron.types import CronSchedule
 from picobot.memory.store import PersonalMemoryStore
+from picobot.missions import MissionStore
 from picobot.session.manager import SessionManager
+from picobot.tasks import TaskStore
 
 
 CLIENT_A = "browser_identity_0001"
@@ -172,6 +176,9 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
             "created_at": listed[0]["created_at"],
             "updated_at": listed[0]["updated_at"],
             "message_count": 2,
+            "archived": False,
+            "active_mission": None,
+            "active_task": None,
         }
     ]
     transcript = channel._browser_transcript(CLIENT_A, SESSION_A)
@@ -184,6 +191,49 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
     own_memory = store.remember(channel._memory_owner(CLIENT_A), "I prefer short updates")
     store.remember(channel._memory_owner(CLIENT_B), "Do not expose this")
     assert [item.id for item in store.list(channel._memory_owner(CLIENT_A))] == [own_memory.id]
+
+
+def test_browser_schedules_are_durable_and_owner_scoped(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    cron = CronService(workspace / "cron" / "jobs.json")
+    channel.set_cron_service(cron)
+    sessions = SessionManager(workspace)
+    sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    sessions.get_or_create(channel._session_key(CLIENT_B, SESSION_B))
+
+    own = cron.add_job(
+        name="Own review",
+        schedule=CronSchedule(kind="every", every_ms=60_000),
+        message="Review my open work",
+        deliver=True,
+        channel="web",
+        to=channel._chat_id(CLIENT_A, SESSION_A),
+    )
+    cron.add_job(
+        name="Other review",
+        schedule=CronSchedule(kind="every", every_ms=60_000),
+        message="Private other work",
+        deliver=True,
+        channel="web",
+        to=channel._chat_id(CLIENT_B, SESSION_B),
+    )
+
+    assert [item["id"] for item in map(channel._browser_schedule_dict, channel._browser_schedule_jobs(CLIENT_A))] == [own.id]
+    with pytest.raises(ValueError, match="Schedule was not found"):
+        channel._browser_schedule_job(CLIENT_A, "missing")
+
+
+def test_browser_schedule_payload_requires_one_bounded_schedule_type():
+    schedule, delete_after = WebChannel._browser_schedule_payload({"every_seconds": 60})
+    assert schedule.kind == "every" and schedule.every_ms == 60_000 and delete_after is False
+
+    with pytest.raises(ValueError, match="exactly one"):
+        WebChannel._browser_schedule_payload({"every_seconds": 60, "cron_expr": "0 9 * * *"})
+    with pytest.raises(ValueError, match="between 30"):
+        WebChannel._browser_schedule_payload({"every_seconds": 5})
 
 
 def test_browser_session_title_is_explicit_durable_and_scoped_to_its_owner(tmp_path: Path):
@@ -200,6 +250,109 @@ def test_browser_session_title_is_explicit_durable_and_scoped_to_its_owner(tmp_p
 
     reloaded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
     assert reloaded.metadata["pico_web_title"] == "Website Ops review"
+
+
+def test_browser_session_search_matches_title_and_messages_without_crossing_identity(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+
+    sessions = SessionManager(workspace)
+    first = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    first.add_message("user", "Prepare the Pico launch brief")
+    sessions.save(first)
+    second = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_B))
+    second.metadata["pico_web_title"] = "Research notes"
+    second.add_message("assistant", "The launch brief is ready for review")
+    sessions.save(second)
+    other = sessions.get_or_create(channel._session_key(CLIENT_B, SESSION_A))
+    other.add_message("user", "Pico launch brief for another identity")
+    sessions.save(other)
+
+    assert [item["id"] for item in channel._list_browser_sessions(CLIENT_A, search="launch brief")] == [
+        SESSION_B,
+        SESSION_A,
+    ]
+    assert channel._list_browser_sessions(CLIENT_A, search="another identity") == []
+
+
+def test_browser_session_archive_is_reversible_and_owner_scoped(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    session = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    session.add_message("user", "Archive this finished thread")
+    sessions.save(session)
+
+    assert channel._set_browser_session_archive(CLIENT_A, SESSION_A, True) == {
+        "id": SESSION_A,
+        "archived": True,
+    }
+    assert channel._list_browser_sessions(CLIENT_A) == []
+    assert channel._list_browser_sessions(CLIENT_A, include_archived=True)[0]["archived"] is True
+    with pytest.raises(ValueError, match="Session was not found"):
+        channel._set_browser_session_archive(CLIENT_B, SESSION_A, False)
+
+    channel._set_browser_session_archive(CLIENT_A, SESSION_A, False)
+    assert channel._list_browser_sessions(CLIENT_A)[0]["archived"] is False
+
+
+def test_browser_session_summaries_expose_only_its_active_mission_and_task(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(
+        workspace_path=workspace,
+        tools=SimpleNamespace(web=SimpleNamespace(search=SimpleNamespace(provider=""))),
+    )
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    session_key = channel._session_key(CLIENT_A, SESSION_A)
+    sessions = SessionManager(workspace)
+    session = sessions.get_or_create(session_key)
+    session.metadata["pico_operation_profile"] = "mission-work"
+    sessions.save(session)
+
+    owner_id = channel._memory_owner(CLIENT_A)
+    mission_store = MissionStore(workspace)
+    mission = mission_store.create(
+        owner_id=owner_id,
+        session_key=session_key,
+        title="Ship the session workbench",
+        objective="Make active work visible without opening every mission.",
+    )
+    mission = mission_store.transition(owner_id, mission.id, "active")
+    session.metadata["pico_active_mission_id"] = mission.id
+    sessions.save(session)
+
+    task_store = TaskStore(workspace)
+    task = task_store.create(
+        owner_id=owner_id,
+        session_key=session_key,
+        mission_id=mission.id,
+        title="Review session navigation",
+        objective="Surface active work in the session rail.",
+        capability_profile="mission-work",
+    )
+    task_store.claim_for_run(owner_id, task.id, session_key, "mission-work", mission)
+
+    listed = channel._list_browser_sessions(CLIENT_A)
+
+    assert listed[0]["active_mission"] == {
+        "id": mission.id,
+        "title": "Ship the session workbench",
+        "state": "active",
+    }
+    assert listed[0]["active_task"] == {
+        "id": task.id,
+        "title": "Review session navigation",
+        "state": "queued",
+        "mission_id": mission.id,
+    }
+    operations = channel._browser_operations(CLIENT_A, SESSION_A)
+    assert operations["active_task"]["id"] == task.id
+    assert channel._list_browser_sessions(CLIENT_B) == []
 
 
 def test_browser_context_exposes_only_recalled_memories_owned_by_the_browser(tmp_path: Path):

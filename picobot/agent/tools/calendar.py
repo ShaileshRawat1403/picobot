@@ -15,13 +15,14 @@ class CalendarTool(Tool):
     parameters = {
         "type": "object",
         "properties": {
-            "days": {"type": "integer", "description": "Number of days to look ahead"},
-            "query": {"type": "string", "description": "Search for events matching this text"},
+            "days": {"type": "integer", "description": "Number of days to look ahead", "minimum": 1, "maximum": 30},
+            "query": {"type": "string", "description": "Search for events matching this text", "maxLength": 200},
         },
         "required": [],
     }
 
     async def execute(self, days: int = 7, query: str | None = None, **kwargs: Any) -> str:
+        days = min(max(int(days), 1), 30)
         try:
             from google.auth.transport.requests import Request
             from google.oauth2.credentials import Credentials
@@ -74,5 +75,5 @@ class CalendarTool(Tool):
 
             return "\n".join(lines)
 
-        except Exception as ex:
-            return f"Calendar error: {str(ex)}"
+        except Exception:
+            return "Error: Calendar request failed safely. Check the local Google Calendar setup."

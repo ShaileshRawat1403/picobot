@@ -6,8 +6,10 @@ import asyncio
 from dataclasses import asdict
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -35,6 +37,12 @@ class WebChannel(BaseChannel):
         "web_search",
         "web_fetch",
         "browser_read_shared_tab",
+        "github_pr",
+        "calendar",
+        "read_file",
+        "list_dir",
+        "exec",
+        "propose_workspace_change",
     }
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -43,6 +51,11 @@ class WebChannel(BaseChannel):
         self._clients: dict[websockets.WebSocketServerProtocol, str] = {}
         self._chat_clients: dict[str, websockets.WebSocketServerProtocol] = {}
         self._http_server = None
+        self._cron_service = None
+
+    def set_cron_service(self, cron_service: Any) -> None:
+        """Attach the gateway's durable scheduler to the local workbench."""
+        self._cron_service = cron_service
 
     async def start(self) -> None:
         """Start the WebSocket and HTTP server."""
@@ -112,6 +125,83 @@ class WebChannel(BaseChannel):
                     }
                 ).encode()
                 self._write_response(writer, 200, response)
+            elif path == "/api/schedules":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    if self._cron_service is None:
+                        self._write_response(writer, 503, self._json_error("Scheduler is not available"))
+                        return
+                    if method == "GET":
+                        schedules = [
+                            self._browser_schedule_dict(job)
+                            for job in self._browser_schedule_jobs(client_id)
+                        ]
+                        self._write_response(
+                            writer, 200, json.dumps({"schedules": schedules}, ensure_ascii=False).encode()
+                        )
+                    elif method == "POST":
+                        payload = self._json_body(body)
+                        session_id = self._valid_browser_id(payload.get("session_id"))
+                        self._require_browser_session(client_id, session_id)
+                        message = payload.get("message")
+                        if not isinstance(message, str) or not message.strip():
+                            raise ValueError("Schedule message is required")
+                        if len(message) > 4000:
+                            raise ValueError("Schedule message is too long")
+                        schedule, delete_after_run = self._browser_schedule_payload(payload)
+                        job = self._cron_service.add_job(
+                            name=message.strip()[:30],
+                            schedule=schedule,
+                            message=message.strip(),
+                            deliver=True,
+                            channel="web",
+                            to=self._chat_id(client_id, session_id),
+                            delete_after_run=delete_after_run,
+                        )
+                        self._write_response(
+                            writer,
+                            201,
+                            json.dumps({"schedule": self._browser_schedule_dict(job)}, ensure_ascii=False).encode(),
+                        )
+                    else:
+                        raise ValueError("Schedules route supports GET or POST")
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/schedules/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    if self._cron_service is None:
+                        self._write_response(writer, 503, self._json_error("Scheduler is not available"))
+                        return
+                    schedule_path = path.removeprefix("/api/schedules/").strip("/")
+                    schedule_id, _, operation = schedule_path.partition("/")
+                    job = self._browser_schedule_job(client_id, schedule_id)
+                    if not operation and method == "GET":
+                        self._write_response(
+                            writer, 200, json.dumps({"schedule": self._browser_schedule_dict(job)}).encode()
+                        )
+                    elif not operation and method == "DELETE":
+                        if not self._cron_service.remove_job(job.id):
+                            raise ValueError("Schedule was not found")
+                        self._write_response(writer, 200, json.dumps({"removed": True, "id": job.id}).encode())
+                    elif operation == "enabled" and method == "POST":
+                        payload = self._json_body(body)
+                        enabled = payload.get("enabled")
+                        if not isinstance(enabled, bool):
+                            raise ValueError("Schedule enabled state must be boolean")
+                        updated = self._cron_service.enable_job(job.id, enabled)
+                        if updated is None:
+                            raise ValueError("Schedule was not found")
+                        self._write_response(
+                            writer, 200, json.dumps({"schedule": self._browser_schedule_dict(updated)}).encode()
+                        )
+                    elif operation == "run" and method == "POST":
+                        ran = await self._cron_service.run_job(job.id)
+                        self._write_response(writer, 200, json.dumps({"ran": ran}).encode())
+                    else:
+                        raise ValueError("Schedule route was not found")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/artifacts":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -165,6 +255,13 @@ class WebChannel(BaseChannel):
                             artifact.content_type,
                             f'attachment; filename="{artifact_id}-v{artifact.revision}"',
                         )
+                    elif artifact_path.endswith("/verification") and method == "POST":
+                        artifact_id = artifact_path.removesuffix("/verification").rstrip("/")
+                        status = self._json_body(body).get("verification_status")
+                        artifact = store.set_verification(owner_id, artifact_id, status)
+                        self._write_response(
+                            writer, 200, json.dumps({"artifact": asdict(artifact)}).encode()
+                        )
                     elif artifact_path.endswith("/revisions") and method == "POST":
                         artifact_id = artifact_path.removesuffix("/revisions").rstrip("/")
                         payload = self._json_body(body)
@@ -177,13 +274,16 @@ class WebChannel(BaseChannel):
                         )
                     elif method == "GET" and "/" not in artifact_path:
                         artifact = store.get(owner_id, artifact_path)
+                        revision_value = self._single_query_value(query, "revision")
+                        revision = int(revision_value) if revision_value is not None else None
                         self._write_response(
                             writer,
                             200,
                             json.dumps(
                                 {
                                     "artifact": asdict(artifact),
-                                    "content": store.read_content(owner_id, artifact.id),
+                                    "content": store.read_content(owner_id, artifact.id, revision),
+                                    "selected_revision": revision or artifact.revision,
                                     "revisions": [
                                         asdict(revision)
                                         for revision in store.revisions(owner_id, artifact.id)
@@ -365,11 +465,39 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, response)
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/search":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    search = self._single_query_value(query, "q") or self._single_query_value(query, "search") or ""
+                    limit_value = self._single_query_value(query, "limit")
+                    limit = int(limit_value) if limit_value is not None else 20
+                    service = self._search_service()
+                    prefix = f"web:web:{self._valid_browser_id(client_id)}:"
+                    results = service.search(
+                        self._memory_owner(client_id),
+                        search,
+                        limit=limit,
+                        session_prefix=prefix,
+                    )
+                    response = json.dumps(
+                        {"query": search, "results": [item.to_dict() for item in results]},
+                        ensure_ascii=False,
+                    ).encode()
+                    self._write_response(writer, 200, response)
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/sessions":
                 try:
                     client_id = self._browser_id_from_query(query)
+                    search = self._single_query_value(query, "search") or ""
+                    include_archived = self._query_bool(query, "include_archived", default=False)
                     response = json.dumps(
-                        {"sessions": self._list_browser_sessions(client_id)}, ensure_ascii=False
+                        {
+                            "sessions": self._list_browser_sessions(
+                                client_id, search=search, include_archived=include_archived
+                            )
+                        },
+                        ensure_ascii=False,
                     ).encode()
                     self._write_response(writer, 200, response)
                 except ValueError as exc:
@@ -564,12 +692,28 @@ class WebChannel(BaseChannel):
                             writer, 200, json.dumps({"action": action.to_dict()}, ensure_ascii=False).encode()
                         )
                     elif operation == "execute":
-                        result = self._mission_executor().execute_action(
-                            owner_id,
-                            session_key,
-                            action_id,
-                            payload_fingerprint=payload.get("payload_fingerprint"),
-                        )
+                        action = self._action_store().get(owner_id, action_id, session_key=session_key)
+                        if action.profile_id == "workspace-build":
+                            from picobot.operations.registry import CapabilityRegistry
+
+                            session = self._session_manager().get_or_create(session_key)
+                            profile = CapabilityRegistry().resolve(
+                                session.metadata.get("pico_operation_profile")
+                            )
+                            result = await self._workspace_executor().execute_action(
+                                owner_id,
+                                session_key,
+                                action_id,
+                                payload_fingerprint=payload.get("payload_fingerprint"),
+                                profile_id=profile.id,
+                            )
+                        else:
+                            result = self._mission_executor().execute_action(
+                                owner_id,
+                                session_key,
+                                action_id,
+                                payload_fingerprint=payload.get("payload_fingerprint"),
+                            )
                         self._write_response(
                             writer, 200, json.dumps({"result": result}, ensure_ascii=False).encode()
                         )
@@ -752,6 +896,18 @@ class WebChannel(BaseChannel):
                     )
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/archive"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/archive").strip("/")
+                    payload = self._json_body(body) if body else {}
+                    archived = payload.get("archived", True)
+                    if not isinstance(archived, bool):
+                        raise ValueError("Session archive state must be boolean")
+                    result = self._set_browser_session_archive(client_id, session_id, archived)
+                    self._write_response(writer, 200, json.dumps(result).encode())
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path.startswith("/api/sessions/"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -849,6 +1005,22 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, response)
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path.startswith("/api/memory/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    memory_id = path.removeprefix("/api/memory/").strip("/")
+                    if not memory_id or "/" in memory_id:
+                        raise ValueError("Memory route was not found")
+                    store = self._memory_store()
+                    owner_id = self._memory_owner(client_id)
+                    item = store.get(owner_id, memory_id)
+                    response = json.dumps(
+                        {"memory": asdict(item), "history": store.history(owner_id, memory_id)},
+                        ensure_ascii=False,
+                    ).encode()
+                    self._write_response(writer, 200, response)
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 404, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/memory/") and path.endswith("/forget"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1091,6 +1263,18 @@ class WebChannel(BaseChannel):
             raise ValueError(f"Use one {key} value")
         return values[0]
 
+    @classmethod
+    def _query_bool(cls, query: dict[str, list[str]], key: str, *, default: bool) -> bool:
+        value = cls._single_query_value(query, key)
+        if value is None:
+            return default
+        normalized = value.strip().casefold()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+        raise ValueError(f"Use a boolean {key} value")
+
     @staticmethod
     def _request_headers(lines: list[str]) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -1168,6 +1352,101 @@ class WebChannel(BaseChannel):
         from picobot.artifacts.store import ArtifactStore
 
         return ArtifactStore(self._runtime_config().workspace_path)
+
+    def _browser_schedule_jobs(self, client_id: str):
+        """Return only schedules addressed to this browser identity."""
+        self._valid_browser_id(client_id)
+        if self._cron_service is None:
+            return []
+        prefix = f"web:{client_id}:"
+        return [
+            job
+            for job in self._cron_service.list_jobs(include_disabled=True)
+            if job.payload.channel == "web"
+            and isinstance(job.payload.to, str)
+            and job.payload.to.startswith(prefix)
+        ]
+
+    def _browser_schedule_job(self, client_id: str, schedule_id: str):
+        if not schedule_id or "/" in schedule_id:
+            raise ValueError("Schedule route was not found")
+        for job in self._browser_schedule_jobs(client_id):
+            if job.id == schedule_id:
+                return job
+        raise ValueError("Schedule was not found")
+
+    @staticmethod
+    def _browser_schedule_dict(job) -> dict[str, Any]:
+        schedule = job.schedule
+        return {
+            "id": job.id,
+            "name": job.name,
+            "enabled": job.enabled,
+            "message": job.payload.message,
+            "schedule": {
+                "kind": schedule.kind,
+                "at_ms": schedule.at_ms,
+                "every_ms": schedule.every_ms,
+                "expr": schedule.expr,
+                "tz": schedule.tz,
+            },
+            "next_run_at_ms": job.state.next_run_at_ms,
+            "last_run_at_ms": job.state.last_run_at_ms,
+            "last_status": job.state.last_status,
+            "last_error": job.state.last_error,
+            "created_at_ms": job.created_at_ms,
+            "updated_at_ms": job.updated_at_ms,
+            "delete_after_run": job.delete_after_run,
+        }
+
+    @staticmethod
+    def _browser_schedule_payload(payload: dict[str, Any]):
+        """Build a validated local schedule from an explicit web form."""
+        from picobot.cron.types import CronSchedule
+
+        every_seconds = payload.get("every_seconds")
+        cron_expr = payload.get("cron_expr")
+        tz = payload.get("tz")
+        at = payload.get("at")
+        selected = sum(value not in (None, "") for value in (every_seconds, cron_expr, at))
+        if selected != 1:
+            raise ValueError("Choose exactly one of every_seconds, cron_expr, or at")
+        if tz and not cron_expr:
+            raise ValueError("tz can only be used with cron_expr")
+        if cron_expr is not None and (not isinstance(cron_expr, str) or len(cron_expr) > 100):
+            raise ValueError("cron_expr must be a short cron expression")
+
+        if every_seconds is not None:
+            try:
+                interval = int(every_seconds)
+            except (TypeError, ValueError):
+                raise ValueError("every_seconds must be an integer") from None
+            if interval < 30 or interval > 31_536_000:
+                raise ValueError("every_seconds must be between 30 and 31536000")
+            return CronSchedule(kind="every", every_ms=interval * 1000), False
+
+        if cron_expr:
+            if tz:
+                from zoneinfo import ZoneInfo
+
+                try:
+                    ZoneInfo(str(tz))
+                except Exception:
+                    raise ValueError("Unknown timezone") from None
+            return CronSchedule(kind="cron", expr=cron_expr, tz=tz), False
+
+        if not isinstance(at, str):
+            raise ValueError("at must be an ISO datetime")
+        try:
+            at_ms = int(datetime.fromisoformat(at).timestamp() * 1000)
+        except ValueError:
+            raise ValueError("at must be an ISO datetime") from None
+        return CronSchedule(kind="at", at_ms=at_ms), True
+
+    def _search_service(self):
+        from picobot.search import PersonalSearch
+
+        return PersonalSearch(self._runtime_config().workspace_path)
 
     @staticmethod
     def _provider_setup():
@@ -1319,22 +1598,40 @@ class WebChannel(BaseChannel):
             }
             for t in tasks_list
         ]
+        checkpoints = [
+            item.to_dict() for item in self._mission_store().checkpoints(owner_id, mission.id)
+        ]
+        events = [item.to_dict() for item in self._mission_store().events(owner_id, mission.id)]
+        mission_actions = [
+            item.to_dict()
+            for item in self._action_store().list_by_mission(owner_id, mission.id, limit=30)
+        ]
+        active_task = next(
+            (task for task in tasks_data if task["state"] in {"queued", "running", "waiting_for_approval"}),
+            None,
+        )
         return {
             "mission": mission.to_dict(),
             "blueprint": bp_dict,
             "approved_blueprint": approved_bp.to_dict() if approved_bp else None,
             "latest_blueprint": latest_bp.to_dict() if latest_bp else None,
-            "checkpoints": [
-                item.to_dict() for item in self._mission_store().checkpoints(owner_id, mission.id)
-            ],
-            "events": [item.to_dict() for item in self._mission_store().events(owner_id, mission.id)],
+            "checkpoints": checkpoints,
+            "events": events,
             "runs": safe_runs,
             "evidence": self._mission_evidence(owner_id, mission.session_key, mission.id),
-            "mission_actions": [
-                item.to_dict()
-                for item in self._action_store().list_by_mission(owner_id, mission.id, limit=30)
-            ],
+            "mission_actions": mission_actions,
             "tasks": tasks_data,
+            "resume_brief": {
+                "outcome": mission.objective,
+                "current_step": mission.current_step,
+                "state": mission.state,
+                "blocker": mission.blocked_reason,
+                "last_checkpoint": checkpoints[-1]["summary"] if checkpoints else None,
+                "active_task": active_task["title"] if active_task else None,
+                "pending_approvals": sum(
+                    action["status"] in {"proposed", "approved"} for action in mission_actions
+                ),
+            },
         }
 
     def _browser_get_mission_blueprint(
@@ -1437,6 +1734,11 @@ class WebChannel(BaseChannel):
 
         return MissionExecutor(self._runtime_config().workspace_path)
 
+    def _workspace_executor(self):
+        from picobot.operations.workspace_executor import WorkspaceExecutor
+
+        return WorkspaceExecutor(self._runtime_config().workspace_path)
+
     def _browser_bridge_store(self):
         from picobot.operations.browser_bridge import BrowserBridgeStore
 
@@ -1451,6 +1753,16 @@ class WebChannel(BaseChannel):
         remains usable without disclosing any setup state or secret.
         """
         return bool(getattr(config.tools.web.search, "provider", ""))
+
+    @staticmethod
+    def _github_cli_is_configured() -> bool:
+        """Expose only local CLI presence, never auth output or credentials."""
+        return shutil.which("gh") is not None
+
+    @staticmethod
+    def _calendar_is_configured() -> bool:
+        """Expose only token-file presence, never token contents or path details."""
+        return os.path.isfile(os.path.expanduser("~/.picobot/runtime/google-calendar-token.json"))
 
     def _governed_registry(self):
         from picobot.agent.skills import SkillsLoader
@@ -1496,13 +1808,29 @@ class WebChannel(BaseChannel):
                 pass
         governed_entries = [entry.to_dict() for entry in self._governed_registry().list_entries()]
         active_mission_info = {"active_mission_id": None, "active_mission": None}
+        active_task_info = {"active_task_id": None, "active_task": None}
         if session_key:
             try:
                 active_mission_info = self._get_browser_session_active_mission(client_id, session_id)
+                active_task_info = self._get_browser_session_active_task(client_id, session_id)
             except ValueError:
                 pass
+        mission_context_only = (
+            active_mission_info.get("active_mission") is not None
+            and profile.id != "mission-work"
+        )
+        profile_description = profile.description
+        if mission_context_only:
+            profile_description += (
+                " This mission is attached as context. Switch to Mission work to allow "
+                "governed mission action proposals."
+            )
         return {
-            "profile": {"id": profile.id, "label": profile.label, "description": profile.description},
+            "profile": {
+                "id": profile.id,
+                "label": profile.label,
+                "description": profile_description,
+            },
             "profiles": registry.profiles(),
             "capabilities": [
                 item.to_dict()
@@ -1511,6 +1839,8 @@ class WebChannel(BaseChannel):
                     self._OPERATIONS_TOOL_NAMES,
                     web_search_configured=self._web_search_is_configured(config),
                     browser_shared=shared_tab is not None,
+                    github_configured=self._github_cli_is_configured(),
+                    calendar_configured=self._calendar_is_configured(),
                 )
             ],
             "governance": governed_entries,
@@ -1518,6 +1848,7 @@ class WebChannel(BaseChannel):
             "actions": actions,
             "shared_browser_tab": shared_tab,
             "active_mission": active_mission_info.get("active_mission"),
+            "active_task": active_task_info.get("active_task"),
         }
 
     def _get_browser_session_active_mission(self, client_id: str, session_id: str) -> dict[str, Any]:
@@ -1646,10 +1977,17 @@ class WebChannel(BaseChannel):
         if not any(item["key"] == key for item in self._session_manager().list_sessions()):
             raise ValueError("Session was not found for this browser identity")
 
-    def _list_browser_sessions(self, client_id: str) -> list[dict[str, Any]]:
+    def _list_browser_sessions(
+        self,
+        client_id: str,
+        *,
+        search: str = "",
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
         prefix = f"web:web:{self._valid_browser_id(client_id)}:"
         manager = self._session_manager()
         result: list[dict[str, Any]] = []
+        search_terms = search.casefold().split()
         for item in manager.list_sessions():
             key = item["key"]
             if not key.startswith(prefix):
@@ -1658,18 +1996,75 @@ class WebChannel(BaseChannel):
             if not self._BROWSER_ID_RE.fullmatch(session_id):
                 continue
             session = manager.get_or_create(key)
+            archived = session.metadata.get("pico_archived") is True
+            if archived and not include_archived:
+                continue
+            title = self._browser_session_title(session)
+            if search_terms:
+                searchable = " ".join(
+                    [
+                        title,
+                        key,
+                        *(
+                            str(message.get("content", ""))
+                            for message in session.messages
+                            if message.get("role") in {"user", "assistant"}
+                        ),
+                    ]
+                ).casefold()
+                if not all(term in searchable for term in search_terms):
+                    continue
+            active_mission = self._get_browser_session_active_mission(client_id, session_id).get(
+                "active_mission"
+            )
+            active_task = self._get_browser_session_active_task(client_id, session_id).get(
+                "active_task"
+            )
             result.append(
                 {
                     "id": session_id,
-                    "title": self._browser_session_title(session),
+                    "title": title,
                     "created_at": item.get("created_at"),
                     "updated_at": item.get("updated_at"),
+                    "archived": archived,
                     "message_count": len(
                         [m for m in session.messages if m.get("role") in {"user", "assistant"}]
+                    ),
+                    "active_mission": (
+                        {
+                            "id": active_mission["id"],
+                            "title": active_mission["title"],
+                            "state": active_mission["state"],
+                        }
+                        if active_mission
+                        else None
+                    ),
+                    "active_task": (
+                        {
+                            "id": active_task["id"],
+                            "title": active_task["title"],
+                            "state": active_task["state"],
+                            "mission_id": active_task["mission_id"],
+                        }
+                        if active_task
+                        else None
                     ),
                 }
             )
         return result
+
+    def _set_browser_session_archive(self, client_id: str, session_id: str, archived: bool) -> dict[str, Any]:
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        manager = self._session_manager()
+        session = manager.get_or_create(self._session_key(client_id, session_id))
+        if archived:
+            session.metadata["pico_archived"] = True
+        else:
+            session.metadata.pop("pico_archived", None)
+        session.updated_at = datetime.now()
+        manager.save(session)
+        return {"id": session_id, "archived": archived}
 
     @classmethod
     def _clean_session_title(cls, value: object) -> str:

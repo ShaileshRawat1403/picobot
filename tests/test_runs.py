@@ -305,6 +305,41 @@ async def test_agent_turn_records_completed_run_with_trusted_usage(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_status_and_recap_report_durable_session_state_without_private_content(tmp_path: Path):
+    agent = AgentLoop(bus=MessageBus(), provider=_RecordingProvider(), workspace=tmp_path)
+    session = agent.sessions.get_or_create("web:chat-a")
+    session.add_message("user", "Private prompt that must not appear in status")
+    session.add_message("assistant", "Private answer that must not appear in status")
+    agent.sessions.save(session)
+    queued = agent.runs.create(
+        owner_id="web:browser:owner-a",
+        session_key="web:chat-a",
+        capability_profile="personal-work",
+        policy_revision="personal-work@test",
+    )
+
+    status = await agent._process_message(
+        InboundMessage(
+            channel="web", sender_id="browser:owner-a", chat_id="chat-a", content="/status"
+        )
+    )
+    recap = await agent._process_message(
+        InboundMessage(
+            channel="web", sender_id="browser:owner-a", chat_id="chat-a", content="/recap"
+        )
+    )
+
+    assert status is not None and status.content.startswith("picobot status\n")
+    assert recap is not None and recap.content.startswith("picobot session recap\n")
+    for content in (status.content, recap.content):
+        assert "Profile: Personal work (personal-work)" in content
+        assert f"Latest run: queued ({queued.id[:8]})" in content
+        assert "Approvals waiting: 0" in content
+        assert "Private prompt" not in content
+        assert "Private answer" not in content
+
+
+@pytest.mark.asyncio
 async def test_prequeued_run_is_reused_by_its_turn(tmp_path: Path):
     agent = AgentLoop(bus=MessageBus(), provider=_RecordingProvider(), workspace=tmp_path)
     message = InboundMessage(

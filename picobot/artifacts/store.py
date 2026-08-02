@@ -25,6 +25,7 @@ class Artifact:
     kind: str
     content_type: str
     status: str
+    verification_status: str
     revision: int
     relative_path: str
     created_at: str
@@ -51,6 +52,7 @@ class ArtifactStore:
         "application/json": "json",
         "text/csv": "csv",
     }
+    _VERIFICATION_STATES = {"verified", "stale", "unverified"}
 
     def __init__(self, workspace: Path):
         self.root = workspace / "artifacts"
@@ -98,6 +100,11 @@ class ArtifactStore:
                 );
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(artifacts)").fetchall()}
+            if "verification_status" not in columns:
+                connection.execute(
+                    "ALTER TABLE artifacts ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'unverified'"
+                )
 
     @staticmethod
     def _now() -> str:
@@ -142,6 +149,7 @@ class ArtifactStore:
             kind=row["kind"],
             content_type=row["content_type"],
             status=row["status"],
+            verification_status=row["verification_status"] or "unverified",
             revision=int(row["revision"]),
             relative_path=row["relative_path"],
             created_at=row["created_at"],
@@ -187,8 +195,8 @@ class ArtifactStore:
                     """
                     INSERT INTO artifacts (
                         id, owner_id, session_key, title, kind, content_type,
-                        status, revision, relative_path, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)
+                        status, verification_status, revision, relative_path, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'draft', 'unverified', ?, ?, ?, ?)
                     """,
                     (
                         artifact_id,
@@ -273,7 +281,7 @@ class ArtifactStore:
                 connection.execute(
                     """
                     UPDATE artifacts
-                    SET revision = ?, relative_path = ?, updated_at = ?
+                    SET revision = ?, relative_path = ?, verification_status = 'stale', updated_at = ?
                     WHERE id = ? AND owner_id = ?
                     """,
                     (next_revision, relative_path, now, artifact_id, owner_id),
@@ -288,6 +296,25 @@ class ArtifactStore:
         except Exception:
             file_path.unlink(missing_ok=True)
             raise
+        return self.get(owner_id, artifact_id)
+
+    def set_verification(self, owner_id: str, artifact_id: str, verification_status: str) -> Artifact:
+        """Set an explicit owner-reviewed verification state for an artifact."""
+        if verification_status not in self._VERIFICATION_STATES:
+            raise ValueError("Unsupported artifact verification status")
+        self.get(owner_id, artifact_id)
+        now = self._now()
+        with self._connect() as connection:
+            updated = connection.execute(
+                """
+                UPDATE artifacts
+                SET verification_status = ?, updated_at = ?
+                WHERE id = ? AND owner_id = ?
+                """,
+                (verification_status, now, artifact_id, owner_id),
+            )
+        if updated.rowcount != 1:
+            raise KeyError("Artifact was not found for this user")
         return self.get(owner_id, artifact_id)
 
     def revisions(self, owner_id: str, artifact_id: str) -> list[ArtifactRevision]:

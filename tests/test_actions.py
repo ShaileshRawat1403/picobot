@@ -1,5 +1,6 @@
 from datetime import timedelta
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -87,3 +88,40 @@ def test_rejected_expired_and_invalid_actions_cannot_execute(tmp_path: Path):
             summary="Summary",
             expires_in=timedelta(hours=25),
         )
+
+
+def test_existing_action_database_migrates_before_creating_mission_index(tmp_path: Path):
+    """A pre-mission local ledger must still open without manual database repair."""
+    workspace = tmp_path / "workspace"
+    actions_root = workspace / "operations"
+    actions_root.mkdir(parents=True)
+    path = actions_root / "pico-actions.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE proposed_actions (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                session_key TEXT NOT NULL,
+                profile_id TEXT NOT NULL,
+                capability_id TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                target TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                resolved_at TEXT,
+                executed_at TEXT
+            )
+            """
+        )
+
+    store = ProposedActionStore(workspace)
+
+    with store._connect() as connection:
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(proposed_actions)")}
+        indexes = {row["name"] for row in connection.execute("PRAGMA index_list(proposed_actions)")}
+    assert {"mission_id", "payload", "initiating_run_id"}.issubset(columns)
+    assert "proposed_actions_mission_idx" in indexes

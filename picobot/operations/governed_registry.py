@@ -72,7 +72,18 @@ def sanitize_diagnostic(text: str) -> str:
 class GovernedRegistryStore:
     """Owner/workspace-scoped store for governed skills and MCP entries."""
 
-    DEFAULT_PROFILES = ("personal-work", "research", "browser-review")
+    DEFAULT_PROFILES = (
+        "personal-work",
+        "research",
+        "browser-review",
+        "mission-work",
+        "github-review",
+        "delegated-research",
+        "calendar-read",
+        "workspace-inspect",
+        "workspace-run",
+        "workspace-build",
+    )
     MCP_PROFILES = ("research",)
 
     def __init__(self, workspace: Path):

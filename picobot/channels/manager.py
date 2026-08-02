@@ -22,9 +22,10 @@ class ChannelManager:
     - Route outbound messages
     """
 
-    def __init__(self, config: Config, bus: MessageBus):
+    def __init__(self, config: Config, bus: MessageBus, cron_service: Any | None = None):
         self.config = config
         self.bus = bus
+        self.cron_service = cron_service
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
 
@@ -43,6 +44,8 @@ class ChannelManager:
             try:
                 cls = load_channel_class(modname)
                 channel = cls(section, self.bus)
+                if modname == "web" and self.cron_service is not None:
+                    channel.set_cron_service(self.cron_service)
                 channel.transcription_api_key = groq_key
                 self.channels[modname] = channel
                 logger.info("{} channel enabled", cls.display_name)

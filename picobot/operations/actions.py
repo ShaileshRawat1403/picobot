@@ -102,8 +102,6 @@ class ProposedActionStore:
                 );
                 CREATE INDEX IF NOT EXISTS proposed_actions_owner_session_updated_idx
                     ON proposed_actions(owner_id, session_key, updated_at DESC);
-                CREATE INDEX IF NOT EXISTS proposed_actions_mission_idx
-                    ON proposed_actions(owner_id, mission_id);
                 """
             )
             cursor = connection.execute("PRAGMA table_info(proposed_actions);")
@@ -122,6 +120,14 @@ class ProposedActionStore:
             for col, col_type in migrations:
                 if col not in columns:
                     connection.execute(f"ALTER TABLE proposed_actions ADD COLUMN {col} {col_type}")
+            # Existing local workspaces can predate mission support. Create this
+            # index only after the additive migration has supplied mission_id.
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS proposed_actions_mission_idx
+                    ON proposed_actions(owner_id, mission_id)
+                """
+            )
 
     @staticmethod
     def compute_fingerprint(

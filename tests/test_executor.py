@@ -30,7 +30,7 @@ from picobot.operations.executor import MissionExecutor
 
 _OWNER = "web:browser:test-owner"
 _SESSION = "web:web:test-owner:session-a"
-_PROFILE = "personal-work"
+_PROFILE = "mission-work"
 
 
 def _make_active_mission_with_approved_bp(mission_store: MissionStore) -> tuple:

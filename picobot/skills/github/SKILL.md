@@ -8,6 +8,12 @@ metadata: {"picobot":{"emoji":"🐙","requires":{"bins":["gh"]},"install":[{"id"
 
 Use the `gh` CLI to interact with GitHub. Always specify `--repo owner/repo` when not in a git directory, or use URLs directly.
 
+In Pico chat, switch the session explicitly to the `github-review` profile for
+pull-request review. The `github_pr` tool is read-only and supports only
+`overview`, `checks`, and `diff`; it never comments, approves, merges, pushes,
+or changes repository state. The local `gh` CLI must already be installed and
+authenticated by the owner.
+
 ## Pull Requests
 
 Check CI status on a PR:

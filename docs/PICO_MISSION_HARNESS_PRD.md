@@ -74,7 +74,10 @@ short human-readable reason; unblocking clears it.
    session key.
 5. Artifacts and tool activity remain their own sources of truth; mission UI
    only links or summarizes them.
-6. Existing web, artifact, memory, Operations, and browser-read tests remain
+6. The mission detail view includes a deterministic resume brief built from
+   the outcome, current step, blocker, last checkpoint, active task, and
+   pending approvals.
+7. Existing web, artifact, memory, Operations, and browser-read tests remain
    green.
 
 ## Later slices
@@ -82,5 +85,4 @@ short human-readable reason; unblocking clears it.
 - A reviewed model-generated plan draft, never auto-applied.
 - Explicit task/connector integrations through existing profile and approval
   policy.
-- Mission resume brief assembled from checked, user-visible sources.
 - Outcome review that can propose a reusable skill or memory candidate.

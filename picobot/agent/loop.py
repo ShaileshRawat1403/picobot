@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
@@ -23,11 +24,13 @@ from picobot.agent.tools.browser import BrowserReadSharedTabTool
 from picobot.agent.tools.cron import CronTool
 from picobot.agent.tools.dax import DaxTool
 from picobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from picobot.agent.tools.github import GitHubPullRequestTool
 from picobot.agent.tools.message import MessageTool
 from picobot.agent.tools.registry import ToolRegistry
 from picobot.agent.tools.shell import ExecTool
 from picobot.agent.tools.spawn import SpawnTool
 from picobot.agent.tools.web import WebFetchTool, WebSearchTool
+from picobot.agent.tools.workspace_change import ProposeWorkspaceChangeTool
 from picobot.bus.analytics import get_analytics
 from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
@@ -155,6 +158,7 @@ class AgentLoop:
         )
         self.tools.register(WebSearchTool(config=self.web_search_config, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
+        self.tools.register(GitHubPullRequestTool())
         self.tools.register(BrowserReadSharedTabTool(workspace=self.workspace))
         self.tools.register(MessageTool(send_callback=self.bus.publish_outbound))
         self.tools.register(SpawnTool(manager=self.subagents))
@@ -182,6 +186,12 @@ class AgentLoop:
                 workspace=self.workspace,
                 action_store=self.proposed_actions,
                 mission_store=self.missions,
+            )
+        )
+        self.tools.register(
+            ProposeWorkspaceChangeTool(
+                workspace=self.workspace,
+                action_store=self.proposed_actions,
             )
         )
         self.governed_registry.sync_inventory(skills_loader, self._mcp_servers)
@@ -255,7 +265,14 @@ class AgentLoop:
         mission_id: str | None = None,
     ) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron", "browser_read_shared_tab", "save_mission_artifact_draft"):
+        for name in (
+            "message",
+            "spawn",
+            "cron",
+            "browser_read_shared_tab",
+            "save_mission_artifact_draft",
+            "propose_workspace_change",
+        ):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
                     tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
@@ -371,6 +388,26 @@ class AgentLoop:
 
                     if not is_permitted:
                         result = "Error: Tool is not permitted by this session"
+                    elif (
+                        activity_context
+                        and activity_context.get("profile_id") == "workspace-inspect"
+                        and tool_call.name in {"read_file", "list_dir"}
+                    ):
+                        result = self._workspace_inspect_guard(tool_call.arguments)
+                        if result is None:
+                            result = await self.tools.execute(
+                                tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                            )
+                    elif (
+                        activity_context
+                        and activity_context.get("profile_id") == "workspace-run"
+                        and tool_call.name == "exec"
+                    ):
+                        result = self._workspace_run_guard(tool_call.arguments)
+                        if result is None:
+                            result = await self.tools.execute(
+                                tool_call.name, tool_call.arguments, allowed_names=allowed_tools
+                            )
                     elif tool_risk == "mutating":
                         if tool_call.name == "save_mission_artifact_draft":
                             result = await self.tools.execute(
@@ -455,6 +492,74 @@ class AgentLoop:
         response_meta["_failed"] = failed
 
         return final_content, tools_used, messages, response_meta
+
+    def _workspace_inspect_guard(self, arguments: Any) -> str | None:
+        """Keep the read-only workspace profile inside Pico's configured root."""
+        if not isinstance(arguments, dict):
+            return "Error: Workspace inspection parameters must be an object"
+        raw_path = arguments.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            return "Error: Workspace inspection requires a path"
+        try:
+            candidate = Path(raw_path).expanduser()
+            if not candidate.is_absolute():
+                candidate = self.workspace / candidate
+            resolved = candidate.resolve()
+            resolved.relative_to(self.workspace.resolve())
+        except (OSError, ValueError):
+            return "Error: Workspace inspection is limited to Pico's configured workspace"
+        return None
+
+    def _workspace_run_guard(self, arguments: Any) -> str | None:
+        """Allow only bounded, read-only diagnostics in ``workspace-run``."""
+        if not isinstance(arguments, dict):
+            return "Error: Workspace diagnostics parameters must be an object"
+        command = arguments.get("command")
+        if not isinstance(command, str) or not command.strip():
+            return "Error: Workspace diagnostics requires a command"
+        command = command.strip()
+        if len(command) > 2_000:
+            return "Error: Workspace diagnostic commands are limited to 2000 characters"
+        if re.search(r"(?:;|&&|\|\||[<>`]|\$\(|\b(?:curl|wget|ssh|scp|rsync|nc|ping|docker|podman|npm|pip|pip3|brew|apt|apt-get|yum|dnf|cargo|go|make|cmake)\b)", command, re.IGNORECASE):
+            return "Error: Workspace diagnostics allow read-only local commands only"
+        if ".." in command:
+            return "Error: Workspace diagnostics reject path traversal"
+
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            return "Error: Workspace diagnostic command has invalid quoting"
+        if not tokens:
+            return "Error: Workspace diagnostics requires a command"
+        base = os.path.basename(tokens[0]).lower()
+        allowed = {
+            "cat", "head", "tail", "less", "more", "grep", "rg", "find", "ls", "dir",
+            "stat", "file", "wc", "du", "df", "tree", "awk", "sed", "cut", "sort",
+            "uniq", "tr", "jq", "yq", "ps", "uptime", "uname", "hostname", "whoami",
+            "id", "which", "whereis", "type", "command", "date", "echo", "printf", "seq",
+            "git",
+        }
+        if base not in allowed:
+            return f"Error: Workspace diagnostic command '{base}' is not permitted"
+        lowered_tokens = {token.lower() for token in tokens[1:]}
+        if lowered_tokens & {"-exec", "-execdir", "-delete", "-i", "--output", "--upload-pack"}:
+            return "Error: Workspace diagnostics reject mutating command options"
+        if base == "git":
+            subcommand = next((token for token in tokens[1:] if not token.startswith("-")), "")
+            if subcommand not in {"status", "log", "diff", "show", "branch", "rev-parse", "ls-files"}:
+                return "Error: Workspace diagnostics allow read-only git inspection only"
+
+        working_dir = arguments.get("working_dir")
+        try:
+            candidate = Path(working_dir).expanduser() if isinstance(working_dir, str) and working_dir else self.workspace
+            if not candidate.is_absolute():
+                candidate = self.workspace / candidate
+            candidate.resolve().relative_to(self.workspace.resolve())
+            for raw_path in ExecTool._extract_absolute_paths(command):
+                Path(os.path.expanduser(raw_path)).resolve().relative_to(self.workspace.resolve())
+        except (OSError, ValueError):
+            return "Error: Workspace diagnostics are limited to Pico's configured workspace"
+        return None
 
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
@@ -1295,7 +1400,8 @@ class AgentLoop:
                 "🐈 picobot commands:",
                 "/new — Start a new conversation",
                 "/resolve approve|deny [run_id] [approval_id] — Resolve DAX approval",
-                "/status — Show runtime status",
+                "/status — Show runtime and session status",
+                "/recap — Show a concise local session recap",
                 "/model — Show active model routing",
                 "/remember <fact> — Save a personal memory",
                 "/memory list|search|why|forget — Manage personal memory",
@@ -1309,17 +1415,8 @@ class AgentLoop:
                 chat_id=msg.chat_id,
                 content="\n".join(lines),
             )
-        if cmd == "/status":
-            dax_state = "enabled" if self._dax_service else "disabled"
-            lines = [
-                "picobot status",
-                f"Model: {self.model}",
-                f"Workspace: {self.workspace}",
-                f"DAX: {dax_state}",
-                f"MCP connected: {'yes' if self._mcp_connected else 'no'}",
-                f"Inbound queue: {self.bus.inbound_size}",
-                f"Outbound queue: {self.bus.outbound_size}",
-            ]
+        if cmd in {"/status", "/recap"}:
+            lines = self._session_status_lines(session, owner_id, recap=cmd == "/recap")
             return OutboundMessage(
                 channel=msg.channel, chat_id=msg.chat_id, content="\n".join(lines)
             )
@@ -1475,6 +1572,52 @@ class AgentLoop:
     def _owner_id(channel: str, sender_id: str) -> str:
         """Scope personal memory to a channel identity, never the chat alone."""
         return f"{channel}:{sender_id or 'anonymous'}"
+
+    def _session_status_lines(
+        self, session: Session, owner_id: str, *, recap: bool = False
+    ) -> list[str]:
+        """Build a bounded, observable status projection for one session.
+
+        This deliberately reports durable state and counts only. It never
+        includes prompts, tool arguments, credentials, or hidden reasoning.
+        """
+        profile = self._session_profile(session)
+        active_mission = self._active_mission_for_session(session, owner_id)
+        active_task = self.tasks.get_active(owner_id, session.key)
+        active_run = self.runs.get_active(owner_id, session.key)
+        latest_run = self.runs.list(owner_id, session_key=session.key, limit=1)
+        pending_actions = [
+            action
+            for action in self.proposed_actions.list(owner_id, session.key, limit=100)
+            if action.status in {"proposed", "approved"}
+        ]
+        message_count = len(
+            [message for message in session.messages if message.get("role") in {"user", "assistant"}]
+        )
+        mission_text = (
+            f"{active_mission.title} [{active_mission.state}]"
+            if active_mission
+            else "none"
+        )
+        task_text = f"{active_task.title} [{active_task.state}]" if active_task else "none"
+        run = active_run or (latest_run[0] if latest_run else None)
+        run_text = f"{run.state} ({run.id[:8]})" if run else "none"
+        heading = "picobot session recap" if recap else "picobot status"
+        return [
+            heading,
+            f"Session: {session.key}",
+            f"Messages: {message_count}",
+            f"Profile: {profile.label} ({profile.id})",
+            f"Model: {self.model}",
+            f"Mission: {mission_text}",
+            f"Task: {task_text}",
+            f"Latest run: {run_text}",
+            f"Approvals waiting: {len(pending_actions)}",
+            f"DAX: {'enabled' if self._dax_service else 'disabled'}",
+            f"MCP connected: {'yes' if self._mcp_connected else 'no'}",
+            f"Inbound queue: {self.bus.inbound_size}",
+            f"Outbound queue: {self.bus.outbound_size}",
+        ]
 
     def _context_snapshot(self, session: Session, policy=None) -> str:
         """Return the stable session prompt plus a truthful per-turn style preference.
