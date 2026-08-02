@@ -87,8 +87,8 @@ This creates `~/.picobot/config.json`. Edit it to add your channels:
   },
   "agents": {
     "defaults": {
-      "model": "gemini-2.5-pro",
-      "provider": "gemini_oauth"
+      "model": "gpt-4o",
+      "provider": "openai"
     }
   }
 }
@@ -206,8 +206,8 @@ not launch a DAX or Soothsayer connection.
 | **OpenAI**   | API Key         | Primary hosted API                   |
 | **Gemini**   | API Key         | Secondary hosted API                 |
 | **Anthropic**| API Key         | Hosted API                           |
-| **Codex**    | Official OAuth  | ChatGPT/Codex subscription           |
-| **Gemini CLI** | Official OAuth | Gemini subscription                  |
+| **Codex CLI**    | Official provider-owned CLI login  | ChatGPT/Codex subscription; no token readback |
+| **Gemini CLI** | Official provider-owned CLI login | Gemini subscription; no token readback |
 | **Ollama**   | Local           | Local endpoint                       |
 | **Custom**   | API Key + URL   | One OpenAI-compatible endpoint       |
 
@@ -220,8 +220,8 @@ does not read or reuse Gemini CLI tokens:
 # Sign in with Google in the official CLI
 gemini
 
-# Or launch Pico's setup wrapper
-picobot provider login gemini_oauth
+# Or launch Pico's provider-owned setup wrapper
+picobot provider login gemini-oauth
 ```
 
 Use the Gemini API connection for Pico tool execution and governed actions.
@@ -231,12 +231,11 @@ Use the Gemini API connection for Pico tool execution and governed actions.
 ## What Picobot Can Do
 
 - **Answer questions** - Search the web, read documentation
-- **Manage files** - Read, write, organize your workspace
-- **Git operations** - Status, commit, push, PR summaries
-- **Code tasks** - Write, review, debug code
-- **Schedule tasks** - Set up recurring reminders
-- **Calendar & email** - Manage your time and communications
-- **And more** - Skills can be added to extend capabilities
+- **Create durable work** - Notes, briefs, plans, data, links, and code artifacts
+- **Research** - Bounded web search, page fetches, and one explicitly shared browser tab
+- **Governed execution** - Missions, bounded tasks, approvals, and evidence-linked runs
+- **Workspace help** - Read, diagnose, or propose bounded changes inside the configured workspace
+- **Optional skills** - GitHub review, calendar read, MCP, and delegated research stay opt-in
 
 ---
 
@@ -284,8 +283,8 @@ Picobot is designed for responsible automation:
   },
   "agents": {
     "defaults": {
-      "model": "gemini-2.5-pro",
-      "provider": "gemini_oauth",
+      "model": "gpt-4o",
+      "provider": "openai",
       "temperature": 0.7
     }
   },
@@ -321,13 +320,9 @@ picobot doctor
 picobot channels status
 ```
 
-**Token expired?**
-
-```bash
-picobot provider login openai_codex
-# or
-picobot provider login gemini_oauth
-```
+**Subscription setup?** Use the provider-owned CLI (`codex login` or the
+official Gemini CLI sign-in). Pico only records redacted readiness metadata;
+it never reads or stores those CLI tokens.
 
 ---
 

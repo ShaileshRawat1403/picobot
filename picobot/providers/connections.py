@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,29 @@ SUPPORTED_PROVIDER_NAMES: tuple[str, ...] = (
     *SUPPORTED_API_PROVIDERS,
     *SUPPORTED_SUBSCRIPTION_PROVIDERS,
 )
+
+CONNECTION_STATES = frozenset(
+    {"not_configured", "setup_required", "configured", "ready", "unavailable", "deferred"}
+)
+
+
+@dataclass(frozen=True)
+class ProviderConnection:
+    """Redacted lifecycle projection shared by setup and future adapters."""
+
+    provider: str
+    kind: str
+    state: str
+    detail: str
+    failure_category: str | None = None
+    cli_available: bool | None = None
+
+    def __post_init__(self) -> None:
+        if self.state not in CONNECTION_STATES:
+            raise ValueError("Unsupported provider connection state")
+
+    def to_dict(self) -> dict[str, object]:
+        return asdict(self)
 
 _GEMINI_CREDENTIAL_PATHS = (
     Path.home() / ".gemini" / "oauth_creds.json",
@@ -124,4 +148,3 @@ def subscription_status(provider_name: str) -> dict[str, Any]:
     if provider_name == "gemini_oauth":
         return _gemini_status()
     raise ValueError(f"Unsupported subscription provider: {provider_name}")
-

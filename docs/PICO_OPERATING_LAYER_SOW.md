@@ -35,21 +35,21 @@ locally before calendar, email, or wider automation is added.
 | OL2.2 | Pending-approval UI | Browser walkthrough: approve/reject cards update durable action state |
 | OL3.1 | Local Chrome extension and explicit shared-tab handshake | Extension test: unshared/stale tab cannot be operated |
 | OL3.2 | Browser read/snapshot operations | Owner test against a non-sensitive public page with activity evidence |
-| OL3.3 | Staged browser navigate/click/type | Tests and manual test: action remains staged until owner approval |
-| OL3.4 | Sensitive-control blocklist and trace redaction | Tests: password/payment/auth patterns block and typed secret-like values redact |
+| OL3.3 | Staged browser navigate/click/type | Implemented: durable command ledger, exact approval, tab/token dispatch, result audit |
+| OL3.4 | Sensitive-control blocklist and trace redaction | Implemented: sensitive URL/control/input rejection and safe command/result projections |
 | OL4.x | Individual productivity connectors | One separate SOW/acceptance run per connector |
 
 ## Current delivery status
 
-OL1.1–OL3.2 are implemented and verified locally. The registry is intentionally
-limited to the existing safe skills and research tools; it does not present
-unimplemented browser writes or connector capabilities as ready. The action ledger
-stores a bounded human-readable proposal, requires an exact owner/session
-decision, expires unused proposals, and exposes pending actions in Operations.
-Pico's local Chrome bridge now requires a one-time pairing code and one
-explicitly shared active tab before it stores a redacted visible-text snapshot.
-It does not yet stage or run browser writes; OL3.3 is the next implementation
-boundary.
+OL1.1–OL3.4 are implemented and verified locally. The registry is intentionally
+limited to the existing safe skills and research tools; connector capabilities
+remain outside the default product surface. The action ledger stores a bounded
+human-readable proposal, requires an exact owner/session decision, expires unused
+proposals, and exposes pending actions in Operations. Pico's local Chrome bridge
+requires a one-time pairing code and one explicitly shared active tab before it
+stores a redacted visible-text snapshot or dispatches a typed command. Browser
+writes use the separate `browser-action` profile and the full
+propose → inspect → approve → dispatch → result → audit path.
 
 ## Delivery order
 

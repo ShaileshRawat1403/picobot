@@ -662,6 +662,10 @@ class WebChannel(BaseChannel):
                             },
                             ensure_ascii=False,
                         ).encode()
+                    elif method == "POST" and operation == "disconnect":
+                        response = json.dumps(
+                            {"provider": setup.disconnect(provider_name)}, ensure_ascii=False
+                        ).encode()
                     elif method == "POST" and operation == "test":
                         response = json.dumps(
                             await setup.test_connection(provider_name), ensure_ascii=False

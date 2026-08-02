@@ -11,6 +11,13 @@ which is outside Pico's supported boundary. Existing configuration values for
 names, but runtime construction resolves them only to the official CLI
 transport in `picobot.providers.subscription_cli`.
 
+Provider setup now exposes one redacted lifecycle projection: `not_configured`,
+`setup_required`, `configured`, `ready`, `unavailable`, or `deferred`. API-key
+connections support explicit configure, bounded status/test, and disconnect
+operations. Subscription disconnect is provider-owned because Pico never owns
+the CLI credential; the UI explains where to sign out without exposing CLI
+output.
+
 Rook's PKCE, loopback callback, state validation, refresh, and disconnect
 mechanics remain useful reference patterns for a future provider-owned OAuth
 adapter. Any such adapter must use documented public endpoints and OS keychain

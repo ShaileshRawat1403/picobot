@@ -9,11 +9,18 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 from urllib.request import Request, urlopen
 
-from picobot.config.loader import get_config_path, load_config, set_profile_provider_secret, save_config
+from picobot.config.loader import (
+    clear_profile_provider_secret,
+    get_config_path,
+    load_config,
+    save_config,
+    set_profile_provider_secret,
+)
 from picobot.config.schema import ProvidersConfig
 from picobot.providers.connections import (
     SUPPORTED_PROVIDER_NAMES,
     SUPPORTED_SUBSCRIPTION_PROVIDERS,
+    ProviderConnection,
     is_supported_provider,
     subscription_login_hint,
     subscription_status,
@@ -85,6 +92,13 @@ class ProviderSetupService:
     def _entry(self, provider_name: str, config) -> dict:
         provider = getattr(config.providers, provider_name)
         if not is_supported_provider(provider_name):
+            lifecycle = ProviderConnection(
+                provider_name,
+                "deferred",
+                "deferred",
+                "This provider is outside Pico's supported provider boundary.",
+                failure_category="unsupported",
+            )
             return {
                 "id": provider_name,
                 "label": self._label(provider_name),
@@ -98,6 +112,7 @@ class ProviderSetupService:
                 "is_active": False,
                 "last_diagnostic": None,
                 "failure_category": "unsupported",
+                "connection": lifecycle.to_dict(),
             }
         kind = self._kind(provider_name)
         has_key = bool(provider.api_key)
@@ -133,6 +148,15 @@ class ProviderSetupService:
             status = "unavailable"
             detail = diag.get("detail", "Provider connection failed.")
 
+        lifecycle = ProviderConnection(
+            provider_name,
+            kind,
+            status,
+            detail,
+            failure_category=failure_category,
+            cli_available=auth_metadata.get("cli_available") if auth_metadata else None,
+        )
+
         return {
             "id": provider_name,
             "label": self._label(provider_name),
@@ -152,6 +176,7 @@ class ProviderSetupService:
             "cli_available": auth_metadata.get("cli_available")
             if auth_metadata
             else None,
+            "connection": lifecycle.to_dict(),
         }
 
     def inventory(self) -> dict:
@@ -210,6 +235,31 @@ class ProviderSetupService:
         save_config(config, self.config_path)
         self._clear_diagnostic("custom")
         return self.inventory()
+
+    def disconnect(self, provider_name: str) -> dict:
+        """Disconnect a local API connection without exposing secret material."""
+        provider_name = self._validate_provider_name(provider_name)
+        if not is_supported_provider(provider_name):
+            raise ValueError("This provider is outside Pico's supported provider boundary")
+        if provider_name in SUPPORTED_SUBSCRIPTION_PROVIDERS:
+            # Pico never owns subscription credentials. The provider's official
+            # CLI remains the only place where logout/revocation can occur.
+            result = self._entry(provider_name, load_config(self.config_path))
+            result["detail"] = "Disconnect through the official provider CLI; Pico stores no subscription token."
+            result["setup_hint"] = result["detail"]
+            return result
+        clear_profile_provider_secret(provider_name, self.config_path)
+        config = load_config(self.config_path)
+        provider = getattr(config.providers, provider_name)
+        provider.api_key = ""
+        if provider_name in {"custom", "ollama"}:
+            provider.api_base = ""
+        if config.agents.defaults.provider == provider_name:
+            config.agents.defaults.provider = "openai"
+            config.agents.defaults.model = "gpt-4o-mini"
+        save_config(config, self.config_path)
+        self._clear_diagnostic(provider_name)
+        return self._entry(provider_name, config)
 
     def choose_default(self, provider_name: str, model: str) -> dict:
         provider_name = self._validate_provider_name(provider_name)

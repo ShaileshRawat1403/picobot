@@ -22,7 +22,7 @@ path, and evidence.
 | Scheduled automations | Local schedules with owner-scoped web delivery, pause/resume, run-now, and delete | Implemented |
 | Heartbeat-style background checks | Local heartbeat service, opt-in and bounded | Implemented |
 | Delegation and parallel work | Depth-zero bounded tasks plus an explicit read-only delegated-research profile | Implemented, read-only |
-| Browser automation | One explicitly shared tab; sensitive paths blocked; writes remain approval-gated | Read-first implemented |
+| Browser automation | One explicitly shared tab; bounded navigate/click/type writes; sensitive paths blocked; every write approval-gated and audited | Implemented, bounded |
 | GitHub workflows | Read-only PR overview, checks, and diff through local `gh` | Implemented |
 | MCP | Governed inventory, profile filtering, readiness probes, and safe diagnostics | Implemented foundation |
 | Calendar | Read-only `calendar-read` profile over the supported local Google token; no event writes | Implemented, read-only |

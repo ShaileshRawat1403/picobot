@@ -8,6 +8,8 @@ import pytest
 
 from picobot.config.loader import load_config, save_config
 from picobot.providers.connections import (
+    CONNECTION_STATES,
+    ProviderConnection,
     SUPPORTED_PROVIDER_NAMES,
     subscription_status,
 )
@@ -48,6 +50,27 @@ def test_supported_provider_surface_is_small_and_explicit():
     )
 
 
+def test_connection_lifecycle_is_redacted_and_closed():
+    assert CONNECTION_STATES == {
+        "not_configured",
+        "setup_required",
+        "configured",
+        "ready",
+        "unavailable",
+        "deferred",
+    }
+    status = ProviderConnection("openai", "api", "configured", "API key stored locally")
+    assert status.to_dict() == {
+        "provider": "openai",
+        "kind": "api",
+        "state": "configured",
+        "detail": "API key stored locally",
+        "failure_category": None,
+        "cli_available": None,
+    }
+    assert "token" not in str(status.to_dict()).lower()
+
+
 def test_inventory_hides_deferred_provider_catalogue(config_path: Path):
     service = ProviderSetupService(config_path)
     with patch(
@@ -64,6 +87,15 @@ def test_inventory_hides_deferred_provider_catalogue(config_path: Path):
     assert ids == list(SUPPORTED_PROVIDER_NAMES)
     assert "deepseek" not in ids
     assert "openrouter" not in ids
+    assert all(set(entry["connection"]) == {"provider", "kind", "state", "detail", "failure_category", "cli_available"} for entry in inventory["providers"])
+
+
+def test_api_disconnect_is_write_only_and_redacted(config_path: Path):
+    service = ProviderSetupService(config_path)
+    service.configure_api_key("openai", "temporary-test-key")
+    result = service.disconnect("openai")
+    assert result["status"] == "not_configured"
+    assert "temporary-test-key" not in str(result)
 
 
 @pytest.mark.asyncio

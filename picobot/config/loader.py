@@ -132,6 +132,22 @@ def set_profile_provider_secret(
         raise ValueError("Pico could not securely save the provider key") from exc
 
 
+def clear_profile_provider_secret(provider_name: str, config_path: Path | None = None) -> None:
+    """Remove one provider key without reading or returning its value."""
+    _provider_alias(provider_name)
+    path = config_path or get_config_path()
+    env_path = path.parent / ".env"
+    if not env_path.exists():
+        return
+    try:
+        from dotenv import unset_key
+
+        unset_key(env_path, provider_secret_env_name(provider_name))
+        os.chmod(env_path, 0o600)
+    except Exception as exc:
+        raise ValueError("Pico could not securely disconnect the provider") from exc
+
+
 def save_config(config: Config, config_path: Path | None = None) -> None:
     """
     Save configuration to file.

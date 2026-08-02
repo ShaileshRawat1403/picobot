@@ -165,21 +165,23 @@ current session's pending proposals. There is intentionally no browser UI
 route to stage arbitrary actions and no external executor yet; OL3 will be the
 first consumer of this ledger.
 
-### OL3 — Chrome bridge, read-first
+### OL3 — Chrome bridge, read-first plus governed typed actions
 
 - Local extension with explicit active-tab sharing.
 - Read/snapshot/current-page operations in `research` and `browser-review`.
-- Staged click/type/navigation, activity cards, and approval interlock.
+- Staged click/type/navigation, durable command ledger, result audit, and approval interlock.
 - No general computer use and no automation of sensitive browser controls.
 
-**Implementation status: OL3.1 and OL3.2 are complete locally.** Pico now has
+**Implementation status: OL3.1–OL3.4 are complete locally.** Pico now has
 a minimal Manifest V3 extension with only `activeTab`, `scripting`, and
 session-only storage permissions. An owner creates a five-minute, one-time
 session code in Operations, then explicitly shares the current Chrome tab.
 Pico persists a bounded, redacted visible-text snapshot for that exact owner
 session and can expose it only through the `browser-review` profile. It cannot
 discover other tabs, read cookies/history/passwords, or access sensitive
-authentication and payment paths. Browser writes remain deferred to OL3.3.
+authentication and payment paths. Browser writes are exposed only through the
+separate `browser-action` profile and cannot run without the exact owner
+approval, active share, tab binding, and payload fingerprint.
 
 ### OL4 — Personal productivity connectors
 
@@ -199,7 +201,9 @@ authentication and payment paths. Browser writes remain deferred to OL3.3.
   cannot receive a Pico browser operation.
 - A staged browser write cannot execute before a specific approval; rejected or
   expired actions cannot execute afterward.
-- Pico does not perform a browser form submission in OL3.
+- Pico does not submit authentication, payment, recovery, billing, or other
+  sensitive browser forms in OL3; typed actions are limited to non-sensitive
+  text in a bounded selector.
 - Unit tests cover policy resolution, owner/session isolation, action state
   transitions, stale-tab rejection, redaction, and no-bypass invariants.
 

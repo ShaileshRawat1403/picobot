@@ -29,8 +29,8 @@ agent runtime.
 
 | Capability | Current state | Gap to close |
 | --- | --- | --- |
-| Model/provider setup | Partial | A saved provider is not yet a durable, validated global and per-session runtime decision. |
-| Chat/tool execution | Partial | Tool activity exists, but a user cannot reliably inspect one complete turn/run, its duration, terminal state, or result. |
+| Model/provider setup | Implemented boundary | API providers are limited to OpenAI, Gemini, Anthropic, Ollama, and one custom OpenAI-compatible endpoint; subscriptions use official provider-owned CLIs with redacted status. |
+| Chat/tool execution | Implemented foundation | Durable runs, safe receipts, run detail evidence, tool activity, approvals, and artifact/task/mission linkage are inspectable without private payloads. |
 | Memory | Good base | Retrieval and explicit confirmation exist; no bounded adapter contract, learning quality signal, or cross-session recall surface. |
 | Context | Partial | History is bounded, but it is not token-budgeted and has no durable compaction handoff. |
 | Skills and MCP | Partial | Skills are reviewable and MCP can connect, but server health, tool filtering, and profile permissions are not managed as a registry. |
@@ -77,12 +77,12 @@ write-only API-key setup. OAuth proves that a provider authorised Pico for a
 specific scope; it does **not** mean that a consumer chat subscription can be
 used as a general model API.
 
-Every account connection must have a provider-owned authorisation flow,
-explicit scopes, encrypted local refresh-token storage, a disconnect/revoke
-operation, bounded refresh, and a status that distinguishes `connected`,
-`expired`, `needs_reauth`, and `error`. Browser code never receives a refresh
-token. A connection is usable only after Pico validates that the provider
-actually permits the selected capability.
+Every future Pico-managed account connection must have a provider-owned
+authorisation flow, explicit scopes, OS-keychain-only refresh-token storage, a
+disconnect/revoke operation, bounded refresh, and a redacted lifecycle status.
+There is no plaintext token-file fallback. Browser code never receives a
+refresh token. A connection is usable only after Pico validates that the
+provider actually permits the selected capability.
 
 ### Initial provider policy
 
@@ -92,7 +92,7 @@ actually permits the selected capability.
 | ChatGPT Plus/Pro/Business subscription | Do not treat this as a Pico model-provider credential. ChatGPT subscription and API billing are separate. Pico must not capture browser session cookies, reuse a Codex/ChatGPT login token, or emulate private web endpoints. |
 | OpenAI account OAuth | Add only if OpenAI publishes a supported OAuth/account-authorisation flow that grants Pico the exact inference capability it needs. Until then the UI states the API-key route plainly rather than displaying a misleading “Connect ChatGPT” button. |
 | Gemini API | Add a Google OAuth connection only for the official Gemini API OAuth path, with an owner-selected Cloud project and minimal scopes. It is an API-authorisation route; it does not claim to consume a Gemini consumer subscription. |
-| Gemini consumer subscription / CLI entitlement | Do not extract or reuse CLI credentials. A future official, supported account-backed interface can be evaluated separately. |
+| Gemini consumer subscription / CLI entitlement | Use the official Gemini CLI transport only; do not extract or reuse CLI credentials. A Pico-owned adapter remains deferred. |
 | Custom OpenAI-compatible endpoint | Continue to support one named endpoint with API key or no key, never a generic OAuth proxy. |
 
 This preserves a future extension point without encoding any provider-specific
