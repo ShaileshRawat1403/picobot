@@ -683,7 +683,28 @@
     .utility-action { min-height:27px; padding:3px 7px; font-size:9.5px; }
     .utility-value { color:#657084; font-weight:650; }
     .composer-area { bottom:var(--utility-h); }
-    @media (max-width:760px) { .rail { top:auto; } .rail .brand { display:flex; } .topbar { height:52px; padding:0 16px; } .topbar::before { display:none; } .title-line { min-height:52px; } main { padding-top:0; padding-bottom:var(--utility-h); } .cockpit-wrapper { padding:8px 16px 0; } .cockpit-bar::before { display:none; } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } button.cockpit-action { min-height:42px; } .utility-bar { left:0; padding:3px 8px; } }
+    .command-trigger { display:inline-flex; align-items:center; gap:8px; margin-left:auto; border:1px solid #dfe6f1; border-radius:6px; padding:4px 7px; background:#ffffff8c; color:#7b8494; font:10px ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+    .command-trigger:hover { border-color:#b9c8e9; background:#fff; color:#4c68c8; }
+    .command-trigger kbd { border:1px solid #d3dbea; border-radius:3px; padding:1px 4px; background:#f4f6fb; color:#8d96a7; font:9px ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .command-palette { position:fixed; inset:0; z-index:20; display:grid; place-items:start center; padding-top:13vh; background:#25324a35; backdrop-filter:blur(5px); }
+    .command-palette[hidden] { display:none; }
+    .command-dialog { width:min(560px,calc(100vw - 32px)); overflow:hidden; border:1px solid #d9e1ef; border-radius:12px; background:#fbfcff; box-shadow:0 24px 70px #28385630,0 2px 10px #53688d18; }
+    .command-head { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid #e6ebf3; }
+    .command-head .nav-search { position:relative; width:14px; height:14px; flex:none; color:#7c8fc6; }
+    .command-input { min-width:0; flex:1; border:0; outline:0; background:transparent; color:#394154; font-size:14px; }
+    .command-input::placeholder { color:#9aa4b5; }
+    .command-close { border:0; padding:3px 5px; background:transparent; color:#929aaa; font-size:11px; cursor:pointer; }
+    .command-list { max-height:min(440px,60vh); overflow:auto; padding:7px; }
+    .command-item { width:100%; display:flex; align-items:center; gap:11px; border:0; border-radius:7px; padding:9px 10px; background:transparent; color:#4a5262; text-align:left; cursor:pointer; }
+    .command-item:hover, .command-item.active { background:#edf2ff; color:#3d5dcc; }
+    .command-item-icon { width:22px; height:22px; display:grid; place-items:center; border:1px solid #dbe3f1; border-radius:5px; background:#f7f9fd; color:#7890d0; font:11px ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .command-item-copy { min-width:0; flex:1; }
+    .command-item-label { font-size:12px; font-weight:650; }
+    .command-item-detail { overflow:hidden; margin-top:1px; color:#929aaa; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+    .command-empty { padding:22px 12px; color:#929aaa; font-size:12px; text-align:center; }
+    .command-foot { display:flex; gap:14px; padding:8px 13px; border-top:1px solid #e6ebf3; color:#9aa3b1; font:9px ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .command-foot kbd { border:1px solid #d8dfeb; border-radius:3px; padding:1px 4px; background:#f5f7fb; }
+    @media (max-width:760px) { .rail { top:auto; } .rail .brand { display:flex; } .topbar { height:52px; padding:0 16px; } .topbar::before { display:none; } .title-line { min-height:52px; } main { padding-top:0; padding-bottom:var(--utility-h); } .cockpit-wrapper { padding:8px 16px 0; } .cockpit-bar::before { display:none; } .cockpit-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } button.cockpit-action { min-height:42px; } .utility-bar { left:0; padding:3px 8px; } .command-trigger { display:none; } .command-palette { padding-top:8vh; } }
   </style>
 </head>
 <body>
@@ -713,7 +734,7 @@
       <div class="rail-footer"><div class="runtime"><span class="dot" id="runtime-dot"></span><span id="runtime-status">Connecting</span></div><div style="margin-top:5px">A local thinking room</div></div>
     </aside>
     <main>
-      <header class="topbar"><div><div class="eyebrow" id="view-label">Personal workbench</div><div class="title-line"><h1 id="page-title">New session</h1><input class="session-title-input" id="session-title-input" aria-label="Session title" maxlength="72" hidden><button class="title-action" id="rename-session" type="button">Rename</button><button class="title-action" id="archive-session" type="button">Archive</button><button class="title-action primary" id="save-session-title" type="button" hidden>Save</button><button class="title-action" id="cancel-session-title" type="button" hidden>Cancel</button></div></div><div class="connection"><span class="dot" id="connection-dot"></span><span id="connection-text">Connecting</span></div></header>
+      <header class="topbar"><div><div class="eyebrow" id="view-label">Personal workbench</div><div class="title-line"><h1 id="page-title">New session</h1><input class="session-title-input" id="session-title-input" aria-label="Session title" maxlength="72" hidden><button class="title-action" id="rename-session" type="button">Rename</button><button class="title-action" id="archive-session" type="button">Archive</button><button class="title-action primary" id="save-session-title" type="button" hidden>Save</button><button class="title-action" id="cancel-session-title" type="button" hidden>Cancel</button></div></div><button class="command-trigger" id="command-trigger" type="button" aria-haspopup="dialog" aria-controls="command-palette">Jump <kbd>⌘K</kbd></button><div class="connection"><span class="dot" id="connection-dot"></span><span id="connection-text">Connecting</span></div></header>
       <section class="view chat-view active" id="view-chat">
         <div class="cockpit-wrapper">
           <div class="cockpit-bar" id="session-cockpit" aria-label="Session cockpit">
@@ -824,6 +845,13 @@
         <div class="utility-local"><span class="dot" id="utility-dot"></span><span id="utility-status">Connecting locally</span></div>
       </footer>
     </main>
+  </div>
+  <div class="command-palette" id="command-palette" role="dialog" aria-modal="true" aria-label="Pico command palette" hidden>
+    <div class="command-dialog">
+      <div class="command-head"><span class="nav-icon nav-search" aria-hidden="true"></span><input class="command-input" id="command-input" autocomplete="off" placeholder="Jump to a place or action" aria-label="Command palette search"><button class="command-close" id="command-close" type="button" aria-label="Close command palette">Esc</button></div>
+      <div class="command-list" id="command-list" role="listbox"><div class="command-empty">Start typing to find a place in Pico.</div></div>
+      <div class="command-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
+    </div>
   </div>
   <div class="toast" id="toast" role="status"></div>
   <script>
@@ -1245,8 +1273,47 @@
     async function loadStance() { try { const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/stance`); if (!response.ok) throw new Error(); const data = await response.json(); currentStance = data.stance || currentStance; const value = $('cockpit-stance-value'); if (value) value.textContent = currentStance.label || 'Explore'; renderStanceOptions(data.stances); } catch { const value = $('cockpit-stance-value'); if (value) value.textContent = currentStance.label || 'Explore'; } }
     async function setStance(id) { const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/stance`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stance:id})}); if (!response.ok) { const detail = await response.json().catch(() => ({})); toast(detail.error || 'Pico could not change the session stance.'); return; } const data = await response.json(); currentStance = data.stance || currentStance; $('cockpit-stance-value').textContent = currentStance.label || 'Explore'; renderStanceOptions(data.stances); $('stance-panel').hidden = true; toast(`Session stance: ${currentStance.label}.`); }
     function toggleStancePanel() { const panel = $('stance-panel'); panel.hidden = !panel.hidden; if (!panel.hidden) loadStance(); }
+    const COMMANDS = [
+      {label:'New session', detail:'Begin with a clear page', icon:'+', run:() => $('new-session').click()},
+      {label:'Focus composer', detail:'Return to the thinking surface', icon:'↗', run:() => { showView('chat'); $('message-input').focus(); }},
+      {label:'Chat', detail:'Continue thinking with Pico', icon:'C', view:'chat'},
+      {label:'Search', detail:'Find sessions, memory, and artifacts', icon:'?', view:'search'},
+      {label:'Artifacts', detail:'Review durable work products', icon:'A', view:'artifacts'},
+      {label:'Memory', detail:'Inspect what Pico may remember', icon:'M', view:'memory'},
+      {label:'Context', detail:'See the bounded context used', icon:'K', view:'context'},
+      {label:'Missions', detail:'Resume outcomes and governed tasks', icon:'N', view:'missions'},
+      {label:'Schedules', detail:'Review recurring personal work', icon:'S', view:'schedules'},
+      {label:'Operations', detail:'Choose the session capability profile', icon:'O', view:'operations'},
+      {label:'Providers', detail:'Check model access and connections', icon:'P', view:'providers'},
+      {label:'Learning', detail:'Review feedback and retention choices', icon:'L', view:'learning'},
+      {label:'Skills', detail:'Inspect installed and proposed skills', icon:'T', view:'skills'},
+    ];
+    let commandMatches = COMMANDS, commandIndex = 0, commandFocusReturn = null;
+    function renderCommandItems() {
+      const list = $('command-list');
+      list.innerHTML = '';
+      if (!commandMatches.length) { list.innerHTML = '<div class="command-empty">No matching Pico destination.</div>'; return; }
+      commandMatches.forEach((command, index) => {
+        const item = document.createElement('button');
+        item.type = 'button'; item.className = `command-item ${index === commandIndex ? 'active' : ''}`; item.setAttribute('role', 'option'); item.setAttribute('aria-selected', index === commandIndex ? 'true' : 'false');
+        item.innerHTML = `<span class="command-item-icon" aria-hidden="true">${escapeHtml(command.icon)}</span><span class="command-item-copy"><span class="command-item-label">${escapeHtml(command.label)}</span><span class="command-item-detail">${escapeHtml(command.detail)}</span></span>`;
+        item.onclick = () => { closeCommandPalette(); if (command.view) showView(command.view); else command.run(); };
+        list.appendChild(item);
+      });
+    }
+    function openCommandPalette() { commandFocusReturn = document.activeElement; $('command-palette').hidden = false; $('command-input').value = ''; commandMatches = COMMANDS; commandIndex = 0; renderCommandItems(); $('command-input').focus(); }
+    function closeCommandPalette() { $('command-palette').hidden = true; if (commandFocusReturn && typeof commandFocusReturn.focus === 'function') commandFocusReturn.focus(); }
+    function moveCommandSelection(delta) { if (!commandMatches.length) return; commandIndex = (commandIndex + delta + commandMatches.length) % commandMatches.length; renderCommandItems(); }
+    function runSelectedCommand() { const command = commandMatches[commandIndex]; if (!command) return; closeCommandPalette(); if (command.view) showView(command.view); else command.run(); }
+    function filterCommands(value) { const query = value.trim().toLowerCase(); commandMatches = query ? COMMANDS.filter((command) => `${command.label} ${command.detail}`.toLowerCase().includes(query)) : COMMANDS; commandIndex = 0; renderCommandItems(); }
     function showView(name) { currentView = name; document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
     $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
+    $('command-trigger').onclick = openCommandPalette;
+    $('command-close').onclick = closeCommandPalette;
+    $('command-palette').onclick = (event) => { if (event.target === $('command-palette')) closeCommandPalette(); };
+    $('command-input').oninput = (event) => filterCommands(event.target.value);
+    $('command-input').onkeydown = (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); moveCommandSelection(1); } else if (event.key === 'ArrowUp') { event.preventDefault(); moveCommandSelection(-1); } else if (event.key === 'Enter') { event.preventDefault(); runSelectedCommand(); } else if (event.key === 'Escape') { event.preventDefault(); closeCommandPalette(); } };
+    document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('command-palette').hidden ? openCommandPalette() : closeCommandPalette(); } else if (event.key === 'Escape' && !$('command-palette').hidden) closeCommandPalette(); });
     document.querySelectorAll('.nav-button').forEach((button) => button.onclick = () => showView(button.dataset.view));
     $('cockpit-session-btn').onclick = () => showView('chat');
     $('cockpit-profile-btn').onclick = () => showView('operations');
