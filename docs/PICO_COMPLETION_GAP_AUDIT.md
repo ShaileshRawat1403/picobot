@@ -16,6 +16,8 @@ an integration catalogue.
 - Token-bounded context planning and durable compaction evidence.
 - Reviewable memory and skill learning, local search, schedules, and artifact
   revision/export workflows.
+- Owner-visible learning proof: response reviews, correction candidates,
+  explicit memory/skill approval, run evidence links, and memory-use counts.
 
 ## Missing but intentionally deferred
 
@@ -43,6 +45,10 @@ an integration catalogue.
    visible without exposing credentials.
 4. Reduce Operations density by separating profile selection, browser sharing,
    approvals, and recent activity into clear sections with state-specific copy.
+
+The learning proof workflow is now a first-class surface. The remaining
+learning work is measurement of approved skill use; Pico must add that only
+when it can record truthful skill-load evidence, not by guessing from chat.
 
 The next implementation slice should improve those surfaces without adding a
 new integration.

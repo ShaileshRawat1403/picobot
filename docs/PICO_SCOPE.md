@@ -171,8 +171,10 @@ Before more feature coding:
 3. Mark the current channel/provider inventory as supported, optional, or
    deferred in the runtime registry.
 4. Select whether one messaging channel is needed in addition to Web/CLI.
-5. Finish the learning proof workflow: correction → candidate → approval →
-   later usage/effectiveness evidence.
+5. Learning proof workflow is implemented: response review → correction →
+   candidate → explicit approval, with run provenance and memory-use evidence.
+   Keep skill-use effectiveness evidence as a later, evidence-backed extension
+   rather than inferring it from proposal state.
 6. Perform a maintainability pass without changing the product boundary.
 
 This contract is the gate for future Pico slices. A feature can be broad in

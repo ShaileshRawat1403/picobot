@@ -628,6 +628,13 @@ def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(
             {"session_id": SESSION_A, "candidate_type": "memory"},
         )
 
+    reviews = channel._list_browser_feedback(CLIENT_A, SESSION_A)
+    memory_review = next(item for item in reviews if item["id"] == memory_feedback.id)
+    assert memory_review["candidate"]["type"] == "memory"
+    assert memory_review["candidate"]["status"] == "proposed"
+    assert "value" not in memory_review["candidate"]
+    assert "owner_id" not in memory_review["candidate"]
+
 
 def test_browser_run_detail_links_safe_evidence_without_private_payloads(tmp_path: Path):
     workspace = tmp_path / "workspace"

@@ -2042,12 +2042,43 @@ class WebChannel(BaseChannel):
             valid_session_id = self._valid_browser_id(session_id)
             self._require_browser_session(client_id, valid_session_id)
             session_key = self._session_key(client_id, valid_session_id)
-        return [
-            asdict(item)
-            for item in self._feedback_store().list(
-                self._memory_owner(client_id), session_key=session_key
-            )
-        ]
+        owner_id = self._memory_owner(client_id)
+        feedback_store = self._feedback_store()
+        result: list[dict[str, Any]] = []
+        for item in feedback_store.list(owner_id, session_key=session_key):
+            projection = asdict(item)
+            projection["candidate"] = self._feedback_candidate_summary(owner_id, item)
+            result.append(projection)
+        return result
+
+    def _feedback_candidate_summary(self, owner_id: str, feedback) -> dict[str, Any] | None:
+        """Return review-safe candidate state without copying private drafts."""
+        if not feedback.candidate_type or not feedback.candidate_ref:
+            return None
+        try:
+            if feedback.candidate_type == "memory":
+                candidate = self._memory_store().get(owner_id, feedback.candidate_ref)
+                return {
+                    "id": candidate.id,
+                    "type": "memory",
+                    "status": candidate.status,
+                    "label": "Personal memory candidate",
+                    "usage_count": candidate.usage_count,
+                    "last_used_at": candidate.last_used_at,
+                }
+            if feedback.candidate_type == "skill":
+                candidate = self._skill_proposal_store().get(owner_id, feedback.candidate_ref)
+                return {
+                    "id": candidate.id,
+                    "type": "skill",
+                    "status": candidate.status,
+                    "label": candidate.name,
+                    "description": candidate.description,
+                    "installed_path": candidate.installed_path,
+                }
+        except KeyError:
+            return {"id": feedback.candidate_ref, "type": feedback.candidate_type, "status": "missing"}
+        return None
 
     def _record_browser_feedback(self, client_id: str, payload: dict[str, Any]):
         session_id = self._valid_browser_id(payload.get("session_id"))
