@@ -279,7 +279,8 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         is_local=False,
         detect_by_key_prefix="",
         detect_by_base_keyword="codex",
-        default_api_base="https://chatgpt.com/backend-api",
+        # Legacy compatibility metadata only; never route Pico traffic here.
+        default_api_base="",
         strip_model_prefix=False,
         model_overrides=(),
         is_oauth=True,  # OAuth-based authentication

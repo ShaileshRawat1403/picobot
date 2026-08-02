@@ -1,6 +1,7 @@
 """Tests for Pico's deliberately small provider connection boundary."""
 
 from pathlib import Path
+import importlib
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,15 @@ from picobot.providers.subscription_cli import (
     _parse_codex_jsonl,
     _parse_gemini_json,
 )
+
+
+def test_legacy_direct_oauth_transports_are_not_importable():
+    for module_name in (
+        "picobot.providers.openai_codex_provider",
+        "picobot.providers.gemini_oauth_provider",
+    ):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(module_name)
 
 
 @pytest.fixture

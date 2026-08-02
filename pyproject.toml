@@ -28,7 +28,6 @@ dependencies = [
     "prompt-toolkit>=3.0.0",
     "loguru>=0.7.0",
     "httpx>=0.24.0",
-    "oauth-cli-kit>=0.1.0",
     "litellm>=1.0.0",
     "pydantic-settings>=2.0.0",
     "json-repair>=0.1.0",
