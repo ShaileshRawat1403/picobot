@@ -1884,7 +1884,7 @@ class WebChannel(BaseChannel):
         linked_runs = self._run_store().list_by_mission(owner_id, mission.id, limit=20)
         safe_runs = [
             {
-                "id": r.id,
+                "run_id": r.id,
                 "state": r.state,
                 "provider": r.provider,
                 "model": r.model,
@@ -1905,7 +1905,8 @@ class WebChannel(BaseChannel):
         tasks_data = [
             {
                 **t.to_dict(),
-                "linked_runs_count": len(self._run_store().list_by_task(owner_id, t.id, limit=100)),
+                "linked_runs_count": len(linked_task_runs := self._run_store().list_by_task(owner_id, t.id, limit=100)),
+                "latest_run_id": linked_task_runs[0].id if linked_task_runs else None,
             }
             for t in tasks_list
         ]

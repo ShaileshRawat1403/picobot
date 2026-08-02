@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from picobot.bus.queue import MessageBus
 from picobot.channels.web import WebChannel
 from picobot.missions import MissionStore
+from picobot.runs import RunStore
 from picobot.session.manager import SessionManager
 
 
@@ -161,6 +162,12 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
         "Keep the outcome and decisions in one local record.",
         "Start with the current friction.",
     )
+    linked_run = RunStore(workspace).create(
+        owner_id=channel._memory_owner(client_a),
+        session_key=channel._session_key(client_a, session_a),
+        capability_profile="personal-work",
+        mission_id=created["id"],
+    )
 
     assert created["owner_id"] == channel._memory_owner(client_a)
     assert created["session_key"] == channel._session_key(client_a, session_a)
@@ -181,7 +188,9 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
         )
 
     detail = channel._browser_mission_detail(client_a, session_a, created["id"])
-    assert detail["evidence"] == {"artifact_count": 0, "activity_count": 0, "checkpoint_count": 0, "run_count": 0}
+    assert detail["evidence"] == {"artifact_count": 0, "activity_count": 0, "checkpoint_count": 0, "run_count": 1}
+    assert detail["runs"][0]["run_id"] == linked_run.id
+    assert "id" not in detail["runs"][0]
     assert [event["event_type"] for event in detail["events"]] == ["created"]
     assert detail["resume_brief"] == {
         "outcome": created["objective"],
