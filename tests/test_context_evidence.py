@@ -37,9 +37,11 @@ def test_context_evidence_is_owner_scoped_and_redacted(tmp_path):
         estimated_tokens_before=1000,
         estimated_tokens_after=300,
         compaction_record_ids=["compaction-a"],
+        stance_id="review",
     )
 
     assert record.public_view()["skill_names"] == ["writing-style"]
+    assert record.public_view()["stance_id"] == "review"
     assert "owner_id" not in json.dumps(record.public_view())
     assert store.latest("web:owner-a", "web:owner-a:session-a").run_id == "run-a"
     assert store.latest("web:owner-b", "web:owner-a:session-a") is None
@@ -68,4 +70,5 @@ async def test_completed_turn_writes_run_linked_context_evidence(tmp_path):
     assert evidence.session_key == "telegram:chat-1"
     assert evidence.memory_ids == (memory.id,)
     assert evidence.plan_action in {"none", "compact", "trim"}
+    assert evidence.stance_id == "explore"
     assert agent.sessions.get_or_create("telegram:chat-1").metadata["pico_last_context"]["run_id"] == run_id

@@ -44,6 +44,13 @@ from picobot.providers.base import LLMProvider
 from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
 from picobot.session.manager import Session, SessionManager
+from picobot.session.stance import (
+    DEFAULT_STANCE_ID,
+    STANCE_METADATA_KEY,
+    SessionStance,
+    default_stance,
+    get_stance,
+)
 from picobot.tasks import TaskRecord, TaskStore
 
 if TYPE_CHECKING:
@@ -109,6 +116,7 @@ class AgentLoop:
         self.context_evidence = ContextEvidenceStore(workspace)
         self._serving_providers: dict[str, LLMProvider] = {}
         self._queued_policy_snapshots: dict[str, Any] = {}
+        self._queued_stance_snapshots: dict[str, str] = {}
 
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
@@ -825,6 +833,28 @@ class AgentLoop:
                 return snapshot
         return self._effective_policy(session)
 
+    @staticmethod
+    def _session_stance(session: Session) -> SessionStance:
+        """Resolve the owner-selected stance, failing closed to Explore."""
+        value = session.metadata.get(STANCE_METADATA_KEY, DEFAULT_STANCE_ID)
+        try:
+            stance = get_stance(value)
+        except ValueError:
+            stance = default_stance()
+            session.metadata[STANCE_METADATA_KEY] = stance.id
+        return stance
+
+    def _stance_for_submitted_turn(self, session: Session, queued_run_id: str | None) -> SessionStance:
+        """Use the stance captured when a queued turn was submitted."""
+        if queued_run_id:
+            value = self._queued_stance_snapshots.get(queued_run_id)
+            if value:
+                try:
+                    return get_stance(value)
+                except ValueError:
+                    pass
+        return self._session_stance(session)
+
     def _serving_resources(self, session: Session, *, policy=None):
         """Resolve (provider, model, reasoning_effort, policy) for one turn.
 
@@ -958,6 +988,7 @@ class AgentLoop:
         # lock. Keep its resolved non-secret policy so an edit made while it is
         # queued applies only to the next submitted turn.
         self._queued_policy_snapshots[run.id] = policy
+        self._queued_stance_snapshots[run.id] = self._session_stance(session).id
         return run
 
     @staticmethod
@@ -981,6 +1012,7 @@ class AgentLoop:
         """Terminalize a queued record if setup failed before the model loop."""
         if not run_id:
             return
+        self._queued_stance_snapshots.pop(run_id, None)
         try:
             run = self.runs.get(owner_id, run_id)
             if run.state in {"completed", "failed", "cancelled"}:
@@ -1358,7 +1390,9 @@ class AgentLoop:
                 chat_id=chat_id,
                 owner_id=owner_id,
                 system_prompt=self._context_snapshot(
-                    session, self._policy_for_submitted_turn(session, queued_run_id)
+                    session,
+                    self._policy_for_submitted_turn(session, queued_run_id),
+                    stance=self._stance_for_submitted_turn(session, queued_run_id),
                 ),
                 recalled_memory=recalled_memory,
                 active_mission=active_mission,
@@ -1385,6 +1419,7 @@ class AgentLoop:
                 run_id=run.id,
                 owner_id=owner_id,
                 skill_names=self.context.skills.consume_turn_loads(),
+                stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
             )
             self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
@@ -1532,7 +1567,9 @@ class AgentLoop:
             chat_id=msg.chat_id,
             owner_id=owner_id,
             system_prompt=self._context_snapshot(
-                session, self._policy_for_submitted_turn(session, queued_run_id)
+                session,
+                self._policy_for_submitted_turn(session, queued_run_id),
+                stance=self._stance_for_submitted_turn(session, queued_run_id),
             ),
             recalled_memory=recalled_memory,
             active_mission=active_mission,
@@ -1583,6 +1620,7 @@ class AgentLoop:
             run_id=run.id,
             owner_id=owner_id,
             skill_names=self.context.skills.consume_turn_loads(),
+            stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
         )
         self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
         self.sessions.save(session)
@@ -1654,7 +1692,13 @@ class AgentLoop:
             f"Outbound queue: {self.bus.outbound_size}",
         ]
 
-    def _context_snapshot(self, session: Session, policy=None) -> str:
+    def _context_snapshot(
+        self,
+        session: Session,
+        policy=None,
+        *,
+        stance: SessionStance | None = None,
+    ) -> str:
         """Return the stable session prompt plus a truthful per-turn style preference.
 
         The durable base prompt stays cached in the session. Runtime policy is
@@ -1675,17 +1719,24 @@ class AgentLoop:
             session.metadata["pico_system_prompt"] = base_prompt
 
         response_mode = getattr(policy, "response_mode", "default")
+        stance = stance or self._session_stance(session)
+        stance_prompt = (
+            "\n\n# Working stance for this session\n\n"
+            f"Current stance: {stance.label}. {stance.prompt}\n"
+            "This stance shapes communication only; preserve the active capability profile "
+            "and approval boundaries."
+        )
         if response_mode == "concise":
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be concise. Lead with the answer and include only the detail needed to act."
-            )
+            ) + stance_prompt
         if response_mode == "detailed":
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be thorough when it helps. Explain material decisions and tradeoffs, but do not pad the answer."
-            )
-        return base_prompt
+            ) + stance_prompt
+        return base_prompt + stance_prompt
 
     def _session_profile(self, session: Session):
         """Resolve a server-owned profile and persist a safe default if needed."""
@@ -1743,6 +1794,7 @@ class AgentLoop:
         run_id: str,
         owner_id: str,
         skill_names: list[str] | None = None,
+        stance_id: str | None = None,
     ) -> None:
         """Persist an inspectable record of context used for one model turn.
 
@@ -1761,6 +1813,8 @@ class AgentLoop:
             }
         names = list(dict.fromkeys((self.context.skills.get_always_skills() or []) + (skill_names or [])))
         memory_ids = [item.id for item in memories]
+        stance = get_stance(stance_id) if stance_id else self._session_stance(session)
+        stance_id = stance.id
         session.metadata["pico_last_context"] = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "run_id": run_id,
@@ -1772,6 +1826,7 @@ class AgentLoop:
             "estimated_tokens_before": plan.get("estimated_tokens_before", 0),
             "estimated_tokens_after": plan.get("estimated_tokens_after", 0),
             "compaction_record_ids": plan.get("compaction_record_ids", []),
+            "stance_id": stance_id,
         }
         self.context_evidence.record(
             owner_id=owner_id,
@@ -1785,7 +1840,9 @@ class AgentLoop:
             estimated_tokens_before=plan.get("estimated_tokens_before", 0),
             estimated_tokens_after=plan.get("estimated_tokens_after", 0),
             compaction_record_ids=plan.get("compaction_record_ids", []),
+            stance_id=stance_id,
         )
+        self._queued_stance_snapshots.pop(run_id, None)
 
 
     def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
@@ -2098,6 +2155,7 @@ class AgentLoop:
             run_id=run.id,
             owner_id=owner_id,
             skill_names=self.context.skills.consume_turn_loads(),
+            stance_id=self._stance_for_submitted_turn(session, None).id,
         )
         self.sessions.save(session)
         updated_task = self.tasks.get(owner_id, task.id)

@@ -978,6 +978,21 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps({"profile": profile}).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/sessions/") and path.endswith("/stance"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/stance").rstrip("/")
+                    if method == "GET":
+                        response = self._browser_session_stance(client_id, session_id)
+                    elif method == "POST":
+                        response = self._set_browser_session_stance(
+                            client_id, session_id, self._json_body(body).get("stance")
+                        )
+                    else:
+                        raise ValueError("Session stance route supports GET or POST only")
+                    self._write_response(writer, 200, json.dumps(response, ensure_ascii=False).encode())
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/title"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -2438,6 +2453,45 @@ class WebChannel(BaseChannel):
         self._session_manager().save(session)
         return {"id": profile.id, "label": profile.label, "description": profile.description}
 
+    @staticmethod
+    def _public_stance(stance) -> dict[str, str]:
+        return {
+            "id": stance.id,
+            "label": stance.label,
+            "description": stance.description,
+        }
+
+    def _browser_session_stance(self, client_id: str, session_id: str) -> dict[str, Any]:
+        from picobot.session.stance import STANCE_METADATA_KEY, default_stance, get_stance, public_stances
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        value = session.metadata.get(STANCE_METADATA_KEY, default_stance().id)
+        try:
+            stance = get_stance(value)
+        except ValueError:
+            stance = default_stance()
+            session.metadata[STANCE_METADATA_KEY] = stance.id
+            session.updated_at = datetime.now()
+            self._session_manager().save(session)
+        return {"stance": self._public_stance(stance), "stances": public_stances()}
+
+    def _set_browser_session_stance(
+        self, client_id: str, session_id: str, stance_id: object
+    ) -> dict[str, Any]:
+        from picobot.session.stance import STANCE_METADATA_KEY, get_stance, public_stances
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        stance = get_stance(stance_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        session.metadata[STANCE_METADATA_KEY] = stance.id
+        session.metadata.pop("pico_system_prompt", None)
+        session.updated_at = datetime.now()
+        self._session_manager().save(session)
+        return {"stance": self._public_stance(stance), "stances": public_stances()}
+
     def _require_browser_session(self, client_id: str, session_id: str) -> None:
         key = self._session_key(client_id, session_id)
         if not any(item["key"] == key for item in self._session_manager().list_sessions()):
@@ -2621,6 +2675,7 @@ class WebChannel(BaseChannel):
         compaction_timeline = [record.public_view() for record in compaction_records]
         return {
             "session_id": session_id,
+            "stance_id": trace.get("stance_id", session.metadata.get("pico_session_stance", "explore")),
             "recorded_at": trace.get("recorded_at"),
             "history_message_count": history_count if isinstance(history_count, int) else 0,
             "skill_names": trace.get("skill_names", []) if isinstance(trace.get("skill_names", []), list) else [],

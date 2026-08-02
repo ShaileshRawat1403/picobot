@@ -259,6 +259,30 @@ def test_browser_session_title_is_explicit_durable_and_scoped_to_its_owner(tmp_p
     assert reloaded.metadata["pico_web_title"] == "Website Ops review"
 
 
+def test_browser_session_stance_is_durable_and_owner_scoped(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+
+    initial = channel._browser_session_stance(CLIENT_A, SESSION_A)
+    assert initial["stance"]["id"] == "explore"
+    assert {item["id"] for item in initial["stances"]} == {"explore", "decide", "make", "review"}
+
+    changed = channel._set_browser_session_stance(CLIENT_A, SESSION_A, "review")
+    assert changed["stance"]["label"] == "Review"
+    assert channel._browser_session_stance(CLIENT_A, SESSION_A)["stance"]["id"] == "review"
+    with pytest.raises(ValueError, match="Session was not found"):
+        channel._browser_session_stance(CLIENT_B, SESSION_A)
+    with pytest.raises(ValueError, match="Session stance must be one of"):
+        channel._set_browser_session_stance(CLIENT_A, SESSION_A, "execute")
+
+    reloaded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    assert reloaded.metadata["pico_session_stance"] == "review"
+
+
 def test_browser_session_search_matches_title_and_messages_without_crossing_identity(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

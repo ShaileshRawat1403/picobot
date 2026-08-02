@@ -456,6 +456,27 @@ class TestLoopAttachesPolicy:
         assert "Response preference for this turn" in concise_prompt
         assert "Be concise." in concise_prompt
 
+    def test_session_stance_is_explicit_in_prompt_and_fails_closed(self, tmp_path: Path):
+        config_path = _write_config(tmp_path, anthropic_key=SECRET)
+        service = RuntimePolicyService(config_path)
+        _, session = _session(tmp_path, "web:web:client-a:session-1")
+        agent = AgentLoop(
+            bus=MessageBus(),
+            provider=_StartupProvider(),
+            workspace=tmp_path / "workspace",
+            runtime_policy_service=service,
+        )
+
+        session.metadata["pico_session_stance"] = "decide"
+        decide_prompt = agent._context_snapshot(session, agent._effective_policy(session))
+        assert "Current stance: Decide." in decide_prompt
+        assert "criteria, tradeoffs" in decide_prompt
+
+        session.metadata["pico_session_stance"] = "not-a-stance"
+        safe_prompt = agent._context_snapshot(session, agent._effective_policy(session))
+        assert "Current stance: Explore." in safe_prompt
+        assert session.metadata["pico_session_stance"] == "explore"
+
 
 class TestWebChannelPolicyWiring:
     def test_channel_scope_isolation_and_no_secret_leak(self, tmp_path: Path, monkeypatch):

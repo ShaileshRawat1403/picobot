@@ -27,6 +27,9 @@ an integration catalogue.
   text or hidden reasoning.
 - Memory provenance inspector: the owner can review a memory's source,
   confidence, usage signal, and lifecycle history from the daily workbench.
+- Governed thinking stances: each session can explicitly choose Explore,
+  Decide, Make, or Review; the selected intent shapes the prompt and is linked
+  to context evidence without changing capability or approval boundaries.
 
 ## Missing but intentionally deferred
 
@@ -49,8 +52,9 @@ an integration catalogue.
    visible without exposing credentials.
 2. Reduce Operations density by separating profile selection, browser sharing,
    approvals, and recent activity into clear sections with state-specific copy.
-3. Improve thinking-partner response quality and context explanations without
-   expanding the integration boundary.
+3. Continue improving thinking-partner response quality and context
+   explanations without expanding the integration boundary; the first governed
+   stance slice is now complete.
 
 The learning proof workflow is now a first-class surface. Approved skill use
 is measured only when skill instructions were actually supplied to a model
