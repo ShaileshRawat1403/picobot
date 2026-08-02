@@ -37,6 +37,7 @@ from picobot.bus.dax_queue import get_dax_queue
 from picobot.bus.events import InboundMessage, OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.context.compactor import CompactionService, ProviderContextSummarizer
+from picobot.context.evidence import ContextEvidenceStore
 from picobot.context.planner import estimate_tokens
 from picobot.missions import MissionStore
 from picobot.providers.base import LLMProvider
@@ -105,6 +106,7 @@ class AgentLoop:
         self.runtime_policy_service = runtime_policy_service
         self.provider_factory = provider_factory
         self.compaction = compaction or CompactionService(workspace)
+        self.context_evidence = ContextEvidenceStore(workspace)
         self._serving_providers: dict[str, LLMProvider] = {}
         self._queued_policy_snapshots: dict[str, Any] = {}
 
@@ -182,10 +184,9 @@ class AgentLoop:
         self.tools.register(CalendarTool())
 
         from picobot.agent.tools.skills import ListSkillsTool, GetSkillTool
-        from picobot.agent.skills import SkillsLoader
         from picobot.agent.tools.mission_artifact import SaveMissionArtifactDraftTool
 
-        skills_loader = SkillsLoader(self.workspace, skill_config=self.skill_config)
+        skills_loader = self.context.skills
         self.tools.register(ListSkillsTool(skills_loader))
         self.tools.register(GetSkillTool(skills_loader))
         self.tools.register(
@@ -1342,6 +1343,13 @@ class AgentLoop:
             history = await self._history_for_prompt(
                 session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
             )
+            self.context.skills.begin_turn()
+            recalled_memory = self.context.personal_memory.recall(owner_id, msg.content)
+            self.context.personal_memory.record_use(
+                owner_id,
+                [item.id for item in recalled_memory],
+                session_key=session.key,
+            )
             active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
             messages = self.context.build_messages(
                 history=history,
@@ -1352,6 +1360,7 @@ class AgentLoop:
                 system_prompt=self._context_snapshot(
                     session, self._policy_for_submitted_turn(session, queued_run_id)
                 ),
+                recalled_memory=recalled_memory,
                 active_mission=active_mission,
                 active_blueprint=active_blueprint,
             )
@@ -1368,6 +1377,14 @@ class AgentLoop:
                 },
                 queued_run_id=queued_run_id,
                 mission_id=active_mission.id if active_mission else None,
+            )
+            self._record_turn_context(
+                session,
+                history,
+                recalled_memory,
+                run_id=run.id,
+                owner_id=owner_id,
+                skill_names=self.context.skills.consume_turn_loads(),
             )
             self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
@@ -1499,13 +1516,13 @@ class AgentLoop:
         history = await self._history_for_prompt(
             session, owner_id, estimate_tokens(msg.content), queued_run_id=queued_run_id
         )
+        self.context.skills.begin_turn()
         recalled_memory = self.context.personal_memory.recall(owner_id, msg.content)
         self.context.personal_memory.record_use(
             owner_id,
             [item.id for item in recalled_memory],
             session_key=session.key,
         )
-        self._record_turn_context(session, history, recalled_memory)
         active_blueprint = self._blueprint_for_turn(owner_id, active_mission, queued_run_id)
         initial_messages = self.context.build_messages(
             history=history,
@@ -1559,6 +1576,14 @@ class AgentLoop:
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
+        self._record_turn_context(
+            session,
+            history,
+            recalled_memory,
+            run_id=run.id,
+            owner_id=owner_id,
+            skill_names=self.context.skills.consume_turn_loads(),
+        )
         self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
         self.sessions.save(session)
 
@@ -1696,21 +1721,72 @@ class AgentLoop:
             model=model,
             summarizer=summarizer,
         )
+        plan = window.plan
+        compaction_ids = [record.id for record in window.records_created]
+        if window.handoff is not None and window.handoff.id not in compaction_ids:
+            compaction_ids.append(window.handoff.id)
+        session.metadata["pico_pending_context_plan"] = {
+            "action": plan.action,
+            "reason": plan.reason,
+            "estimated_tokens_before": plan.estimated_tokens_before,
+            "estimated_tokens_after": plan.estimated_tokens_after,
+            "compaction_record_ids": compaction_ids,
+        }
         return window.messages
 
-    @staticmethod
-    def _record_turn_context(session: Session, history: list[dict[str, Any]], memories) -> None:
+    def _record_turn_context(
+        self,
+        session: Session,
+        history: list[dict[str, Any]],
+        memories,
+        *,
+        run_id: str,
+        owner_id: str,
+        skill_names: list[str] | None = None,
+    ) -> None:
         """Persist an inspectable record of context used for one model turn.
 
-        Values remain in the memory store. The session records only opaque
-        memory ids, the history size, and a timestamp so the Workbench can
-        explain context without maintaining a second hidden memory store.
+        Values remain in the memory store. Session metadata keeps a compact
+        latest projection for compatibility, while the context ledger links
+        the same bounded evidence to the durable run record.
         """
+        plan = session.metadata.get("pico_pending_context_plan")
+        if not isinstance(plan, dict):
+            plan = {
+                "action": "none",
+                "reason": "below_budget",
+                "estimated_tokens_before": 0,
+                "estimated_tokens_after": 0,
+                "compaction_record_ids": [],
+            }
+        names = list(dict.fromkeys((self.context.skills.get_always_skills() or []) + (skill_names or [])))
+        memory_ids = [item.id for item in memories]
         session.metadata["pico_last_context"] = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
             "history_message_count": len(history),
-            "memory_ids": [item.id for item in memories],
+            "memory_ids": memory_ids,
+            "skill_names": names,
+            "plan_action": plan.get("action", "none"),
+            "plan_reason": plan.get("reason", "below_budget"),
+            "estimated_tokens_before": plan.get("estimated_tokens_before", 0),
+            "estimated_tokens_after": plan.get("estimated_tokens_after", 0),
+            "compaction_record_ids": plan.get("compaction_record_ids", []),
         }
+        self.context_evidence.record(
+            owner_id=owner_id,
+            session_key=session.key,
+            run_id=run_id,
+            history_message_count=len(history),
+            memory_ids=memory_ids,
+            skill_names=names,
+            plan_action=plan.get("action", "none"),
+            plan_reason=plan.get("reason", "below_budget"),
+            estimated_tokens_before=plan.get("estimated_tokens_before", 0),
+            estimated_tokens_after=plan.get("estimated_tokens_after", 0),
+            compaction_record_ids=plan.get("compaction_record_ids", []),
+        )
+
 
     def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
         """Handle explicit, user-controlled personal-memory operations."""

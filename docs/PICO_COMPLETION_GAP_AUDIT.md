@@ -21,6 +21,10 @@ an integration catalogue.
 - Session cockpit and evidence spine: latest run state, approval state, mission
   and task state, and source-run links from artifacts are visible from the
   daily workbench.
+- Run-linked context evidence: each completed turn records bounded history,
+  recalled memory references, actually supplied skill names, context planning
+  outcome, token estimates, and compaction references without storing prompt
+  text or hidden reasoning.
 
 ## Missing but intentionally deferred
 
@@ -46,9 +50,9 @@ an integration catalogue.
 3. Improve thinking-partner response quality and context explanations without
    expanding the integration boundary.
 
-The learning proof workflow is now a first-class surface. The remaining
-learning work is measurement of approved skill use; Pico must add that only
-when it can record truthful skill-load evidence, not by guessing from chat.
+The learning proof workflow is now a first-class surface. Approved skill use
+is measured only when skill instructions were actually supplied to a model
+turn; mere installation or mention does not count as use.
 
 The next implementation slice should improve those surfaces without adding a
 new integration.

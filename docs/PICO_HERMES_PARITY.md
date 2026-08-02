@@ -15,8 +15,8 @@ path, and evidence.
 | Persistent memory and user model | Owner-scoped confirmed memory, provenance, recall evidence, and reviewable learning proposals | Implemented |
 | Response learning signal | Owner-scoped useful/not-useful/correction review linked to a run; corrections can become reviewable memory or skill candidates with provenance | Implemented |
 | Cross-session search | Local bounded lexical search over sessions, memory, and artifacts | Implemented |
-| Skills and skill improvement | Installed skills plus explicit draft/revise/approve/reject workflow | Implemented |
-| Context compression | Token-bounded protected-tail compaction with durable source evidence | Implemented |
+| Skills and skill improvement | Installed skills plus explicit draft/revise/approve/reject workflow and truthful run-linked skill-load evidence | Implemented |
+| Context compression | Token-bounded protected-tail compaction with durable source evidence and run-linked context receipts | Implemented |
 | Runtime/provider selection | Server-resolved provider/model policy recorded on every run | Implemented |
 | Toolsets and profiles | Server-owned capability profiles and governed registry | Implemented |
 | Scheduled automations | Local schedules with owner-scoped web delivery, pause/resume, run-now, and delete | Implemented |

@@ -173,8 +173,8 @@ Before more feature coding:
 4. Select whether one messaging channel is needed in addition to Web/CLI.
 5. Learning proof workflow is implemented: response review → correction →
    candidate → explicit approval, with run provenance and memory-use evidence.
-   Keep skill-use effectiveness evidence as a later, evidence-backed extension
-   rather than inferring it from proposal state.
+   Skill-use evidence is now recorded only for instructions actually supplied
+   to a model turn; effectiveness still requires owner review.
 6. Perform a maintainability pass without changing the product boundary.
 
 This contract is the gate for future Pico slices. A feature can be broad in

@@ -6,6 +6,7 @@ from picobot.context.compactor import (
     ContextSummarizer,
     ProviderContextSummarizer,
 )
+from picobot.context.evidence import ContextEvidence, ContextEvidenceStore
 from picobot.context.planner import ContextPlan, estimate_messages_tokens, estimate_tokens, plan_context_window
 from picobot.context.store import CompactionRecord, CompactionStore
 
@@ -14,6 +15,8 @@ __all__ = [
     "CompactionRecord",
     "CompactionService",
     "CompactionStore",
+    "ContextEvidence",
+    "ContextEvidenceStore",
     "ContextPlan",
     "ContextSummarizer",
     "ProviderContextSummarizer",

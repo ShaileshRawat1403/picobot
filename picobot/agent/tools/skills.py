@@ -92,6 +92,8 @@ class GetSkillTool(Tool):
         if params:
             content = self._loader.apply_skill_parameters(content, name)
 
+        self._loader.record_context_load(name)
+
         return f"# Skill: {name}\n\n{content}"
 
 

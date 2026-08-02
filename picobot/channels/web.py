@@ -1502,6 +1502,11 @@ class WebChannel(BaseChannel):
 
         return CompactionStore(self._runtime_config().workspace_path)
 
+    def _context_evidence_store(self):
+        from picobot.context.evidence import ContextEvidenceStore
+
+        return ContextEvidenceStore(self._runtime_config().workspace_path)
+
     def _artifact_store(self):
         from picobot.artifacts.store import ArtifactStore
 
@@ -1808,8 +1813,13 @@ class WebChannel(BaseChannel):
                 mission = self._mission_store().get(owner_id, run.mission_id).to_dict()
             except KeyError:
                 mission = None
+        try:
+            context = self._context_evidence_store().get_for_run(owner_id, run.id).public_view()
+        except KeyError:
+            context = None
         return {
             "run": run.turn_receipt(),
+            "context": context,
             "tools": [item.to_dict() for item in activities],
             "approvals": actions,
             "artifacts": artifacts,
@@ -2075,6 +2085,9 @@ class WebChannel(BaseChannel):
                     "label": candidate.name,
                     "description": candidate.description,
                     "installed_path": candidate.installed_path,
+                    "usage_count": self._context_evidence_store().skill_use_count(
+                        owner_id, candidate.name
+                    ),
                 }
         except KeyError:
             return {"id": feedback.candidate_ref, "type": feedback.candidate_type, "status": "missing"}
@@ -2583,6 +2596,9 @@ class WebChannel(BaseChannel):
         trace = session.metadata.get("pico_last_context")
         if not isinstance(trace, dict):
             trace = {}
+        evidence = self._context_evidence_store().latest(self._memory_owner(client_id), key)
+        if evidence is not None:
+            trace = evidence.public_view()
         memory_ids = trace.get("memory_ids", [])
         if not isinstance(memory_ids, list):
             memory_ids = []
@@ -2607,6 +2623,12 @@ class WebChannel(BaseChannel):
             "session_id": session_id,
             "recorded_at": trace.get("recorded_at"),
             "history_message_count": history_count if isinstance(history_count, int) else 0,
+            "skill_names": trace.get("skill_names", []) if isinstance(trace.get("skill_names", []), list) else [],
+            "plan_action": trace.get("plan_action", "none"),
+            "plan_reason": trace.get("plan_reason", "below_budget"),
+            "estimated_tokens_before": trace.get("estimated_tokens_before", 0),
+            "estimated_tokens_after": trace.get("estimated_tokens_after", 0),
+            "run_id": trace.get("run_id"),
             "memory": memories,
             "compaction": compaction_timeline[0] if compaction_timeline else None,
             "compaction_timeline": compaction_timeline,

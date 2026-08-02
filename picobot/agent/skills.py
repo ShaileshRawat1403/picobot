@@ -29,6 +29,23 @@ class SkillsLoader:
         self.workspace_skills = workspace / "skills"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
         self.skill_config = skill_config or {}
+        self._turn_loaded_skills: list[str] = []
+
+    def begin_turn(self) -> None:
+        """Start a clean per-turn record of skills explicitly loaded by tools."""
+        self._turn_loaded_skills = []
+
+    def record_context_load(self, name: str) -> None:
+        """Record a skill whose instructions were returned to the model."""
+        clean = name.strip()
+        if clean and clean not in self._turn_loaded_skills:
+            self._turn_loaded_skills.append(clean)
+
+    def consume_turn_loads(self) -> list[str]:
+        """Return and clear explicit skill loads for the completed turn."""
+        loaded = list(self._turn_loaded_skills)
+        self._turn_loaded_skills = []
+        return loaded
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """
