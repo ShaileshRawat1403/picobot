@@ -317,6 +317,15 @@ def test_browser_operations_profile_is_scoped_and_exposes_no_config_values(tmp_p
     client_id = "browser_identity_0001"
     session_id = "session_identity_0001"
 
+    personal = channel._set_browser_session_profile(client_id, session_id, "personal-work")
+    personal_operations = channel._browser_operations(client_id, session_id)
+    assert personal["id"] == "personal-work"
+    assert {item["id"] for item in personal_operations["capabilities"]} == {
+        "skills.list",
+        "skills.read",
+    }
+    assert all(item["state"] != "not_in_profile" for item in personal_operations["capabilities"])
+
     profile = channel._set_browser_session_profile(client_id, session_id, "research")
     mission_store = MissionStore(workspace)
     mission = mission_store.create(
@@ -342,6 +351,17 @@ def test_browser_operations_profile_is_scoped_and_exposes_no_config_values(tmp_p
     operations = channel._browser_operations(client_id, session_id)
     browser_read = next(item for item in operations["capabilities"] if item["id"] == "browser.read_shared_tab")
     assert browser_read["state"] == "needs_setup"
+
+    mission_profile = channel._set_browser_session_profile(client_id, session_id, "mission-work")
+    mission_operations = channel._browser_operations(client_id, session_id)
+    assert mission_profile["id"] == "mission-work"
+    assert {item["id"] for item in mission_operations["capabilities"]} == {
+        "skills.list",
+        "skills.read",
+        "missions.save_artifact_draft",
+    }
+    draft = next(item for item in mission_operations["capabilities"] if item["id"] == "missions.save_artifact_draft")
+    assert draft["state"] == "ready"
 
 
 def test_browser_share_status_is_owner_session_scoped_and_never_exposes_snapshot_or_token(tmp_path: Path):

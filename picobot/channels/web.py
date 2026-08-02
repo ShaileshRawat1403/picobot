@@ -43,6 +43,7 @@ class WebChannel(BaseChannel):
         "list_dir",
         "exec",
         "propose_workspace_change",
+        "save_mission_artifact_draft",
     }
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -1984,6 +1985,11 @@ class WebChannel(BaseChannel):
                 "description": profile_description,
             },
             "profiles": registry.profiles(),
+            # The registry remains the server-side source of truth, but the
+            # workbench should show only capabilities active for this profile.
+            # Rendering every other profile as "not in profile" turns the
+            # focused operations view into a capability catalogue and makes
+            # ordinary sessions look more privileged than they are.
             "capabilities": [
                 item.to_dict()
                 for item in registry.statuses(
@@ -1994,6 +2000,7 @@ class WebChannel(BaseChannel):
                     github_configured=self._github_cli_is_configured(),
                     calendar_configured=self._calendar_is_configured(),
                 )
+                if item.permitted
             ],
             "governance": governed_entries,
             "activity": activities,
