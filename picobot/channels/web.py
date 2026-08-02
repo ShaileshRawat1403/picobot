@@ -215,13 +215,23 @@ class WebChannel(BaseChannel):
                         content = payload.get("content")
                         if not isinstance(title, str) or not isinstance(content, str):
                             raise ValueError("Artifact title and content are required")
+                        source_run_id, source_mission_id = self._browser_artifact_source(
+                            client_id, session_id, payload.get("run_id")
+                        )
+                        kind = str(payload.get("kind") or "note")
+                        content_type = str(
+                            payload.get("content_type")
+                            or ("text/uri-list" if kind == "link" else "text/markdown")
+                        )
                         artifact = store.create(
                             owner_id=owner_id,
                             session_key=self._session_key(client_id, session_id),
                             title=title,
                             content=content,
-                            kind=str(payload.get("kind") or "note"),
-                            content_type=str(payload.get("content_type") or "text/markdown"),
+                            kind=kind,
+                            content_type=content_type,
+                            source_run_id=source_run_id,
+                            source_mission_id=source_mission_id,
                         )
                         self._write_response(
                             writer, 201, json.dumps({"artifact": asdict(artifact)}).encode()
@@ -1401,6 +1411,23 @@ class WebChannel(BaseChannel):
         from picobot.artifacts.store import ArtifactStore
 
         return ArtifactStore(self._runtime_config().workspace_path)
+
+    def _browser_artifact_source(
+        self, client_id: str, session_id: str, source_run_id: object
+    ) -> tuple[str | None, str | None]:
+        """Resolve a source run only when it belongs to this browser session."""
+        if source_run_id is None:
+            return None, None
+        if not isinstance(source_run_id, str) or not source_run_id.strip():
+            raise ValueError("Artifact source run ID must be a non-empty string")
+        source_run_id = source_run_id.strip()
+        try:
+            source_run = self._run_store().get(self._memory_owner(client_id), source_run_id)
+        except KeyError as exc:
+            raise ValueError("Artifact source run was not found") from exc
+        if source_run.session_key != self._session_key(client_id, session_id):
+            raise ValueError("Artifact source run does not belong to this session")
+        return source_run.id, source_run.mission_id
 
     def _browser_schedule_jobs(self, client_id: str):
         """Return only schedules addressed to this browser identity."""

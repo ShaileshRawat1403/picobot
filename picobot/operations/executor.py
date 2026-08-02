@@ -170,6 +170,8 @@ class MissionExecutor:
                 title=title,
                 content=content,
                 kind="draft",  # always draft; kind param not used to prevent abuse
+                source_run_id=action.initiating_run_id,
+                source_mission_id=action.mission_id,
             )
 
             result_ref = f"artifact:{artifact.id}"

@@ -14,6 +14,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ class Artifact:
     verification_status: str
     revision: int
     relative_path: str
+    source_run_id: str | None
+    source_mission_id: str | None
     created_at: str
     updated_at: str
 
@@ -45,12 +48,13 @@ class ArtifactStore:
 
     _MAX_TITLE_LENGTH = 160
     _MAX_CONTENT_LENGTH = 512_000
-    _KINDS = {"note", "brief", "plan", "draft", "checklist", "data"}
+    _KINDS = {"note", "brief", "plan", "draft", "checklist", "data", "link"}
     _CONTENT_TYPES = {
         "text/markdown": "md",
         "text/plain": "txt",
         "application/json": "json",
         "text/csv": "csv",
+        "text/uri-list": "url",
     }
     _VERIFICATION_STATES = {"verified", "stale", "unverified"}
 
@@ -82,6 +86,8 @@ class ArtifactStore:
                     status TEXT NOT NULL,
                     revision INTEGER NOT NULL,
                     relative_path TEXT NOT NULL,
+                    source_run_id TEXT,
+                    source_mission_id TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -105,6 +111,10 @@ class ArtifactStore:
                 connection.execute(
                     "ALTER TABLE artifacts ADD COLUMN verification_status TEXT NOT NULL DEFAULT 'unverified'"
                 )
+            if "source_run_id" not in columns:
+                connection.execute("ALTER TABLE artifacts ADD COLUMN source_run_id TEXT")
+            if "source_mission_id" not in columns:
+                connection.execute("ALTER TABLE artifacts ADD COLUMN source_mission_id TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -126,6 +136,32 @@ class ArtifactStore:
         if len(content) > cls._MAX_CONTENT_LENGTH:
             raise ValueError(f"Artifact content is limited to {cls._MAX_CONTENT_LENGTH} characters")
         return content
+
+    @classmethod
+    def _clean_link_content(cls, content: str) -> str:
+        links = [line.strip() for line in content.splitlines() if line.strip()]
+        if not links:
+            raise ValueError("A link artifact needs at least one URL")
+        if len(links) > 50:
+            raise ValueError("A link artifact can contain at most 50 URLs")
+        for link in links:
+            parsed = urlsplit(link)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("Link artifacts only accept absolute HTTP(S) URLs")
+            if parsed.username or parsed.password:
+                raise ValueError("Link artifacts cannot contain embedded credentials")
+        return "\n".join(links)
+
+    @staticmethod
+    def _optional_reference(value: object, label: str) -> str | None:
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Artifact {label} must be a non-empty string")
+        clean = value.strip()
+        if len(clean) > 320:
+            raise ValueError(f"Artifact {label} is limited to 320 characters")
+        return clean
 
     @classmethod
     def _validate_kind(cls, kind: str) -> str:
@@ -152,6 +188,8 @@ class ArtifactStore:
             verification_status=row["verification_status"] or "unverified",
             revision=int(row["revision"]),
             relative_path=row["relative_path"],
+            source_run_id=row["source_run_id"],
+            source_mission_id=row["source_mission_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -175,6 +213,8 @@ class ArtifactStore:
         content: str,
         kind: str = "note",
         content_type: str = "text/markdown",
+        source_run_id: str | None = None,
+        source_mission_id: str | None = None,
     ) -> Artifact:
         if not owner_id.strip() or not session_key.strip():
             raise ValueError("Artifact owner and session are required")
@@ -182,6 +222,14 @@ class ArtifactStore:
         content = self._clean_content(content)
         kind = self._validate_kind(kind)
         content_type = self._validate_content_type(content_type)
+        if kind == "link":
+            if content_type != "text/uri-list":
+                raise ValueError("Link artifacts must use text/uri-list content")
+            content = self._clean_link_content(content)
+        elif content_type == "text/uri-list":
+            raise ValueError("text/uri-list content is reserved for link artifacts")
+        source_run_id = self._optional_reference(source_run_id, "source run ID")
+        source_mission_id = self._optional_reference(source_mission_id, "source mission ID")
         artifact_id = str(uuid.uuid4())
         now = self._now()
         revision = 1
@@ -195,8 +243,9 @@ class ArtifactStore:
                     """
                     INSERT INTO artifacts (
                         id, owner_id, session_key, title, kind, content_type,
-                        status, verification_status, revision, relative_path, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'draft', 'unverified', ?, ?, ?, ?)
+                        status, verification_status, revision, relative_path,
+                        source_run_id, source_mission_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'draft', 'unverified', ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         artifact_id,
@@ -207,6 +256,8 @@ class ArtifactStore:
                         content_type,
                         revision,
                         relative_path,
+                        source_run_id,
+                        source_mission_id,
                         now,
                         now,
                     ),
@@ -269,7 +320,7 @@ class ArtifactStore:
 
     def revise(self, owner_id: str, artifact_id: str, content: str) -> Artifact:
         artifact = self.get(owner_id, artifact_id)
-        content = self._clean_content(content)
+        content = self._clean_link_content(content) if artifact.kind == "link" else self._clean_content(content)
         next_revision = artifact.revision + 1
         now = self._now()
         file_path = self._revision_path(artifact_id, next_revision, artifact.content_type)

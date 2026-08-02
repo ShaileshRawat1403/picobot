@@ -35,7 +35,7 @@ agent runtime.
 | Context | Partial | History is bounded, but it is not token-budgeted and has no durable compaction handoff. |
 | Skills and MCP | Partial | Skills are reviewable and MCP can connect, but server health, tool filtering, and profile permissions are not managed as a registry. |
 | Missions/delegation | Partial | A mission is durable state; it is not yet linked to controlled runs, delegated work, cancellation, or verification evidence. |
-| Artifacts/schedules | Partial | Storage exists and cron runs, but neither has a clear run-linked lifecycle or personal workbench surface. |
+| Artifacts/schedules | Implemented foundation | Versioned local artifacts now retain source run/mission provenance; schedules remain owner-scoped and reversible. |
 
 ## What Pico adopts
 
@@ -232,8 +232,9 @@ claiming mysterious self-learning.
 Add owner-scoped local full-text search over sessions, saved memory, and
 artifacts, returning source links and dates. **Implemented now:** bounded local
 lexical search across those three sources with owner-scoped inspectable result
-references. Add artifact/run/mission linkage
-and a compact verification status: `verified`, `stale`, or `unverified`.
+references. Artifacts retain optional source run/mission references and support
+versioned notes, briefs, plans, data, and validated HTTP(S) link lists. They
+also expose a compact verification status: `verified`, `stale`, or `unverified`.
 
 Expose existing cron jobs as a small personal scheduler: create, pause, run
 now, inspect last result, and view delivery target. **Implemented now:** the

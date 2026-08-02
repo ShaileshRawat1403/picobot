@@ -123,6 +123,8 @@ def test_execute_lifecycle_creates_artifact_and_evidence(tmp_path: Path) -> None
     artifact = artifact_store.get(_OWNER, artifact_id)
     assert artifact.title == "Draft report v1"
     assert artifact.status == "draft"
+    assert artifact.source_run_id is None
+    assert artifact.source_mission_id == mission.id
 
     # Action was marked executed
     final_action = action_store.get(_OWNER, action.id, session_key=_SESSION)

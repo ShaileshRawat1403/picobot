@@ -433,6 +433,38 @@ def test_browser_feedback_is_bound_to_the_owned_session_run(tmp_path: Path):
         )
 
 
+def test_browser_artifact_source_is_bound_to_the_owned_session_run(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_B)))
+
+    runs = RunStore(workspace)
+    own_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        capability_profile="personal-work",
+        mission_id="mission-source",
+    )
+    other_run = runs.create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_B),
+        capability_profile="personal-work",
+    )
+
+    assert channel._browser_artifact_source(CLIENT_A, SESSION_A, own_run.id) == (
+        own_run.id,
+        "mission-source",
+    )
+    with pytest.raises(ValueError, match="does not belong to this session"):
+        channel._browser_artifact_source(CLIENT_A, SESSION_A, other_run.id)
+    with pytest.raises(ValueError, match="was not found"):
+        channel._browser_artifact_source(CLIENT_A, SESSION_A, "missing-run")
+
+
 def test_browser_correction_can_become_one_reviewable_memory_or_skill_candidate(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

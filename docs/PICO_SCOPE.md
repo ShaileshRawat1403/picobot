@@ -50,7 +50,8 @@ These are Pico mechanics, independent of any particular external platform:
 - progressive-disclosure skills with reviewable installation;
 - capability profiles, readiness, least authority, approvals, and audit trails;
 - bounded delegation and cancellation;
-- durable artifacts, revisions, verification, and local search;
+- durable artifacts, revisions, verification, source run/mission provenance,
+  and local search;
 - local schedules and bounded heartbeat checks;
 - one local web workbench and a direct CLI;
 - evidence-first workspace and browser operations.
