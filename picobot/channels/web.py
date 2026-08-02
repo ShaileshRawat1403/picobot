@@ -659,6 +659,20 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, b'{"revoked":true}')
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path.startswith("/api/actions/") and path.endswith("/preview"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    action_id = path.removeprefix("/api/actions/").removesuffix("/preview").strip("/")
+                    session_id = self._valid_browser_id(self._single_query_value(query, "session_id"))
+                    self._require_browser_session(client_id, session_id)
+                    preview = self._workspace_executor().preview_action(
+                        self._memory_owner(client_id),
+                        self._session_key(client_id, session_id),
+                        action_id,
+                    )
+                    self._write_response(writer, 200, json.dumps({"preview": preview}, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/actions/"):
                 try:
                     client_id = self._browser_id_from_query(query)

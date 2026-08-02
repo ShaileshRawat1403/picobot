@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import difflib
 from pathlib import Path
 from typing import Any
 
-from picobot.agent.tools.filesystem import EditFileTool, WriteFileTool
+from picobot.agent.tools.filesystem import EditFileTool, WriteFileTool, _find_match
 from picobot.agent.tools.shell import ExecTool
 from picobot.operations.actions import ProposedActionStore
 from picobot.operations.registry import CapabilityRegistry
@@ -111,6 +112,76 @@ class WorkspaceExecutor:
             "action_id": updated.id,
             "result_ref": result_ref,
             "result_summary": summary,
+        }
+
+    def preview_action(
+        self,
+        owner_id: str,
+        session_key: str,
+        action_id: str,
+    ) -> dict[str, Any]:
+        """Return a bounded, read-only preview for a workspace proposal."""
+        action = self.action_store.get(owner_id, action_id, session_key=session_key)
+        if action.profile_id != self._PROFILE or action.tool_name not in self._TOOLS:
+            raise ValueError("Only workspace-build actions have previews")
+        if action.status not in {"proposed", "approved"}:
+            raise ValueError("Only proposed or approved workspace actions can be previewed")
+        try:
+            payload = json.loads(action.payload or "null")
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("Workspace action payload is invalid") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("Workspace action payload is invalid")
+
+        if action.tool_name == "exec":
+            self._safe_path(payload.get("working_dir", "."))
+            command = payload.get("command")
+            if not isinstance(command, str) or not command.strip():
+                raise ValueError("Workspace command is missing")
+            return {
+                "kind": "command",
+                "action_id": action.id,
+                "status": action.status,
+                "command": command[:2_000],
+                "working_dir": str(self._safe_path(payload.get("working_dir", "."))),
+                "timeout": int(payload.get("timeout", 60)),
+            }
+
+        relative_path = self._safe_path(payload.get("path"))
+        file_path = self.workspace / relative_path
+        current = file_path.read_text(encoding="utf-8") if file_path.exists() else ""
+        if action.tool_name == "write_file":
+            proposed = payload.get("content")
+            if not isinstance(proposed, str):
+                raise ValueError("Proposed file content is missing")
+        else:
+            old_text = payload.get("old_text")
+            new_text = payload.get("new_text")
+            if not isinstance(old_text, str) or not isinstance(new_text, str):
+                raise ValueError("Proposed edit content is missing")
+            match, count = _find_match(current, old_text)
+            if match is None:
+                raise ValueError("The proposed existing text is no longer present")
+            if count > 1 and not payload.get("replace_all", False):
+                raise ValueError("The proposed existing text is no longer unique")
+            proposed = current.replace(match, new_text) if payload.get("replace_all", False) else current.replace(match, new_text, 1)
+
+        diff = "".join(
+            difflib.unified_diff(
+                current.splitlines(keepends=True),
+                proposed.splitlines(keepends=True),
+                fromfile=f"current/{relative_path}",
+                tofile=f"proposed/{relative_path}",
+            )
+        )
+        if len(diff) > 12_000:
+            diff = diff[:12_000] + "\n... preview truncated ..."
+        return {
+            "kind": "file",
+            "action_id": action.id,
+            "status": action.status,
+            "path": relative_path,
+            "diff": diff or "(No file content change.)",
         }
 
     async def _dispatch(self, tool_name: str, payload: dict[str, Any]) -> str:

@@ -108,6 +108,30 @@ async def test_approved_workspace_edit_executes_once_with_fingerprint_and_profil
 
 
 @pytest.mark.asyncio
+async def test_workspace_preview_is_read_only_and_bounded(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    target = workspace / "notes.txt"
+    target.write_text("before\n", encoding="utf-8")
+    tool = ProposeWorkspaceChangeTool(workspace)
+    tool.set_turn_context(owner_id=OWNER, session_key=SESSION, profile_id="workspace-build")
+    await tool.execute(
+        operation="edit_file",
+        path="notes.txt",
+        old_text="before",
+        new_text="after",
+        summary="Preview the note update",
+    )
+    store = ProposedActionStore(workspace)
+    action = store.list(OWNER, SESSION)[0]
+    preview = WorkspaceExecutor(workspace).preview_action(OWNER, SESSION, action.id)
+
+    assert preview["kind"] == "file"
+    assert "-before" in preview["diff"] and "+after" in preview["diff"]
+    assert target.read_text(encoding="utf-8") == "before\n"
+
+
+@pytest.mark.asyncio
 async def test_workspace_executor_rejects_wrong_owner_and_fingerprint(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
