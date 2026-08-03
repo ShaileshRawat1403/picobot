@@ -211,6 +211,76 @@ class WebChannel(BaseChannel):
                         raise ValueError("Schedule route was not found")
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/projects":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    store = self._project_store()
+                    if method == "GET":
+                        include_archived = self._single_query_value(query, "include_archived") == "true"
+                        projects = store.list(owner_id, include_archived=include_archived)
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps({"projects": [item.to_dict() for item in projects]}, ensure_ascii=False).encode(),
+                        )
+                    elif method == "POST":
+                        payload = self._json_body(body)
+                        project = store.create(
+                            owner_id,
+                            title=payload.get("title"),
+                            kind=payload.get("kind"),
+                            purpose=payload.get("purpose"),
+                            capabilities=payload.get("capabilities"),
+                        )
+                        self._write_response(writer, 201, json.dumps({"project": project.to_dict()}).encode())
+                    else:
+                        raise ValueError("Projects route supports GET or POST")
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/projects/"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    store = self._project_store()
+                    project_path = path.removeprefix("/api/projects/").strip("/")
+                    project_id, _, operation = project_path.partition("/")
+                    if not project_id:
+                        raise ValueError("Project route was not found")
+                    if method == "GET" and not operation:
+                        project = store.get(owner_id, project_id)
+                        self._write_response(
+                            writer,
+                            200,
+                            json.dumps(
+                                {"project": project.to_dict(), "sources": [item.to_dict() for item in store.sources(owner_id, project_id)], "links": [item.to_dict() for item in store.links(owner_id, project_id)]},
+                                ensure_ascii=False,
+                            ).encode(),
+                        )
+                    elif method == "PUT" and not operation:
+                        payload = self._json_body(body)
+                        project = store.update(
+                            owner_id,
+                            project_id,
+                            title=payload.get("title"), kind=payload.get("kind"), purpose=payload.get("purpose"),
+                            capabilities=payload.get("capabilities"), status=payload.get("status"),
+                        )
+                        self._write_response(writer, 200, json.dumps({"project": project.to_dict()}).encode())
+                    elif method == "POST" and operation == "sources":
+                        payload = self._json_body(body)
+                        source = store.add_source(owner_id, project_id, kind=payload.get("kind"), label=payload.get("label"), locator=payload.get("locator"))
+                        self._write_response(writer, 201, json.dumps({"source": source.to_dict()}).encode())
+                    elif method == "POST" and operation == "links":
+                        payload = self._json_body(body)
+                        link = store.link(owner_id, project_id, payload.get("related_project_id"), relation=payload.get("relation"), summary=payload.get("summary"))
+                        self._write_response(writer, 201, json.dumps({"link": link.to_dict()}).encode())
+                    elif method == "POST" and operation == "inspect":
+                        project = store.mark_inspected(owner_id, project_id)
+                        self._write_response(writer, 200, json.dumps({"project": project.to_dict()}).encode())
+                    else:
+                        raise ValueError("Project route was not found")
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 404 if isinstance(exc, KeyError) else 400, self._json_error(str(exc)))
             elif path == "/api/artifacts":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1668,6 +1738,11 @@ class WebChannel(BaseChannel):
         from picobot.artifacts.store import ArtifactStore
 
         return ArtifactStore(self._runtime_config().workspace_path)
+
+    def _project_store(self):
+        from picobot.projects import ProjectStore
+
+        return ProjectStore(self._runtime_config().workspace_path)
 
     @staticmethod
     def _artifact_download_name(artifact, revision: int | None = None) -> str:
