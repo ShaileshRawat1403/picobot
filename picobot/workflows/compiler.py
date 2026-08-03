@@ -15,6 +15,19 @@ from typing import Any
 
 
 _MAX_BRIEF_LENGTH = 1_600
+_SOURCE_MODES = {"brief", "shared_tab"}
+_ARTIFACT_KINDS = {
+    "note",
+    "brief",
+    "plan",
+    "report",
+    "draft",
+    "checklist",
+    "data",
+    "link",
+    "code",
+    "config",
+}
 _BROWSER_SIGNALS = (
     "article",
     "browser",
@@ -80,17 +93,47 @@ class WorkflowDraftCompiler:
         lowered = f" {brief.casefold()} "
         return any(signal in lowered for signal in _BROWSER_SIGNALS)
 
+    @staticmethod
+    def _source_mode(value: object, brief: str) -> str:
+        if value is None:
+            return "shared_tab" if WorkflowDraftCompiler._needs_browser_read(brief) else "brief"
+        if not isinstance(value, str) or value not in _SOURCE_MODES:
+            raise ValueError("Workflow source mode must be brief or shared_tab")
+        return value
+
+    @staticmethod
+    def _artifact_kind(value: object) -> str:
+        if value is None:
+            return "brief"
+        if not isinstance(value, str) or value not in _ARTIFACT_KINDS:
+            raise ValueError("Workflow artifact kind is not supported")
+        return value
+
+    @staticmethod
+    def _artifact_content_type(kind: str) -> str:
+        if kind == "data":
+            return "application/json"
+        if kind == "link":
+            return "text/uri-list"
+        if kind in {"code", "config"}:
+            return "text/plain"
+        return "text/markdown"
+
     def compile(
         self,
         brief: object,
         *,
         profile_id: str,
         title: object = None,
+        source_mode: object = None,
+        artifact_kind: object = None,
     ) -> CompiledWorkflow:
         """Return a graph proposal without persisting or executing anything."""
         clean_brief = self._brief(brief)
         clean_title = self._title(clean_brief, title)
-        includes_browser_read = self._needs_browser_read(clean_brief)
+        source = self._source_mode(source_mode, clean_brief)
+        output_kind = self._artifact_kind(artifact_kind)
+        includes_browser_read = source == "shared_tab"
         harness = {
             "profile_id": profile_id,
             "authority": "current_session_profile_only",
@@ -148,7 +191,12 @@ class WorkflowDraftCompiler:
                     "kind": "artifact",
                     "title": "Preserve useful result",
                     "description": "Create a durable artifact only with explicit content.",
-                    "config": {"kind": "note", "title": clean_title, "requires_owner_content": True},
+                    "config": {
+                        "kind": output_kind,
+                        "title": clean_title,
+                        "content_type": self._artifact_content_type(output_kind),
+                        "requires_owner_content": True,
+                    },
                     "x": 1080 if includes_browser_read else 830,
                     "y": 220,
                 },
@@ -178,7 +226,7 @@ class WorkflowDraftCompiler:
             nodes=nodes,
             edges=edges,
             summary=(
-                "Created a draft-only workflow with a bounded task, owner review, and an explicit artifact step."
+                f"Created a draft-only workflow with a bounded task, owner review, and an explicit {output_kind} artifact step."
                 f"{browser_note} Review the graph, its harnesses, and its profile before approval."
             ),
         )

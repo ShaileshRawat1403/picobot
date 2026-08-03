@@ -2061,7 +2061,11 @@ class WebChannel(BaseChannel):
         session = self._session_manager().get_or_create(session_key)
         profile = self._session_profile(session)
         proposal = WorkflowDraftCompiler().compile(
-            payload.get("brief"), profile_id=profile.id, title=payload.get("title")
+            payload.get("brief"),
+            profile_id=profile.id,
+            title=payload.get("title"),
+            source_mode=payload.get("source_mode"),
+            artifact_kind=payload.get("artifact_kind"),
         )
         workflow = self._workflow_store().create_draft(
             owner_id=owner_id,

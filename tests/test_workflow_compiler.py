@@ -44,6 +44,28 @@ def test_compiler_includes_read_only_source_checkpoint_when_requested():
     assert "browser_action" not in {node["kind"] for node in proposal.nodes}
 
 
+def test_compiler_respects_explicit_configuration_choices():
+    proposal = WorkflowDraftCompiler().compile(
+        "Turn my notes into a reusable operating plan.",
+        profile_id="personal-work",
+        source_mode="brief",
+        artifact_kind="plan",
+    )
+
+    assert "browser_read" not in {node["kind"] for node in proposal.nodes}
+    artifact = next(node for node in proposal.nodes if node["kind"] == "artifact")
+    assert artifact["config"]["kind"] == "plan"
+    assert artifact["config"]["content_type"] == "text/markdown"
+
+
+@pytest.mark.parametrize("source_mode", ["browser_action", "web", 1])
+def test_compiler_rejects_unknown_source_modes(source_mode):
+    with pytest.raises(ValueError, match="source mode"):
+        WorkflowDraftCompiler().compile(
+            "Review a result.", profile_id="personal-work", source_mode=source_mode
+        )
+
+
 @pytest.mark.parametrize("brief", ["", "  ", "x" * 1601, None])
 def test_compiler_rejects_missing_or_unbounded_briefs(brief):
     with pytest.raises(ValueError):
