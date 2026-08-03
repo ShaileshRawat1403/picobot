@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from picobot.projects import ProjectStore
+from picobot.projects import ProjectContextResolver
 
 
 def test_project_registry_is_owner_scoped_and_archivable(tmp_path: Path):
@@ -51,3 +52,24 @@ def test_project_relationship_cannot_cross_owner_boundary(tmp_path: Path):
     other = store.create("owner-b", title="B", kind="personal", purpose="B")
     with pytest.raises(KeyError):
         store.link("owner-a", own.id, other.id, relation="informs")
+
+
+def test_project_context_resolver_is_bounded_read_only_and_owner_scoped(tmp_path: Path):
+    store = ProjectStore(tmp_path)
+    pico = store.create("owner-a", title="Pico", kind="software", purpose="Personal work partner")
+    soothsayer = store.create("owner-a", title="Soothsayer", kind="software", purpose="Optional adapter")
+    store.add_source("owner-a", pico.id, kind="local_folder", label="Repository", locator="/private/pico")
+    store.link("owner-a", pico.id, soothsayer.id, relation="uses", summary="Explicit adapter")
+
+    context = ProjectContextResolver(tmp_path).resolve("owner-a", pico.id)
+    assert context is not None
+    assert context.sources == ({"kind": "local_folder", "label": "Repository"},)
+    assert context.relationships == ({"relation": "uses", "title": "Soothsayer"},)
+    prompt = context.prompt()
+    assert "Pico (software)" in prompt
+    assert "/private/pico" not in prompt
+    assert "not permission to inspect or act" in prompt
+    assert ProjectContextResolver(tmp_path).resolve("owner-b", pico.id) is None
+
+    store.update("owner-a", pico.id, title="Pico", kind="software", purpose="Personal work partner", capabilities=[], status="archived")
+    assert ProjectContextResolver(tmp_path).resolve("owner-a", pico.id) is None

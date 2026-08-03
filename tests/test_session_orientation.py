@@ -6,6 +6,7 @@ from picobot.agent.loop import AgentLoop
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider, LLMResponse
+from picobot.projects import ProjectStore
 from picobot.session.manager import Session
 from picobot.session.orientation import (
     ORIENTATION_METADATA_KEY,
@@ -58,10 +59,16 @@ def test_session_orientation_is_bounded_and_has_a_redacted_receipt():
 async def test_orientation_is_prompted_and_recorded_without_private_prose(tmp_path):
     provider = _Provider()
     agent = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+    project = ProjectStore(tmp_path).create(
+        "telegram:alice", title="Pico", kind="software", purpose="A local-first work partner"
+    )
+    ProjectStore(tmp_path).add_source(
+        "telegram:alice", project.id, kind="local_folder", label="Pico repository", locator="/private/pico"
+    )
     session = agent.sessions.get_or_create("telegram:chat-1")
     session.metadata[ORIENTATION_METADATA_KEY] = set_orientation(
         {
-            "project_id": "project-1",
+            "project_id": project.id,
             "objective": "Turn the workbench into a durable solo-builder tool.",
             "role_lens_id": "founder",
             "challenge_policy_id": "active",
@@ -81,9 +88,12 @@ async def test_orientation_is_prompted_and_recorded_without_private_prose(tmp_pa
     assert "Role lens: founder." in prompt
     assert "Concern, Evidence, Implication, Smaller path" in prompt
     assert "cannot grant tools" in prompt
+    assert "# Oriented Pico project" in prompt
+    assert "Pico repository (local_folder)" in prompt
+    assert "/private/pico" not in prompt
     evidence = agent.context_evidence.get_for_run("telegram:alice", response.metadata["run_id"])
     assert evidence.orientation == {
-        "project_id": "project-1",
+        "project_id": project.id,
         "role_lens_id": "founder",
         "challenge_policy_id": "active",
         "has_objective": True,

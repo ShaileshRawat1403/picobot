@@ -40,6 +40,7 @@ from picobot.context.compactor import CompactionService, ProviderContextSummariz
 from picobot.context.evidence import ContextEvidenceStore
 from picobot.context.planner import estimate_tokens
 from picobot.missions import MissionStore
+from picobot.projects import ProjectContext, ProjectContextResolver
 from picobot.providers.base import LLMProvider
 from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
@@ -123,6 +124,7 @@ class AgentLoop:
         self._queued_policy_snapshots: dict[str, Any] = {}
         self._queued_stance_snapshots: dict[str, str] = {}
         self._queued_orientation_snapshots: dict[str, dict[str, Any]] = {}
+        self._queued_project_context_snapshots: dict[str, ProjectContext | None] = {}
 
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
@@ -134,6 +136,7 @@ class AgentLoop:
         self.artifacts = ArtifactStore(workspace)
         self.runs = RunStore(workspace)
         self.missions = MissionStore(workspace)
+        self.project_contexts = ProjectContextResolver(workspace)
         self.tasks = TaskStore(workspace)
         self.tools = ToolRegistry()
         self._active_async_tasks: dict[str, asyncio.Task[Any]] = {}
@@ -875,6 +878,16 @@ class AgentLoop:
                 return orientation_from_mapping(snapshot)
         return self._session_orientation(session)
 
+    def _project_context_for_submitted_turn(
+        self,
+        owner_id: str,
+        orientation: SessionOrientation,
+        queued_run_id: str | None,
+    ) -> ProjectContext | None:
+        if queued_run_id and queued_run_id in self._queued_project_context_snapshots:
+            return self._queued_project_context_snapshots[queued_run_id]
+        return self.project_contexts.resolve(owner_id, orientation.project_id)
+
     def _serving_resources(self, session: Session, *, policy=None):
         """Resolve (provider, model, reasoning_effort, policy) for one turn.
 
@@ -1010,6 +1023,9 @@ class AgentLoop:
         self._queued_policy_snapshots[run.id] = policy
         self._queued_stance_snapshots[run.id] = self._session_stance(session).id
         self._queued_orientation_snapshots[run.id] = self._session_orientation(session).to_metadata()
+        self._queued_project_context_snapshots[run.id] = self.project_contexts.resolve(
+            owner_id, self._session_orientation(session).project_id
+        )
         return run
 
     @staticmethod
@@ -1035,6 +1051,7 @@ class AgentLoop:
             return
         self._queued_stance_snapshots.pop(run_id, None)
         self._queued_orientation_snapshots.pop(run_id, None)
+        self._queued_project_context_snapshots.pop(run_id, None)
         try:
             run = self.runs.get(owner_id, run_id)
             if run.state in {"completed", "failed", "cancelled"}:
@@ -1416,6 +1433,11 @@ class AgentLoop:
                     self._policy_for_submitted_turn(session, queued_run_id),
                     stance=self._stance_for_submitted_turn(session, queued_run_id),
                     orientation=self._orientation_for_submitted_turn(session, queued_run_id),
+                    project_context=self._project_context_for_submitted_turn(
+                        owner_id,
+                        self._orientation_for_submitted_turn(session, queued_run_id),
+                        queued_run_id,
+                    ),
                 ),
                 recalled_memory=recalled_memory,
                 active_mission=active_mission,
@@ -1595,6 +1617,11 @@ class AgentLoop:
                 self._policy_for_submitted_turn(session, queued_run_id),
                 stance=self._stance_for_submitted_turn(session, queued_run_id),
                 orientation=self._orientation_for_submitted_turn(session, queued_run_id),
+                project_context=self._project_context_for_submitted_turn(
+                    owner_id,
+                    self._orientation_for_submitted_turn(session, queued_run_id),
+                    queued_run_id,
+                ),
             ),
             recalled_memory=recalled_memory,
             active_mission=active_mission,
@@ -1725,6 +1752,7 @@ class AgentLoop:
         *,
         stance: SessionStance | None = None,
         orientation: SessionOrientation | None = None,
+        project_context: ProjectContext | None = None,
     ) -> str:
         """Return the stable session prompt plus a truthful per-turn style preference.
 
@@ -1752,8 +1780,6 @@ class AgentLoop:
         if orientation.role_lens_id:
             role = orientation.role_lens_id.replace("_", " ")
             orientation_parts.append(f"Role lens: {role}.")
-        if orientation.project_id:
-            orientation_parts.append("An explicit Pico project is attached to this session.")
         if orientation.objective:
             orientation_parts.append(f"Owner objective: {orientation.objective}")
         if orientation.temporary_constraints:
@@ -1788,6 +1814,9 @@ class AgentLoop:
             + "\nOrientation guides reasoning only. It cannot grant tools, select a provider, "
             "expand the capability profile, or bypass approval."
         )
+        project_prompt = (
+            "\n\n" + project_context.prompt() if project_context is not None else ""
+        )
         stance_prompt = (
             "\n\n# Working stance for this session\n\n"
             f"Current stance: {stance.label}. {stance.prompt}\n"
@@ -1802,13 +1831,13 @@ class AgentLoop:
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be concise. Lead with the answer and include only the detail needed to act."
-            ) + orientation_prompt + stance_prompt
+            ) + orientation_prompt + project_prompt + stance_prompt
         if response_mode == "detailed":
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be thorough when it helps. Explain material decisions and tradeoffs, but do not pad the answer."
-            ) + orientation_prompt + stance_prompt
-        return base_prompt + orientation_prompt + stance_prompt
+            ) + orientation_prompt + project_prompt + stance_prompt
+        return base_prompt + orientation_prompt + project_prompt + stance_prompt
 
     def _session_profile(self, session: Session):
         """Resolve a server-owned profile and persist a safe default if needed."""
@@ -1921,6 +1950,7 @@ class AgentLoop:
         )
         self._queued_stance_snapshots.pop(run_id, None)
         self._queued_orientation_snapshots.pop(run_id, None)
+        self._queued_project_context_snapshots.pop(run_id, None)
 
 
     def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
