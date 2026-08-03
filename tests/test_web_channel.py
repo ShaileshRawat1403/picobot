@@ -326,6 +326,22 @@ def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Pat
     assert reloaded.metadata["pico_session_orientation"]["project_id"] == project.id
 
 
+def test_project_workspace_folder_picker_is_bounded_to_visible_workspace(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    (workspace / "Pico").mkdir(parents=True)
+    (workspace / ".git").mkdir()
+    (workspace / "node_modules").mkdir()
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+
+    folders = channel._project_workspace_folders(CLIENT_A)
+    assert folders == [
+        {"locator": ".", "label": "Pico workspace"},
+        {"locator": "Pico", "label": "Pico"},
+    ]
+
+
 def test_browser_session_search_matches_title_and_messages_without_crossing_identity(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

@@ -238,6 +238,19 @@ class WebChannel(BaseChannel):
                         raise ValueError("Projects route supports GET or POST")
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path == "/api/projects/local-folders":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    self._write_response(
+                        writer,
+                        200,
+                        json.dumps(
+                            {"folders": self._project_workspace_folders(client_id)},
+                            ensure_ascii=False,
+                        ).encode(),
+                    )
+                except ValueError as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path.startswith("/api/projects/"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -1758,6 +1771,30 @@ class WebChannel(BaseChannel):
         from picobot.projects import ProjectStore
 
         return ProjectStore(self._runtime_config().workspace_path)
+
+    def _project_workspace_folders(self, client_id: str) -> list[dict[str, str]]:
+        """Expose a small, local-only picker for declared project sources.
+
+        These records are relative labels under Pico's configured workspace,
+        not filesystem handles. Selecting one does not grant file access.
+        """
+        self._valid_browser_id(client_id)
+        root = self._runtime_config().workspace_path.resolve()
+        if not root.is_dir():
+            return []
+        ignored = {".git", ".venv", "node_modules", "__pycache__", ".picobot"}
+        folders = [{"locator": ".", "label": "Pico workspace"}]
+        try:
+            candidates = sorted(root.iterdir(), key=lambda item: item.name.casefold())
+        except OSError:
+            return folders
+        for item in candidates:
+            if len(folders) >= 80:
+                break
+            if item.name.startswith(".") or item.name in ignored or not item.is_dir():
+                continue
+            folders.append({"locator": item.name, "label": item.name})
+        return folders
 
     @staticmethod
     def _artifact_download_name(artifact, revision: int | None = None) -> str:
