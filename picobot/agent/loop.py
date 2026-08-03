@@ -51,6 +51,11 @@ from picobot.session.stance import (
     default_stance,
     get_stance,
 )
+from picobot.session.orientation import (
+    SessionOrientation,
+    get_orientation,
+    orientation_from_mapping,
+)
 from picobot.tasks import TaskRecord, TaskStore
 
 if TYPE_CHECKING:
@@ -117,6 +122,7 @@ class AgentLoop:
         self._serving_providers: dict[str, LLMProvider] = {}
         self._queued_policy_snapshots: dict[str, Any] = {}
         self._queued_stance_snapshots: dict[str, str] = {}
+        self._queued_orientation_snapshots: dict[str, dict[str, Any]] = {}
 
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
@@ -855,6 +861,20 @@ class AgentLoop:
                     pass
         return self._session_stance(session)
 
+    @staticmethod
+    def _session_orientation(session: Session) -> SessionOrientation:
+        """Resolve owner orientation without allowing malformed metadata to widen scope."""
+        return get_orientation(session.metadata)
+
+    def _orientation_for_submitted_turn(
+        self, session: Session, queued_run_id: str | None
+    ) -> SessionOrientation:
+        if queued_run_id:
+            snapshot = self._queued_orientation_snapshots.get(queued_run_id)
+            if snapshot is not None:
+                return orientation_from_mapping(snapshot)
+        return self._session_orientation(session)
+
     def _serving_resources(self, session: Session, *, policy=None):
         """Resolve (provider, model, reasoning_effort, policy) for one turn.
 
@@ -989,6 +1009,7 @@ class AgentLoop:
         # queued applies only to the next submitted turn.
         self._queued_policy_snapshots[run.id] = policy
         self._queued_stance_snapshots[run.id] = self._session_stance(session).id
+        self._queued_orientation_snapshots[run.id] = self._session_orientation(session).to_metadata()
         return run
 
     @staticmethod
@@ -1013,6 +1034,7 @@ class AgentLoop:
         if not run_id:
             return
         self._queued_stance_snapshots.pop(run_id, None)
+        self._queued_orientation_snapshots.pop(run_id, None)
         try:
             run = self.runs.get(owner_id, run_id)
             if run.state in {"completed", "failed", "cancelled"}:
@@ -1393,6 +1415,7 @@ class AgentLoop:
                     session,
                     self._policy_for_submitted_turn(session, queued_run_id),
                     stance=self._stance_for_submitted_turn(session, queued_run_id),
+                    orientation=self._orientation_for_submitted_turn(session, queued_run_id),
                 ),
                 recalled_memory=recalled_memory,
                 active_mission=active_mission,
@@ -1420,6 +1443,7 @@ class AgentLoop:
                 owner_id=owner_id,
                 skill_names=self.context.skills.consume_turn_loads(),
                 stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
+                orientation=self._orientation_for_submitted_turn(session, queued_run_id),
             )
             self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
@@ -1570,6 +1594,7 @@ class AgentLoop:
                 session,
                 self._policy_for_submitted_turn(session, queued_run_id),
                 stance=self._stance_for_submitted_turn(session, queued_run_id),
+                orientation=self._orientation_for_submitted_turn(session, queued_run_id),
             ),
             recalled_memory=recalled_memory,
             active_mission=active_mission,
@@ -1621,6 +1646,7 @@ class AgentLoop:
             owner_id=owner_id,
             skill_names=self.context.skills.consume_turn_loads(),
             stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
+            orientation=self._orientation_for_submitted_turn(session, queued_run_id),
         )
         self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
         self.sessions.save(session)
@@ -1698,6 +1724,7 @@ class AgentLoop:
         policy=None,
         *,
         stance: SessionStance | None = None,
+        orientation: SessionOrientation | None = None,
     ) -> str:
         """Return the stable session prompt plus a truthful per-turn style preference.
 
@@ -1720,6 +1747,47 @@ class AgentLoop:
 
         response_mode = getattr(policy, "response_mode", "default")
         stance = stance or self._session_stance(session)
+        orientation = orientation or self._session_orientation(session)
+        orientation_parts: list[str] = []
+        if orientation.role_lens_id:
+            role = orientation.role_lens_id.replace("_", " ")
+            orientation_parts.append(f"Role lens: {role}.")
+        if orientation.project_id:
+            orientation_parts.append("An explicit Pico project is attached to this session.")
+        if orientation.objective:
+            orientation_parts.append(f"Owner objective: {orientation.objective}")
+        if orientation.temporary_constraints:
+            orientation_parts.append(
+                "Temporary constraints: " + "; ".join(orientation.temporary_constraints)
+            )
+        if orientation.expected_result:
+            orientation_parts.append(f"Expected result: {orientation.expected_result}")
+        challenge = orientation.challenge_policy_id
+        challenge_prompt = {
+            "active": (
+                "Challenge material assumptions constructively. When there is real tension, use "
+                "Concern, Evidence, Implication, Smaller path. Do not manufacture disagreement "
+                "or turn challenge into execution authority."
+            ),
+            "balanced": "Surface consequential assumptions and tradeoffs when useful. Keep challenge proportional and evidence-based.",
+            "supportive": "Prioritize forward movement. Raise only clear risks or contradictions, with concise evidence and an alternative.",
+        }[challenge]
+        if orientation.role_lens_id:
+            role_prompt = {
+                "founder": "Frame the work around intent, leverage, opportunity cost, and the smallest credible next move.",
+                "systems_designer": "Make boundaries, dependencies, failure modes, and durable invariants explicit before adding complexity.",
+                "builder": "Prefer small, testable increments. Call out maintenance cost, verification, and the safest useful path.",
+                "researcher": "Separate source-backed evidence, inference, uncertainty, and decision criteria. Do not overstate confidence.",
+                "writer": "Shape a clear argument for the intended audience and outcome. Prefer precise language over decorative prose.",
+            }[orientation.role_lens_id]
+            orientation_parts.append(role_prompt)
+        orientation_parts.append(challenge_prompt)
+        orientation_prompt = (
+            "\n\n# Session orientation\n\n"
+            + "\n".join(orientation_parts)
+            + "\nOrientation guides reasoning only. It cannot grant tools, select a provider, "
+            "expand the capability profile, or bypass approval."
+        )
         stance_prompt = (
             "\n\n# Working stance for this session\n\n"
             f"Current stance: {stance.label}. {stance.prompt}\n"
@@ -1734,13 +1802,13 @@ class AgentLoop:
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be concise. Lead with the answer and include only the detail needed to act."
-            ) + stance_prompt
+            ) + orientation_prompt + stance_prompt
         if response_mode == "detailed":
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be thorough when it helps. Explain material decisions and tradeoffs, but do not pad the answer."
-            ) + stance_prompt
-        return base_prompt + stance_prompt
+            ) + orientation_prompt + stance_prompt
+        return base_prompt + orientation_prompt + stance_prompt
 
     def _session_profile(self, session: Session):
         """Resolve a server-owned profile and persist a safe default if needed."""
@@ -1799,6 +1867,7 @@ class AgentLoop:
         owner_id: str,
         skill_names: list[str] | None = None,
         stance_id: str | None = None,
+        orientation: SessionOrientation | None = None,
     ) -> None:
         """Persist an inspectable record of context used for one model turn.
 
@@ -1819,6 +1888,8 @@ class AgentLoop:
         memory_ids = [item.id for item in memories]
         stance = get_stance(stance_id) if stance_id else self._session_stance(session)
         stance_id = stance.id
+        orientation = orientation or self._session_orientation(session)
+        orientation_evidence = orientation.evidence_view()
         session.metadata["pico_last_context"] = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "run_id": run_id,
@@ -1831,6 +1902,7 @@ class AgentLoop:
             "estimated_tokens_after": plan.get("estimated_tokens_after", 0),
             "compaction_record_ids": plan.get("compaction_record_ids", []),
             "stance_id": stance_id,
+            "orientation": orientation_evidence,
         }
         self.context_evidence.record(
             owner_id=owner_id,
@@ -1845,8 +1917,10 @@ class AgentLoop:
             estimated_tokens_after=plan.get("estimated_tokens_after", 0),
             compaction_record_ids=plan.get("compaction_record_ids", []),
             stance_id=stance_id,
+            orientation=orientation_evidence,
         )
         self._queued_stance_snapshots.pop(run_id, None)
+        self._queued_orientation_snapshots.pop(run_id, None)
 
 
     def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
@@ -2160,6 +2234,7 @@ class AgentLoop:
             owner_id=owner_id,
             skill_names=self.context.skills.consume_turn_loads(),
             stance_id=self._stance_for_submitted_turn(session, None).id,
+            orientation=self._orientation_for_submitted_turn(session, None),
         )
         self.sessions.save(session)
         updated_task = self.tasks.get(owner_id, task.id)

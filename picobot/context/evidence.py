@@ -34,6 +34,7 @@ class ContextEvidence:
     estimated_tokens_after: int
     compaction_record_ids: tuple[str, ...]
     stance_id: str = "explore"
+    orientation: dict[str, object] | None = None
 
     def public_view(self) -> dict:
         """Return a safe owner-facing projection without private identifiers."""
@@ -50,6 +51,7 @@ class ContextEvidence:
             "estimated_tokens_after": self.estimated_tokens_after,
             "compaction_record_ids": list(self.compaction_record_ids),
             "stance_id": self.stance_id,
+            "orientation": self.orientation or {},
         }
 
 
@@ -91,7 +93,8 @@ class ContextEvidenceStore:
                     estimated_tokens_before INTEGER NOT NULL,
                     estimated_tokens_after INTEGER NOT NULL,
                     compaction_record_ids TEXT NOT NULL,
-                    stance_id TEXT NOT NULL DEFAULT 'explore'
+                    stance_id TEXT NOT NULL DEFAULT 'explore',
+                    orientation_json TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE INDEX IF NOT EXISTS context_evidence_owner_session_idx
                     ON context_evidence(owner_id, session_key, recorded_at DESC);
@@ -106,6 +109,10 @@ class ContextEvidenceStore:
             if "stance_id" not in columns:
                 connection.execute(
                     "ALTER TABLE context_evidence ADD COLUMN stance_id TEXT NOT NULL DEFAULT 'explore'"
+                )
+            if "orientation_json" not in columns:
+                connection.execute(
+                    "ALTER TABLE context_evidence ADD COLUMN orientation_json TEXT NOT NULL DEFAULT '{}'"
                 )
 
     @staticmethod
@@ -171,6 +178,7 @@ class ContextEvidenceStore:
             estimated_tokens_after=int(values["estimated_tokens_after"]),
             compaction_record_ids=tuple(json.loads(values["compaction_record_ids"])),
             stance_id=values.get("stance_id") or "explore",
+            orientation=json.loads(values.get("orientation_json") or "{}"),
         )
 
     def record(
@@ -188,6 +196,7 @@ class ContextEvidenceStore:
         estimated_tokens_after: int = 0,
         compaction_record_ids: list[str] | tuple[str, ...] = (),
         stance_id: str = "explore",
+        orientation: dict[str, object] | None = None,
     ) -> ContextEvidence:
         owner_id = self._required(owner_id, "owner")
         session_key = self._required(session_key, "session")
@@ -205,6 +214,18 @@ class ContextEvidenceStore:
         from picobot.session.stance import get_stance
 
         stance_id = get_stance(stance_id).id
+        if orientation is None:
+            orientation = {}
+        if not isinstance(orientation, dict):
+            raise ValueError("Context orientation must be an object")
+        # The orientation receipt intentionally captures only the safe compact
+        # projection prepared by session.orientation, never its private prose.
+        try:
+            orientation_json = json.dumps(orientation, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Context orientation must be JSON-safe") from exc
+        if len(orientation_json) > 2_000:
+            raise ValueError("Context orientation is too large")
         record = ContextEvidence(
             id=str(uuid.uuid4()),
             owner_id=owner_id,
@@ -220,6 +241,7 @@ class ContextEvidenceStore:
             estimated_tokens_after=estimated_tokens_after,
             compaction_record_ids=compaction_record_ids,
             stance_id=stance_id,
+            orientation=orientation,
         )
         with self._connect() as connection:
             connection.execute(
@@ -228,8 +250,8 @@ class ContextEvidenceStore:
                     id, owner_id, session_key, run_id, recorded_at,
                     history_message_count, memory_ids, skill_names, plan_action,
                     plan_reason, estimated_tokens_before, estimated_tokens_after,
-                    compaction_record_ids, stance_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    compaction_record_ids, stance_id, orientation_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(run_id) DO UPDATE SET
                     recorded_at=excluded.recorded_at,
                     history_message_count=excluded.history_message_count,
@@ -240,7 +262,8 @@ class ContextEvidenceStore:
                     estimated_tokens_before=excluded.estimated_tokens_before,
                     estimated_tokens_after=excluded.estimated_tokens_after,
                     compaction_record_ids=excluded.compaction_record_ids,
-                    stance_id=excluded.stance_id
+                    stance_id=excluded.stance_id,
+                    orientation_json=excluded.orientation_json
                 """,
                 (
                     record.id,
@@ -257,6 +280,7 @@ class ContextEvidenceStore:
                     record.estimated_tokens_after,
                     json.dumps(record.compaction_record_ids),
                     record.stance_id,
+                    orientation_json,
                 ),
             )
             row = connection.execute(

@@ -284,6 +284,48 @@ def test_browser_session_stance_is_durable_and_owner_scoped(tmp_path: Path):
     assert reloaded.metadata["pico_session_stance"] == "review"
 
 
+def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    project = channel._project_store().create(
+        channel._memory_owner(CLIENT_A),
+        title="Pico",
+        kind="software",
+        purpose="A local work partner",
+    )
+
+    changed = channel._set_browser_session_orientation(
+        CLIENT_A,
+        SESSION_A,
+        {
+            "project_id": project.id,
+            "objective": "Make the working context legible.",
+            "role_lens_id": "systems_designer",
+            "challenge_policy_id": "active",
+            "temporary_constraints": ["No unbounded integrations"],
+            "expected_result": "A safe orientation receipt",
+        },
+    )
+    assert changed["project"]["title"] == "Pico"
+    assert changed["orientation"]["role_lens"]["id"] == "systems_designer"
+    assert {role["id"] for role in changed["roles"]} == {
+        "founder", "systems_designer", "builder", "researcher", "writer"
+    }
+    with pytest.raises(KeyError):
+        channel._set_browser_session_orientation(
+            CLIENT_A, SESSION_A, {"project_id": "not-this-owner"}
+        )
+    with pytest.raises(ValueError, match="Session was not found"):
+        channel._browser_session_orientation(CLIENT_B, SESSION_A)
+
+    reloaded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    assert reloaded.metadata["pico_session_orientation"]["project_id"] == project.id
+
+
 def test_browser_session_search_matches_title_and_messages_without_crossing_identity(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

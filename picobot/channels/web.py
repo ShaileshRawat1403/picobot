@@ -1183,6 +1183,21 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps(response, ensure_ascii=False).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/sessions/") and path.endswith("/orientation"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/orientation").rstrip("/")
+                    if method == "GET":
+                        response = self._browser_session_orientation(client_id, session_id)
+                    elif method == "POST":
+                        response = self._set_browser_session_orientation(
+                            client_id, session_id, self._json_body(body)
+                        )
+                    else:
+                        raise ValueError("Session orientation route supports GET or POST only")
+                    self._write_response(writer, 200, json.dumps(response, ensure_ascii=False).encode())
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/title"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -2719,6 +2734,66 @@ class WebChannel(BaseChannel):
         session.updated_at = datetime.now()
         self._session_manager().save(session)
         return {"stance": self._public_stance(stance), "stances": public_stances()}
+
+    @staticmethod
+    def _public_project_for_orientation(project) -> dict[str, Any]:
+        return {
+            "id": project.id,
+            "title": project.title,
+            "kind": project.kind,
+            "status": project.status,
+            "inspected_at": project.inspected_at,
+        }
+
+    def _browser_session_orientation(self, client_id: str, session_id: str) -> dict[str, Any]:
+        from picobot.session.orientation import (
+            get_orientation,
+            public_challenge_policies,
+            public_roles,
+        )
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        orientation = get_orientation(session.metadata)
+        project = None
+        if orientation.project_id:
+            try:
+                project = self._project_store().get(self._memory_owner(client_id), orientation.project_id)
+            except KeyError:
+                # A project may be archived or intentionally removed from a
+                # copied workspace. Keep orientation visible but do not claim
+                # that it still resolves to action scope.
+                project = None
+        return {
+            "orientation": orientation.public_view(),
+            "project": self._public_project_for_orientation(project) if project else None,
+            "roles": public_roles(),
+            "challenge_policies": public_challenge_policies(),
+        }
+
+    def _set_browser_session_orientation(
+        self, client_id: str, session_id: str, payload: object
+    ) -> dict[str, Any]:
+        from picobot.session.orientation import ORIENTATION_METADATA_KEY, set_orientation
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        orientation = set_orientation(payload)
+        project = None
+        if orientation.project_id:
+            project = self._project_store().get(self._memory_owner(client_id), orientation.project_id)
+            if project.status != "active":
+                raise ValueError("Only an active project can orient a session")
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        session.metadata[ORIENTATION_METADATA_KEY] = orientation.to_metadata()
+        session.metadata.pop("pico_system_prompt", None)
+        session.updated_at = datetime.now()
+        self._session_manager().save(session)
+        response = self._browser_session_orientation(client_id, session_id)
+        if project is not None:
+            response["project"] = self._public_project_for_orientation(project)
+        return response
 
     def _require_browser_session(self, client_id: str, session_id: str) -> None:
         key = self._session_key(client_id, session_id)
