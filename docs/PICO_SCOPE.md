@@ -162,20 +162,24 @@ should implement a narrow contract behind the existing capability registry.
 
 ## Next planning decisions
 
-Before more feature coding:
+The provider, subscription, registry, and reviewed-learning foundations are
+implemented. The next slices must make those mechanics coherent for daily
+personal work rather than add a connector catalogue:
 
-1. Build the API connection slice for OpenAI, Gemini, Anthropic, and the one
-   local/OpenAI-compatible endpoint.
-2. Build the subscription connection slice for OpenAI Codex OAuth and Gemini
-   OAuth, including secure lifecycle and readiness behavior.
-3. Mark the current channel/provider inventory as supported, optional, or
-   deferred in the runtime registry.
-4. Select whether one messaging channel is needed in addition to Web/CLI.
-5. Learning proof workflow is implemented: response review → correction →
-   candidate → explicit approval, with run provenance and memory-use evidence.
-   Skill-use evidence is now recorded only for instructions actually supplied
-   to a model turn; effectiveness still requires owner review.
-6. Perform a maintainability pass without changing the product boundary.
+1. Establish the standalone Pico identity described in
+   [`PICO_V1_PRODUCT_CONTRACT.md`](PICO_V1_PRODUCT_CONTRACT.md).
+2. Add an owner-created Project Registry with explicit resources, capability
+   grants, relationships, freshness, and archival; it must not pretend to
+   create hard multi-tenant isolation before the stores enforce it.
+3. Add project orientation and a deterministic context resolver: active
+   project, objective, role lens, stance, challenge policy, temporary
+   constraints, explicit comparison context, and evidence of what entered a
+   turn.
+4. Compile conversation into the existing workflow contract with readable work
+   verbs and owner acceptance; do not create a second execution model.
+5. Use the resulting daily path against real weekly work before admitting a
+   new integration. A connector remains optional until it has a concrete,
+   repeated, bounded workflow.
 
 This contract is the gate for future Pico slices. A feature can be broad in
 mechanics while remaining narrow in integrations.

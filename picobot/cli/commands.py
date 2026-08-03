@@ -271,13 +271,15 @@ def onboard(
 
     sync_workspace_templates(workspace_path)
 
-    console.print(f"\n{__logo__} picobot is ready!")
+    console.print(f"\n{__logo__} Pico is ready!")
     console.print("\nNext steps:")
-    console.print(f"  1. Add OPENAI_API_KEY to [cyan]{config_path.parent / '.env'}[/cyan]")
-    console.print("     Get one at: https://openrouter.ai/keys")
-    console.print('  2. Chat: [cyan]picobot agent -m "Hello!"[/cyan]')
     console.print(
-        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/picobot#-chat-apps[/dim]"
+        f"  1. Add the key for your selected model provider to [cyan]{config_path.parent / '.env'}[/cyan]"
+    )
+    console.print("  2. Open the local workbench: [cyan]picobot web[/cyan]")
+    console.print('  3. Or ask a direct question: [cyan]picobot agent -m "Hello!"[/cyan]')
+    console.print(
+        "\n[dim]Optional messaging channels are configured separately only when a recurring workflow needs one.[/dim]"
     )
 
 
@@ -1292,7 +1294,7 @@ def doctor():
     """Run diagnostic checks for Picobot configuration."""
     from picobot.providers.registry import PROVIDERS
 
-    console.print(f"{__logo__} Picobot Health Check\n")
+    console.print(f"{__logo__} Pico Health Check\n")
 
     issues = []
     checks_passed = 0
@@ -1384,7 +1386,7 @@ def doctor():
         console.print("\nRun `picobot onboard` to fix common issues.")
         raise typer.Exit(1)
     else:
-        console.print("\n[green]All checks passed! Picobot is ready to use.[/green]")
+        console.print("\n[green]All checks passed! Pico is ready to use.[/green]")
 
 
 # ============================================================================

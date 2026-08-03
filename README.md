@@ -1,11 +1,11 @@
-# Picobot
+# Pico
 
 <p align="center">
-  <img src="assets/mascot-pico-hero.svg" alt="Picobot" width="280"/>
+  <img src="assets/mascot-pico-hero.svg" alt="Pico" width="280"/>
 </p>
 
 <p align="center">
-  <strong>The personal and multi-channel front door to the DAX Suite.</strong>
+  <strong>A local-first personal AI work partner.</strong>
 </p>
 
 <p align="center">
@@ -19,44 +19,37 @@
 
 ---
 
-## What is Picobot?
+## What is Pico?
 
-Picobot is a dual-mode AI assistant that works where you work—Telegram, Discord, WhatsApp, or web. It serves as both a powerful standalone personal assistant and the **governed ingress edge** for the DAX Suite.
+Pico is a local-first personal AI work partner for solo builders and multi-hat
+knowledge workers. It helps you think, remember, research, create, organise,
+and safely act through a deliberately small set of controlled capabilities.
 
-### The DAX Suite Model
-Picobot is part of a three-tier architecture designed for safety, privacy, and deterministic control:
+Its daily loop is:
 
-1.  **Picobot receives**: Multi-channel ingress and personal assistance.
-2.  **DAX executes**: Governed execution, approvals, and audit-grade control.
-3.  **Soothsayer supervises**: The operator plane for oversight and replay.
+```text
+Orient → discuss → compose → inspect → approve → retain → resume
+```
 
----
+Pico is useful with one configured model provider and its local workspace. It
+does not require DAX, Flowright, PaneTera, Soothsayer, or another ecosystem
+service to install or use. Those systems may later be enabled as optional
+adapters; they do not define Pico's everyday experience.
 
-## Dual-Mode Operation
+### Four ways of working
 
-Picobot adapts its behavior based on the complexity and risk of your request:
+- **Research** — examine sources, preserve evidence, and produce source-backed notes.
+- **Build** — inspect a local project, diagnose its state, and prepare bounded changes.
+- **Write** — turn ideas and evidence into versioned Markdown-first work products.
+- **Organise** — maintain tasks, missions, schedules, reviews, and the next useful step.
 
-### Mode 1: Standalone Personal Assistant
-Perfect for daily coordination and personal productivity.
-- **Personal**: Reminders, calendar queries, scheduling, and routines.
-- **Workspace**: Context retrieval, file lookups, and repository status.
-- **Research**: Quick web searches and documentation summaries.
+The interface is workflow-first, not connector-first. Browser, workspace,
+GitHub, calendar, and future integrations remain bounded capabilities beneath
+these ways of working.
 
-### Mode 2: DAX-Backed Governed Ingress
-When tasks involve significant system changes or code generation, Picobot routes them to DAX for governed execution.
-- **SDLC**: Writing, modifying, or refactoring code.
-- **Operations**: System setup, deployments, and migrations.
-- **Governance**: Every "risky" action requires your explicit approval via Picobot.
-
----
-
-## How It Works
-
-You chat with Picobot naturally. Behind the scenes, it maintains a **Capability Ladder**:
-
-- **Band 1 (Local)**: Fast, non-governed assistant tasks (Reminders, Search).
-- **Band 2 (Local)**: Workspace and repository context retrieval.
-- **Band 3 (DAX)**: Governed execution—actions are drafted by DAX, approved by you, and audited by Soothsayer.
+Read the full [Pico V1 Product Contract](docs/PICO_V1_PRODUCT_CONTRACT.md) and
+[supported surface](docs/PICO_SUPPORTED_SURFACE.md) before enabling optional
+integrations.
 
 ---
 
@@ -74,20 +67,15 @@ pip install picobot
 picobot onboard
 ```
 
-This creates `~/.picobot/config.json`. Edit it to add your channels:
+This creates `~/.picobot/config.json` and a local Pico workspace. Choose one
+supported model connection, then add only that provider's credential to the
+profile-local `.env` beside `config.json`:
 
 ```json
 {
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  },
   "agents": {
     "defaults": {
-      "model": "gpt-4o",
+      "model": "openai/gpt-4.1-mini",
       "provider": "openai"
     }
   }
@@ -97,10 +85,11 @@ This creates `~/.picobot/config.json`. Edit it to add your channels:
 ### Run
 
 ```bash
-picobot gateway
+picobot web
 ```
 
-Now chat with your bot on Telegram!
+Open the printed local URL (normally <http://127.0.0.1:18792>) and begin a
+session. Use `picobot doctor` when setup is incomplete.
 
 ---
 
@@ -110,7 +99,8 @@ Now chat with your bot on Telegram!
 | ------------------------ | ----------------------- |
 | `picobot onboard`        | First-time setup        |
 | `picobot agent -m "..."` | Quick question          |
-| `picobot gateway`        | Start with all channels |
+| `picobot web`            | Start the local web workbench |
+| `picobot gateway`        | Start explicitly enabled compatibility channels |
 | `picobot status`         | Check what's running    |
 | `picobot doctor`         | Diagnose issues         |
 
@@ -194,7 +184,14 @@ not launch a DAX or Soothsayer connection.
 
 ---
 
-## Setting Up Telegram
+## Optional messaging channels
+
+The local web workbench and CLI are Pico's primary interfaces. A messaging
+channel is an explicitly enabled compatibility capability, not part of the
+default setup or a required product surface. Enable one only when a recurring
+workflow proves it reduces meaningful friction.
+
+### Telegram setup
 
 1. Message [@BotFather](https://t.me/BotFather) on Telegram
 2. Send `/newbot` and follow the prompts
@@ -233,7 +230,7 @@ Use the Gemini API connection for Pico tool execution and governed actions.
 
 ---
 
-## What Picobot Can Do
+## What Pico Can Do
 
 - **Answer questions** - Search the web, read documentation
 - **Create durable work** - Notes, briefs, plans, data, links, and code artifacts
@@ -248,63 +245,60 @@ Use the Gemini API connection for Pico tool execution and governed actions.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Picobot                              │
-│                (Personal Assistant Edge)                    │
+│                           Pico                              │
+│             (Local-first personal work partner)             │
 ├─────────────────────────────────────────────────────────────┤
-│  Channels     │   Agent     │   Bus      │   Providers    │
-│  ─────────    │   ────────  │   ───     │   ──────────   │
-│  Telegram     │   Context   │   Queue   │   Gemini      │
-│  Discord      │   Memory    │   Events  │   OpenAI      │
-│  WhatsApp     │   Skills    │           │   Claude       │
-│  Web          │   Tools     │           │   Ollama       │
+│  Web + CLI    │   Context   │   Runs    │   OpenAI      │
+│  Optional     │   Memory    │   Audit   │   Gemini      │
+│  channels     │   Skills    │           │   Anthropic   │
+│               │   Workflows │           │   Local       │
 └─────────────────────────────────────────────────────────────┘
-                │                           ▲
-                ▼                           │
-   ┌──────────────────────────┐    ┌──────────────────────────┐
-   │          DAX             │    │       Soothsayer         │
-   │  (Execution Authority)   │────▶   (Operator Plane)       │
-   └──────────────────────────┘    └──────────────────────────┘
+                │
+                ▼
+   ┌─────────────────────────────────────────────────────────┐
+   │ Optional, explicitly enabled adapters                    │
+   │ Browser Bridge · GitHub review · Calendar · MCP · DAX    │
+   └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Security
 
-Picobot is designed for responsible automation:
+Pico is designed for responsible automation:
 
 - **Shell allowlist** - Only approved commands run
 - **Workspace bounds** - File ops stay in your workspace
-- **DAX approval** - Sensitive actions need your approval
+- **Exact approvals** - Sensitive actions bind to a reviewed proposal
 - **User allowlists** - Only whitelisted users can interact
 
 ---
 
 ## Configuration
 
+The smallest useful configuration is a model selection and local workspace.
+Channels and ecosystem adapters are optional and are not required for Pico's
+daily workbench.
+
 ```json
 {
-  "channels": {
-    "telegram": { "enabled": true, "token": "..." }
-  },
   "agents": {
     "defaults": {
-      "model": "gpt-4o",
+      "model": "openai/gpt-4.1-mini",
       "provider": "openai",
       "temperature": 0.7
     }
-  },
-  "dax": {
-    "url": "http://localhost:3000",
-    "workspaceId": "your-workspace-id"
   }
 }
 ```
 
 ---
 
-## API
+## Local integration API
 
-Picobot exposes endpoints for integration:
+`picobot` retains local technical endpoints for explicitly enabled
+compatibility integrations. They are not required to use Pico's web workbench
+or CLI:
 
 ```
 POST /api/picobot/webhook/health      # Health checks
