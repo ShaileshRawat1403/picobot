@@ -10,6 +10,7 @@ from picobot.workflows.store import (
     WorkflowStore,
 )
 from picobot.workflows.engine import StepResult, WorkflowEngine, WorkflowEngineError
+from picobot.workflows.compiler import CompiledWorkflow, WorkflowDraftCompiler
 
 __all__ = [
     "WorkflowDefinition",
@@ -22,4 +23,6 @@ __all__ = [
     "StepResult",
     "WorkflowEngine",
     "WorkflowEngineError",
+    "CompiledWorkflow",
+    "WorkflowDraftCompiler",
 ]

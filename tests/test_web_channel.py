@@ -326,6 +326,34 @@ def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Pat
     assert reloaded.metadata["pico_session_orientation"]["project_id"] == project.id
 
 
+def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+
+    result = channel._compile_browser_workflow(
+        CLIENT_A,
+        SESSION_A,
+        {"brief": "Research the shared browser tab and create a source brief."},
+    )
+
+    workflow = result["workflow"]
+    assert workflow.state == "draft"
+    assert result["compiler"]["profile_id"] == "personal-work"
+    assert any(node.kind == "browser_read" for node in workflow.nodes)
+    assert all(node.kind != "browser_action" for node in workflow.nodes)
+    assert all(
+        node.config.get("harness", {}).get("profile_id") == "personal-work"
+        for node in workflow.nodes
+        if node.kind in {"agent", "approval", "browser_read"}
+    )
+    with pytest.raises(ValueError, match="Session was not found"):
+        channel._compile_browser_workflow(CLIENT_B, SESSION_A, {"brief": "A private workflow"})
+
+
 def test_project_workspace_folder_picker_is_bounded_to_visible_workspace(tmp_path: Path):
     workspace = tmp_path / "workspace"
     (workspace / "Pico").mkdir(parents=True)

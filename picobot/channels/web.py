@@ -437,6 +437,27 @@ class WebChannel(BaseChannel):
                         self._write_response(writer, 404, self._json_error("Artifact route was not found"))
                 except (ValueError, KeyError, FileNotFoundError) as exc:
                     self._write_response(writer, 404, self._json_error(str(exc)))
+            elif path == "/api/workflows/compile":
+                try:
+                    if method != "POST":
+                        raise ValueError("Workflow compiler supports POST only")
+                    client_id = self._browser_id_from_query(query)
+                    payload = self._json_body(body)
+                    session_id = self._valid_browser_id(payload.get("session_id"))
+                    result = self._compile_browser_workflow(client_id, session_id, payload)
+                    self._write_response(
+                        writer,
+                        201,
+                        json.dumps(
+                            {
+                                "workflow": result["workflow"].to_dict(),
+                                "compiler": result["compiler"],
+                            },
+                            ensure_ascii=False,
+                        ).encode(),
+                    )
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/workflows":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -2025,6 +2046,36 @@ class WebChannel(BaseChannel):
 
         return WorkflowEngine(self._workflow_store(), ArtifactStore(self._runtime_config().workspace_path))
 
+    def _compile_browser_workflow(
+        self, client_id: str, session_id: object, payload: object
+    ) -> dict[str, Any]:
+        """Persist an owner-requested workflow draft without granting execution."""
+        from picobot.workflows import WorkflowDraftCompiler
+
+        if not isinstance(payload, dict):
+            raise ValueError("Workflow compiler payload must be an object")
+        valid_session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, valid_session_id)
+        owner_id = self._memory_owner(client_id)
+        session_key = self._session_key(client_id, valid_session_id)
+        session = self._session_manager().get_or_create(session_key)
+        profile = self._session_profile(session)
+        proposal = WorkflowDraftCompiler().compile(
+            payload.get("brief"), profile_id=profile.id, title=payload.get("title")
+        )
+        workflow = self._workflow_store().create_draft(
+            owner_id=owner_id,
+            session_key=session_key,
+            title=proposal.title,
+            description=proposal.description,
+            nodes=proposal.nodes,
+            edges=proposal.edges,
+        )
+        return {
+            "workflow": workflow,
+            "compiler": {"summary": proposal.summary, "profile_id": profile.id},
+        }
+
     def _sync_action_task_outcome(self, owner_id: str, session_key: str, action: Any) -> None:
         if not getattr(action, "initiating_run_id", None):
             return
@@ -2732,6 +2783,20 @@ class WebChannel(BaseChannel):
         session.updated_at = datetime.now()
         self._session_manager().save(session)
         return {"id": profile.id, "label": profile.label, "description": profile.description}
+
+    @staticmethod
+    def _session_profile(session: Any):
+        """Resolve a server-owned profile; callers never submit a tool allow-list."""
+        from picobot.operations.registry import CapabilityRegistry
+
+        return CapabilityRegistry().resolve(session.metadata.get("pico_operation_profile"))
+
+    @staticmethod
+    def _session_profile(session: Any):
+        """Resolve the server-owned profile; callers never submit a tool allow-list."""
+        from picobot.operations.registry import CapabilityRegistry
+
+        return CapabilityRegistry().resolve(session.metadata.get("pico_operation_profile"))
 
     @staticmethod
     def _public_stance(stance) -> dict[str, str]:
