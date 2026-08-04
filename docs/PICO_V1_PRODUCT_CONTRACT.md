@@ -126,6 +126,11 @@ without knowing the surrounding ecosystem. A release-ready V1 also needs an
 owner-controlled backup/export path for Pico Home state that excludes provider
 credentials.
 
+The backup boundary is implemented through `picobot backup`: it produces a
+portable archive of Pico-owned durable state using consistent SQLite snapshots,
+and excludes configuration, environment files, runtime tokens, and known
+credential filenames.
+
 Before a new integration enters scope, a real recurring workflow must prove a
 missing capability, including its narrow read path, readiness, approval,
 evidence, failure, and removal contracts. Legacy adapters may remain for

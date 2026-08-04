@@ -1056,6 +1056,28 @@ def web(
     _run_gateway(cfg, verbose=False)
 
 
+@app.command("backup")
+def backup(
+    output: str | None = typer.Option(
+        None, "--output", "-o", help="Directory for the credential-free Pico Home archive"
+    ),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+):
+    """Create a portable backup of Pico Home state, excluding credentials."""
+    from picobot.backup import create_pico_home_backup
+
+    cfg = _load_runtime_config(config, workspace)
+    destination = Path(output).expanduser() if output else cfg.workspace_path.parent / "pico-backups"
+    try:
+        result = create_pico_home_backup(cfg.workspace_path, destination)
+    except ValueError as exc:
+        console.print(f"[red]Backup:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"[green]✓[/green] Pico Home backup: {result.path}")
+    console.print(f"[dim]{result.files} state files · {result.bytes:,} bytes · credentials excluded[/dim]")
+
+
 @app.command()
 def status():
     """Show picobot status."""

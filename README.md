@@ -100,6 +100,7 @@ session. Use `picobot doctor` when setup is incomplete.
 | `picobot onboard`        | First-time setup        |
 | `picobot agent -m "..."` | Quick question          |
 | `picobot web`            | Start the local web workbench |
+| `picobot backup`         | Export credential-free Pico Home state |
 | `picobot gateway`        | Start explicitly enabled compatibility channels |
 | `picobot status`         | Check what's running    |
 | `picobot doctor`         | Diagnose issues         |
@@ -166,6 +167,20 @@ reports the existing URL instead of creating a duplicate. If another local
 service owns the pair, Pico selects the next available WebSocket/HTTP pair and
 prints the new URL. The launcher uses `.venv` automatically when it exists.
 This is a Python service; `npm run dev` is not a supported command.
+
+### Pico Home backup
+
+Create a portable archive of Pico's durable sessions, artifacts, memory,
+projects, runs, tasks, missions, workflows, and review state:
+
+```bash
+picobot backup --config .picobot/config.json
+```
+
+By default the archive is written beside the Pico workspace in `pico-backups/`.
+It deliberately excludes Pico configuration, `.env` files, runtime tokens, and
+known credential filenames. Choose an output directory outside the workspace
+with `--output /path/to/backups`.
 
 ### Isolated Pico test
 
