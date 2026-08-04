@@ -416,7 +416,6 @@ def test_browser_maintenance_is_owner_scoped_and_redacts_action_payloads(tmp_pat
     assert "also-hidden" not in rendered
     assert "Another owner's pending action" not in rendered
     assert "Private artifact contents" not in rendered
-    assert all("payload" not in item for item in result["attention"])
     assert [column["id"] for column in result["board"]] == [
         "prepare",
         "active",

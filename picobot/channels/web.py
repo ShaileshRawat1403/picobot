@@ -2051,61 +2051,6 @@ class WebChannel(BaseChannel):
             item for item in artifacts if item.status == "draft" or item.verification_status != "verified"
         ]
 
-        attention: list[dict[str, Any]] = []
-        attention.extend(
-            {
-                "kind": "approval",
-                "title": item.summary,
-                "state": "Awaiting your approval",
-                "updated_at": item.updated_at,
-                "target_view": "operations",
-            }
-            for item in pending_actions[:4]
-        )
-        attention.extend(
-            {
-                "kind": "workflow",
-                "title": workflow_titles.get(item.workflow_id, "Workflow run"),
-                "state": "Awaiting approval" if item.state == "waiting_for_approval" else "Awaiting input",
-                "updated_at": item.updated_at,
-                "target_view": "workflows",
-                "workflow_id": item.workflow_id,
-            }
-            for item in waiting_workflows[:4]
-        )
-        attention.extend(
-            {
-                "kind": "task",
-                "title": item.title,
-                "state": item.state.replace("_", " "),
-                "updated_at": item.updated_at,
-                "target_view": "missions",
-            }
-            for item in active_tasks[:3]
-        )
-        attention.extend(
-            {
-                "kind": "mission",
-                "title": item.title,
-                "state": "Blocked",
-                "updated_at": item.updated_at,
-                "target_view": "missions",
-            }
-            for item in blocked_missions[:3]
-        )
-        attention.extend(
-            {
-                "kind": "artifact",
-                "title": item.title,
-                "state": "Needs review" if item.status == "draft" else item.verification_status,
-                "updated_at": item.updated_at,
-                "target_view": "artifacts",
-                "artifact_id": item.id,
-            }
-            for item in review_artifacts[:4]
-        )
-        attention.sort(key=lambda item: item["updated_at"], reverse=True)
-
         def column(column_id: str, title: str, hint: str, items: list[dict[str, Any]]) -> dict[str, Any]:
             cards = sorted(items, key=lambda item: item["updated_at"], reverse=True)[:8]
             return {
@@ -2275,7 +2220,6 @@ class WebChannel(BaseChannel):
                 "artifacts_to_review": len(review_artifacts),
             },
             "next_action": next_action,
-            "attention": attention[:12],
             "board": board,
         }
 
