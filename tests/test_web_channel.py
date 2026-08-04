@@ -380,6 +380,56 @@ def test_browser_project_brief_is_explicit_owner_scoped_and_saved_as_an_artifact
         asyncio.run(channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_B, source.id))
 
 
+def test_browser_session_project_brief_is_explicit_revision_pinned_and_owner_scoped(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    owner_id = channel._memory_owner(CLIENT_A)
+    brief = ArtifactStore(workspace).create(
+        owner_id=owner_id,
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        title="Pico brief",
+        kind="brief",
+        content_type="text/markdown",
+        content="# Summary\nPrivate project text stays in the artifact.",
+    )
+    note = ArtifactStore(workspace).create(
+        owner_id=owner_id,
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        title="Not a brief",
+        content="No",
+    )
+    other_owner_brief = ArtifactStore(workspace).create(
+        owner_id=channel._memory_owner(CLIENT_B),
+        session_key=channel._session_key(CLIENT_B, SESSION_B),
+        title="Other owner brief",
+        kind="brief",
+        content_type="text/markdown",
+        content="No access",
+    )
+
+    selected = channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, brief.id)
+    assert selected["brief"] == {
+        "artifact_id": brief.id,
+        "revision": 1,
+        "title": "Pico brief",
+        "kind": "brief",
+        "status": "draft",
+    }
+    assert "Private project text" not in str(selected)
+    with pytest.raises(ValueError, match="Only Brief"):
+        channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, note.id)
+    with pytest.raises(KeyError):
+        channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, other_owner_brief.id)
+    assert channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, None) == {"brief": None}
+    with pytest.raises(ValueError, match="Session was not found"):
+        channel._browser_session_project_brief(CLIENT_B, SESSION_A)
+
+
 def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

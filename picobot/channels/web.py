@@ -1276,6 +1276,21 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps(response, ensure_ascii=False).encode())
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path.startswith("/api/sessions/") and path.endswith("/brief-context"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/brief-context").rstrip("/")
+                    if method == "GET":
+                        response = self._browser_session_project_brief(client_id, session_id)
+                    elif method == "POST":
+                        response = self._set_browser_session_project_brief(
+                            client_id, session_id, self._json_body(body).get("artifact_id")
+                        )
+                    else:
+                        raise ValueError("Project brief context route supports GET or POST only")
+                    self._write_response(writer, 200, json.dumps(response, ensure_ascii=False).encode())
+                except (ValueError, KeyError, FileNotFoundError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/title"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -3228,6 +3243,74 @@ class WebChannel(BaseChannel):
             response["project"] = self._public_project_for_orientation(project)
         return response
 
+    def _browser_session_project_brief(self, client_id: str, session_id: str) -> dict[str, Any]:
+        """Return the owner's selected brief receipt, never its contents."""
+        from picobot.session.project_brief import get_project_brief_selection
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        selection = get_project_brief_selection(session.metadata)
+        if selection is None:
+            return {"brief": None}
+        try:
+            artifact = self._artifact_store().get(self._memory_owner(client_id), selection.artifact_id)
+            if (
+                artifact.kind != "brief"
+                or artifact.content_type not in {"text/markdown", "text/plain"}
+                or artifact.status == "archived"
+            ):
+                return {"brief": None}
+            self._artifact_store().read_content(
+                self._memory_owner(client_id), artifact.id, selection.revision
+            )
+        except (KeyError, FileNotFoundError, ValueError):
+            return {"brief": None}
+        return {
+            "brief": {
+                "artifact_id": artifact.id,
+                "revision": selection.revision,
+                "title": artifact.title,
+                "kind": artifact.kind,
+                "status": artifact.status,
+            }
+        }
+
+    def _set_browser_session_project_brief(
+        self, client_id: str, session_id: str, artifact_id: object
+    ) -> dict[str, Any]:
+        """Pin one owner-selected brief revision, or explicitly clear it."""
+        from picobot.session.project_brief import (
+            PROJECT_BRIEF_CONTEXT_METADATA_KEY,
+            ProjectBriefSelection,
+        )
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        if artifact_id is None:
+            session.metadata.pop(PROJECT_BRIEF_CONTEXT_METADATA_KEY, None)
+        else:
+            if not isinstance(artifact_id, str) or not artifact_id.strip():
+                raise ValueError("Choose a saved project brief or remove the current one")
+            owner_id = self._memory_owner(client_id)
+            artifact = self._artifact_store().get(owner_id, artifact_id.strip())
+            if artifact.kind != "brief":
+                raise ValueError("Only Brief artifacts can become project working context")
+            if artifact.content_type not in {"text/markdown", "text/plain"}:
+                raise ValueError("Project brief context must be Markdown or plain text")
+            if artifact.status == "archived":
+                raise ValueError("Archived briefs cannot be used as working context")
+            # Confirm the selected immutable revision is still readable before
+            # making it available to the next provider call.
+            self._artifact_store().read_content(owner_id, artifact.id, artifact.revision)
+            session.metadata[PROJECT_BRIEF_CONTEXT_METADATA_KEY] = ProjectBriefSelection(
+                artifact_id=artifact.id, revision=artifact.revision
+            ).to_metadata()
+        session.updated_at = datetime.now()
+        self._session_manager().save(session)
+        return self._browser_session_project_brief(client_id, session_id)
+
     def _require_browser_session(self, client_id: str, session_id: str) -> None:
         key = self._session_key(client_id, session_id)
         if not any(item["key"] == key for item in self._session_manager().list_sessions()):
@@ -3425,6 +3508,7 @@ class WebChannel(BaseChannel):
             "estimated_tokens_before": trace.get("estimated_tokens_before", 0),
             "estimated_tokens_after": trace.get("estimated_tokens_after", 0),
             "run_id": trace.get("run_id"),
+            "orientation": trace.get("orientation", {}) if isinstance(trace.get("orientation", {}), dict) else {},
             "memory": memories,
             "compaction": compaction_timeline[0] if compaction_timeline else None,
             "compaction_timeline": compaction_timeline,

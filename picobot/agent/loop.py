@@ -57,6 +57,11 @@ from picobot.session.orientation import (
     get_orientation,
     orientation_from_mapping,
 )
+from picobot.session.project_brief import (
+    ResolvedProjectBrief,
+    get_project_brief_selection,
+    resolve_project_brief,
+)
 from picobot.tasks import TaskRecord, TaskStore
 
 if TYPE_CHECKING:
@@ -125,6 +130,7 @@ class AgentLoop:
         self._queued_stance_snapshots: dict[str, str] = {}
         self._queued_orientation_snapshots: dict[str, dict[str, Any]] = {}
         self._queued_project_context_snapshots: dict[str, ProjectContext | None] = {}
+        self._queued_project_brief_snapshots: dict[str, ResolvedProjectBrief | None] = {}
 
         self.analytics = get_analytics(workspace)
         self.context = ContextBuilder(workspace, skill_config=self.skill_config)
@@ -888,6 +894,43 @@ class AgentLoop:
             return self._queued_project_context_snapshots[queued_run_id]
         return self.project_contexts.resolve(owner_id, orientation.project_id)
 
+    def _session_project_brief_context(
+        self, session: Session, owner_id: str
+    ) -> ResolvedProjectBrief | None:
+        """Resolve only the explicitly pinned brief revision for a session.
+
+        A missing, deleted, archived, or malformed selection intentionally
+        becomes no context.  It never falls back to scanning a project or to
+        selecting a newer artifact revision on the owner's behalf.
+        """
+        selection = get_project_brief_selection(session.metadata)
+        if selection is None:
+            return None
+        try:
+            artifact = self.artifacts.get(owner_id, selection.artifact_id)
+            if artifact.kind != "brief":
+                return None
+            if artifact.content_type not in {"text/markdown", "text/plain"}:
+                return None
+            if artifact.status == "archived":
+                return None
+            content = self.artifacts.read_content(owner_id, artifact.id, selection.revision)
+        except (KeyError, FileNotFoundError, ValueError):
+            return None
+        return resolve_project_brief(
+            artifact_id=artifact.id,
+            revision=selection.revision,
+            title=artifact.title,
+            content=content,
+        )
+
+    def _project_brief_for_submitted_turn(
+        self, session: Session, owner_id: str, queued_run_id: str | None
+    ) -> ResolvedProjectBrief | None:
+        if queued_run_id and queued_run_id in self._queued_project_brief_snapshots:
+            return self._queued_project_brief_snapshots[queued_run_id]
+        return self._session_project_brief_context(session, owner_id)
+
     def _serving_resources(self, session: Session, *, policy=None):
         """Resolve (provider, model, reasoning_effort, policy) for one turn.
 
@@ -1026,6 +1069,9 @@ class AgentLoop:
         self._queued_project_context_snapshots[run.id] = self.project_contexts.resolve(
             owner_id, self._session_orientation(session).project_id
         )
+        self._queued_project_brief_snapshots[run.id] = self._session_project_brief_context(
+            session, owner_id
+        )
         return run
 
     @staticmethod
@@ -1052,6 +1098,7 @@ class AgentLoop:
         self._queued_stance_snapshots.pop(run_id, None)
         self._queued_orientation_snapshots.pop(run_id, None)
         self._queued_project_context_snapshots.pop(run_id, None)
+        self._queued_project_brief_snapshots.pop(run_id, None)
         try:
             run = self.runs.get(owner_id, run_id)
             if run.state in {"completed", "failed", "cancelled"}:
@@ -1438,6 +1485,9 @@ class AgentLoop:
                         self._orientation_for_submitted_turn(session, queued_run_id),
                         queued_run_id,
                     ),
+                    project_brief=self._project_brief_for_submitted_turn(
+                        session, owner_id, queued_run_id
+                    ),
                 ),
                 recalled_memory=recalled_memory,
                 active_mission=active_mission,
@@ -1466,6 +1516,7 @@ class AgentLoop:
                 skill_names=self.context.skills.consume_turn_loads(),
                 stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
                 orientation=self._orientation_for_submitted_turn(session, queued_run_id),
+                project_brief=self._project_brief_for_submitted_turn(session, owner_id, queued_run_id),
             )
             self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
@@ -1622,6 +1673,9 @@ class AgentLoop:
                     self._orientation_for_submitted_turn(session, queued_run_id),
                     queued_run_id,
                 ),
+                project_brief=self._project_brief_for_submitted_turn(
+                    session, owner_id, queued_run_id
+                ),
             ),
             recalled_memory=recalled_memory,
             active_mission=active_mission,
@@ -1674,6 +1728,7 @@ class AgentLoop:
             skill_names=self.context.skills.consume_turn_loads(),
             stance_id=self._stance_for_submitted_turn(session, queued_run_id).id,
             orientation=self._orientation_for_submitted_turn(session, queued_run_id),
+            project_brief=self._project_brief_for_submitted_turn(session, owner_id, queued_run_id),
         )
         self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
         self.sessions.save(session)
@@ -1753,6 +1808,7 @@ class AgentLoop:
         stance: SessionStance | None = None,
         orientation: SessionOrientation | None = None,
         project_context: ProjectContext | None = None,
+        project_brief: ResolvedProjectBrief | None = None,
     ) -> str:
         """Return the stable session prompt plus a truthful per-turn style preference.
 
@@ -1817,6 +1873,7 @@ class AgentLoop:
         project_prompt = (
             "\n\n" + project_context.prompt() if project_context is not None else ""
         )
+        brief_prompt = "\n\n" + project_brief.prompt() if project_brief is not None else ""
         stance_prompt = (
             "\n\n# Working stance for this session\n\n"
             f"Current stance: {stance.label}. {stance.prompt}\n"
@@ -1831,13 +1888,13 @@ class AgentLoop:
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be concise. Lead with the answer and include only the detail needed to act."
-            ) + orientation_prompt + project_prompt + stance_prompt
+            ) + orientation_prompt + project_prompt + brief_prompt + stance_prompt
         if response_mode == "detailed":
             return base_prompt + (
                 "\n\n# Response preference for this turn\n\n"
                 "Be thorough when it helps. Explain material decisions and tradeoffs, but do not pad the answer."
-            ) + orientation_prompt + project_prompt + stance_prompt
-        return base_prompt + orientation_prompt + project_prompt + stance_prompt
+            ) + orientation_prompt + project_prompt + brief_prompt + stance_prompt
+        return base_prompt + orientation_prompt + project_prompt + brief_prompt + stance_prompt
 
     def _session_profile(self, session: Session):
         """Resolve a server-owned profile and persist a safe default if needed."""
@@ -1897,6 +1954,7 @@ class AgentLoop:
         skill_names: list[str] | None = None,
         stance_id: str | None = None,
         orientation: SessionOrientation | None = None,
+        project_brief: ResolvedProjectBrief | None = None,
     ) -> None:
         """Persist an inspectable record of context used for one model turn.
 
@@ -1919,6 +1977,8 @@ class AgentLoop:
         stance_id = stance.id
         orientation = orientation or self._session_orientation(session)
         orientation_evidence = orientation.evidence_view()
+        if project_brief is not None:
+            orientation_evidence["project_brief"] = project_brief.evidence_view()
         session.metadata["pico_last_context"] = {
             "recorded_at": datetime.now(timezone.utc).isoformat(),
             "run_id": run_id,
@@ -1951,6 +2011,7 @@ class AgentLoop:
         self._queued_stance_snapshots.pop(run_id, None)
         self._queued_orientation_snapshots.pop(run_id, None)
         self._queued_project_context_snapshots.pop(run_id, None)
+        self._queued_project_brief_snapshots.pop(run_id, None)
 
 
     def _handle_memory_command(self, msg: InboundMessage, owner_id: str) -> OutboundMessage:
@@ -2206,7 +2267,19 @@ class AgentLoop:
         messages = self.context.build_messages(
             history=history,
             current_message=prompt_content,
-            system_prompt="You are executing a bounded direct task under an active mission.",
+            system_prompt=(
+                self._context_snapshot(
+                    session,
+                    self._effective_policy(session),
+                    stance=self._session_stance(session),
+                    orientation=self._session_orientation(session),
+                    project_context=self._project_context_for_submitted_turn(
+                        owner_id, self._session_orientation(session), None
+                    ),
+                    project_brief=self._project_brief_for_submitted_turn(session, owner_id, None),
+                )
+                + "\n\n# Direct task\n\nYou are executing a bounded direct task under an active mission."
+            ),
             channel=task_channel or "direct_task",
             chat_id=task_chat_id or "task",
             owner_id=owner_id,
@@ -2265,6 +2338,7 @@ class AgentLoop:
             skill_names=self.context.skills.consume_turn_loads(),
             stance_id=self._stance_for_submitted_turn(session, None).id,
             orientation=self._orientation_for_submitted_turn(session, None),
+            project_brief=self._project_brief_for_submitted_turn(session, owner_id, None),
         )
         self.sessions.save(session)
         updated_task = self.tasks.get(owner_id, task.id)

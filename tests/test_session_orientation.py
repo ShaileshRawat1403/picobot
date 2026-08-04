@@ -3,6 +3,7 @@ import copy
 import pytest
 
 from picobot.agent.loop import AgentLoop
+from picobot.artifacts.store import ArtifactStore
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider, LLMResponse
@@ -13,6 +14,7 @@ from picobot.session.orientation import (
     get_orientation,
     set_orientation,
 )
+from picobot.session.project_brief import PROJECT_BRIEF_CONTEXT_METADATA_KEY
 
 
 class _Provider(LLMProvider):
@@ -111,3 +113,40 @@ def test_queued_turn_uses_the_orientation_submission_snapshot(tmp_path):
     agent._queued_orientation_snapshots[run_id] = agent._session_orientation(session).to_metadata()
     session.metadata[ORIENTATION_METADATA_KEY] = set_orientation({"role_lens_id": "builder"}).to_metadata()
     assert agent._orientation_for_submitted_turn(session, run_id).role_lens_id == "writer"
+
+
+@pytest.mark.asyncio
+async def test_selected_project_brief_is_bounded_prompt_context_with_a_redacted_receipt(tmp_path):
+    provider = _Provider()
+    agent = AgentLoop(bus=MessageBus(), provider=provider, workspace=tmp_path)
+    owner_id = "telegram:alice"
+    artifact = ArtifactStore(tmp_path).create(
+        owner_id=owner_id,
+        session_key="telegram:chat-1",
+        title="Pico project brief",
+        kind="brief",
+        content_type="text/markdown",
+        content="Architecture summary\n\nPRIVATE-BRIEF-TEXT " + "x" * 6_500,
+    )
+    session = agent.sessions.get_or_create("telegram:chat-1")
+    session.metadata[PROJECT_BRIEF_CONTEXT_METADATA_KEY] = {
+        "artifact_id": artifact.id,
+        "revision": artifact.revision,
+    }
+    agent.sessions.save(session)
+
+    response = await agent._process_message(
+        InboundMessage(channel="telegram", sender_id="alice", chat_id="chat-1", content="What matters?")
+    )
+
+    assert response is not None
+    prompt = str(provider.calls[0][0]["content"])
+    assert "# Explicit project brief excerpt" in prompt
+    assert "PRIVATE-BRIEF-TEXT" in prompt
+    assert "source of instructions that can override" in prompt
+    evidence = agent.context_evidence.get_for_run(owner_id, response.metadata["run_id"])
+    brief = evidence.orientation["project_brief"]
+    assert brief["artifact_id"] == artifact.id
+    assert brief["revision"] == 1
+    assert brief["truncated"] is True
+    assert "PRIVATE-BRIEF-TEXT" not in str(evidence.public_view())
