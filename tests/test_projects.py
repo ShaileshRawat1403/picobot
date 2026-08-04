@@ -35,6 +35,26 @@ def test_project_sources_relationships_and_freshness_are_explicit(tmp_path: Path
     assert store.mark_inspected("owner", pico.id).inspected_at is not None
 
 
+def test_project_can_declare_local_and_github_sources_together(tmp_path: Path):
+    store = ProjectStore(tmp_path)
+    project = store.create("owner", title="Soothsayer", kind="software", purpose="Operator workbench")
+    local = store.add_source(
+        "owner",
+        project.id,
+        kind="local_folder",
+        label="Local checkout",
+        locator="/Users/Shailesh/MYAIAGENTS/soothsayer",
+    )
+    github = store.add_source(
+        "owner",
+        project.id,
+        kind="github_repo",
+        label="GitHub repository",
+        locator="ShaileshRawat1403/soothsayer",
+    )
+    assert store.sources("owner", project.id) == [github, local]
+
+
 @pytest.mark.parametrize(
     ("kind", "locator"),
     [("url", "https://user:secret@example.com"), ("github_repo", "https://github.com/owner/repo")],
