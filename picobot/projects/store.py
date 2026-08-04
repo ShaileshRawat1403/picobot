@@ -8,6 +8,7 @@ freshness reviewable before later context and action slices consume them.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sqlite3
 import uuid
@@ -61,6 +62,24 @@ class ProjectLink:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ProjectSnapshot:
+    """A redacted, owner-requested source observation for a project."""
+
+    id: str
+    project_id: str
+    source_id: str
+    source_kind: str
+    source_label: str
+    summary: dict
+    fingerprint: str
+    changed: bool
+    observed_at: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 class ProjectStore:
     """Persist additive owner-scoped project context in the Pico workspace."""
 
@@ -104,6 +123,15 @@ class ProjectStore:
                     FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS project_sources_project_idx ON project_sources(project_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS project_snapshots (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT NOT NULL,
+                    summary_json TEXT NOT NULL, fingerprint TEXT NOT NULL, changed INTEGER NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    FOREIGN KEY(source_id) REFERENCES project_sources(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS project_snapshots_project_observed_idx
+                    ON project_snapshots(project_id, observed_at DESC);
                 CREATE TABLE IF NOT EXISTS project_links (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, related_project_id TEXT NOT NULL,
                     relation TEXT NOT NULL, summary TEXT, created_at TEXT NOT NULL,
@@ -251,6 +279,80 @@ class ProjectStore:
         with self._connect() as connection:
             rows = connection.execute("SELECT * FROM project_links WHERE project_id=? OR related_project_id=? ORDER BY created_at DESC", (project_id, project_id)).fetchall()
         return [ProjectLink(**dict(row)) for row in rows]
+
+    def record_snapshot(
+        self, owner_id: str, project_id: str, source_id: str, *, summary: object
+    ) -> ProjectSnapshot:
+        """Persist an explicit safe source observation and report material change."""
+        self.get(owner_id, project_id)
+        source = next((item for item in self.sources(owner_id, project_id) if item.id == source_id), None)
+        if source is None:
+            raise KeyError("Project source was not found")
+        if not isinstance(summary, dict):
+            raise ValueError("Project snapshot must be an object")
+        encoded = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if len(encoded) > 24_000:
+            raise ValueError("Project snapshot is too large")
+        fingerprint = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+        now = self._now()
+        with self._connect() as connection:
+            prior = connection.execute(
+                "SELECT fingerprint FROM project_snapshots WHERE project_id=? AND source_id=? ORDER BY observed_at DESC LIMIT 1",
+                (project_id, source_id),
+            ).fetchone()
+            changed = prior is None or prior["fingerprint"] != fingerprint
+            snapshot = ProjectSnapshot(
+                id=uuid.uuid4().hex,
+                project_id=project_id,
+                source_id=source.id,
+                source_kind=source.kind,
+                source_label=source.label,
+                summary=json.loads(encoded),
+                fingerprint=fingerprint,
+                changed=changed,
+                observed_at=now,
+            )
+            connection.execute(
+                "INSERT INTO project_snapshots VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    snapshot.id,
+                    snapshot.project_id,
+                    snapshot.source_id,
+                    encoded,
+                    snapshot.fingerprint,
+                    int(snapshot.changed),
+                    snapshot.observed_at,
+                ),
+            )
+            connection.execute(
+                "UPDATE projects SET inspected_at=?, updated_at=? WHERE id=? AND owner_id=?",
+                (now, now, project_id, owner_id),
+            )
+        return snapshot
+
+    def snapshots(self, owner_id: str, project_id: str, *, limit: int = 16) -> list[ProjectSnapshot]:
+        self.get(owner_id, project_id)
+        limit = max(1, min(int(limit), 100))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT snapshot.*, source.kind AS source_kind, source.label AS source_label
+                FROM project_snapshots AS snapshot
+                JOIN project_sources AS source ON source.id = snapshot.source_id
+                WHERE snapshot.project_id=?
+                ORDER BY snapshot.observed_at DESC LIMIT ?
+                """,
+                (project_id, limit),
+            ).fetchall()
+        return [
+            ProjectSnapshot(
+                id=row["id"], project_id=row["project_id"], source_id=row["source_id"],
+                source_kind=row["source_kind"], source_label=row["source_label"],
+                summary=json.loads(row["summary_json"]), fingerprint=row["fingerprint"],
+                changed=bool(row["changed"]), observed_at=row["observed_at"],
+            )
+            for row in rows
+        ]
 
     def mark_inspected(self, owner_id: str, project_id: str) -> Project:
         self.get(owner_id, project_id)

@@ -22,6 +22,7 @@ class ProjectContext:
     inspected_at: str | None
     sources: tuple[dict[str, str], ...]
     relationships: tuple[dict[str, str], ...]
+    awareness: tuple[dict[str, str], ...]
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -43,6 +44,12 @@ class ProjectContext:
             lines.append(
                 "Related projects: " + "; ".join(
                     f"{item['relation']} {item['title']}" for item in self.relationships
+                ) + "."
+            )
+        if self.awareness:
+            lines.append(
+                "Latest explicit source signals: " + "; ".join(
+                    f"{item['label']}: {item['summary']}" for item in self.awareness
                 ) + "."
             )
         lines.append(
@@ -85,6 +92,29 @@ class ProjectContextResolver:
             related.append({"relation": link.relation, "title": related_project.title})
             if len(related) >= self._MAX_RELATIONSHIPS:
                 break
+        awareness: list[dict[str, str]] = []
+        seen_sources: set[str] = set()
+        for snapshot in self.store.snapshots(owner_id, project.id, limit=12):
+            if snapshot.source_id in seen_sources:
+                continue
+            seen_sources.add(snapshot.source_id)
+            summary = snapshot.summary
+            if summary.get("state") != "ready":
+                detail = str(summary.get("message") or "source unavailable")
+            else:
+                branch = str(summary.get("branch") or "branch not reported")
+                commits = summary.get("recent_commits")
+                commit = commits[0].get("summary") if isinstance(commits, list) and commits and isinstance(commits[0], dict) else None
+                changed = summary.get("changed_file_count")
+                parts = [branch]
+                if isinstance(changed, int):
+                    parts.append(f"{changed} local changes")
+                if isinstance(commit, str) and commit:
+                    parts.append(f"latest: {commit[:180]}")
+                detail = " · ".join(parts)
+            awareness.append({"label": snapshot.source_label, "summary": detail[:320]})
+            if len(awareness) >= 3:
+                break
         return ProjectContext(
             project_id=project.id,
             title=project.title,
@@ -93,4 +123,5 @@ class ProjectContextResolver:
             inspected_at=project.inspected_at,
             sources=sources,
             relationships=tuple(related),
+            awareness=tuple(awareness),
         )

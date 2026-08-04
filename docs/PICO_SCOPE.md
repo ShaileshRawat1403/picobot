@@ -166,20 +166,15 @@ The provider, subscription, registry, and reviewed-learning foundations are
 implemented. The next slices must make those mechanics coherent for daily
 personal work rather than add a connector catalogue:
 
-1. Establish the standalone Pico identity described in
-   [`PICO_V1_PRODUCT_CONTRACT.md`](PICO_V1_PRODUCT_CONTRACT.md).
-2. Add an owner-created Project Registry with explicit resources, capability
-   grants, relationships, freshness, and archival; it must not pretend to
-   create hard multi-tenant isolation before the stores enforce it.
-3. Add project orientation and a deterministic context resolver: active
-   project, objective, role lens, stance, challenge policy, temporary
-   constraints, explicit comparison context, and evidence of what entered a
-   turn.
-4. Compile conversation into the existing workflow contract with readable work
-   verbs and owner acceptance; do not create a second execution model.
-5. Use the resulting daily path against real weekly work before admitting a
+1. The standalone Pico identity, owner-created Project Registry, session
+   orientation, project briefs, bounded project-awareness snapshots, and
+   conversation-to-workflow composition are implemented.
+2. Use the resulting daily path against real weekly work before admitting a
    new integration. A connector remains optional until it has a concrete,
    repeated, bounded workflow.
+3. Expand project awareness only from demonstrated friction: durable project
+   decisions and work timelines are preferable to an ambient full-repository
+   index or a connector catalogue.
 
 This contract is the gate for future Pico slices. A feature can be broad in
 mechanics while remaining narrow in integrations.

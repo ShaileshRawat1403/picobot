@@ -131,6 +131,11 @@ portable archive of Pico-owned durable state using consistent SQLite snapshots,
 and excludes configuration, environment files, runtime tokens, and known
 credential filenames.
 
+Connected local Git and GitHub sources can also be explicitly refreshed into
+bounded project-awareness snapshots: branch/change signals and recent history
+are retained as freshness-labelled project evidence, not as an implicit full
+repository index. See [`PICO_PROJECT_BRAIN.md`](PICO_PROJECT_BRAIN.md).
+
 Before a new integration enters scope, a real recurring workflow must prove a
 missing capability, including its narrow read path, readiness, approval,
 evidence, failure, and removal contracts. Legacy adapters may remain for

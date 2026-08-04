@@ -295,7 +295,7 @@ class WebChannel(BaseChannel):
                             writer,
                             200,
                             json.dumps(
-                                {"project": project.to_dict(), "sources": [item.to_dict() for item in store.sources(owner_id, project_id)], "links": [item.to_dict() for item in store.links(owner_id, project_id)]},
+                                {"project": project.to_dict(), "sources": [item.to_dict() for item in store.sources(owner_id, project_id)], "links": [item.to_dict() for item in store.links(owner_id, project_id)], "snapshots": [item.to_dict() for item in store.snapshots(owner_id, project_id)]},
                                 ensure_ascii=False,
                             ).encode(),
                         )
@@ -326,6 +326,12 @@ class WebChannel(BaseChannel):
                             payload.get("source_id"),
                         )
                         self._write_response(writer, 201, json.dumps(result, ensure_ascii=False).encode())
+                    elif method == "POST" and operation == "refresh":
+                        payload = self._json_body(body)
+                        result = await self._refresh_browser_project_awareness(
+                            owner_id, project_id, payload.get("source_id")
+                        )
+                        self._write_response(writer, 200, json.dumps(result, ensure_ascii=False).encode())
                     elif method == "POST" and operation == "links":
                         payload = self._json_body(body)
                         link = store.link(owner_id, project_id, payload.get("related_project_id"), relation=payload.get("relation"), summary=payload.get("summary"))
@@ -1898,6 +1904,35 @@ class WebChannel(BaseChannel):
                 "source_label": brief.source_label,
             },
         }
+
+    async def _refresh_browser_project_awareness(
+        self, owner_id: str, project_id: str, source_id: object = None
+    ) -> dict[str, Any]:
+        """Refresh explicit local/GitHub source observations; never grant authority."""
+        from picobot.projects import ProjectAwarenessError, ProjectAwarenessInspector
+
+        store = self._project_store()
+        project = store.get(owner_id, project_id)
+        sources = store.sources(owner_id, project_id)
+        if source_id is not None:
+            if not isinstance(source_id, str) or not source_id:
+                raise ValueError("Project source identifier is invalid")
+            sources = [source for source in sources if source.id == source_id]
+            if not sources:
+                raise ValueError("Project source was not found")
+        sources = [source for source in sources if source.kind in {"local_folder", "github_repo"}]
+        if not sources:
+            raise ValueError("Attach a local folder or GitHub repository before refreshing project awareness")
+        inspector = ProjectAwarenessInspector(self._runtime_config().workspace_path)
+        snapshots = []
+        for source in sources:
+            try:
+                observed = await asyncio.to_thread(inspector.inspect, project, source)
+                summary = observed.summary
+            except ProjectAwarenessError as exc:
+                summary = {"state": "unavailable", "message": str(exc)}
+            snapshots.append(store.record_snapshot(owner_id, project.id, source.id, summary=summary).to_dict())
+        return {"project": store.get(owner_id, project.id).to_dict(), "snapshots": snapshots}
 
     def _project_workspace_folders(self, client_id: str) -> list[dict[str, str]]:
         """Expose a small, local-only picker for declared project sources.
