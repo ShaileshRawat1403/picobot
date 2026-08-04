@@ -316,6 +316,16 @@ class WebChannel(BaseChannel):
                         _, source_id = operation.split("/", 1)
                         store.remove_source(owner_id, project_id, source_id)
                         self._write_response(writer, 204, b"")
+                    elif method == "POST" and operation == "brief":
+                        payload = self._json_body(body)
+                        result = await self._browser_project_brief(
+                            client_id,
+                            owner_id,
+                            project_id,
+                            payload.get("session_id"),
+                            payload.get("source_id"),
+                        )
+                        self._write_response(writer, 201, json.dumps(result, ensure_ascii=False).encode())
                     elif method == "POST" and operation == "links":
                         payload = self._json_body(body)
                         link = store.link(owner_id, project_id, payload.get("related_project_id"), relation=payload.get("relation"), summary=payload.get("summary"))
@@ -1826,6 +1836,53 @@ class WebChannel(BaseChannel):
         from picobot.projects import ProjectStore
 
         return ProjectStore(self._runtime_config().workspace_path)
+
+    async def _browser_project_brief(
+        self,
+        client_id: str,
+        owner_id: str,
+        project_id: str,
+        session_id: object,
+        source_id: object,
+    ) -> dict[str, Any]:
+        """Create one durable, owner-requested, read-only project brief."""
+        from picobot.projects import ProjectBriefError, ProjectBriefInspector
+
+        valid_session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, valid_session_id)
+        if not isinstance(source_id, str) or not source_id.strip():
+            raise ValueError("Choose a declared project source to review")
+        store = self._project_store()
+        project = store.get(owner_id, project_id)
+        source = next((item for item in store.sources(owner_id, project_id) if item.id == source_id), None)
+        if source is None:
+            raise ValueError("Project source was not found")
+        try:
+            brief = await asyncio.to_thread(
+                ProjectBriefInspector(self._runtime_config().workspace_path).inspect,
+                project,
+                source,
+            )
+        except ProjectBriefError as exc:
+            raise ValueError(str(exc)) from exc
+        artifact = self._artifact_store().create(
+            owner_id=owner_id,
+            session_key=self._session_key(client_id, valid_session_id),
+            title=f"{project.title} project brief",
+            content=brief.content,
+            kind="brief",
+            content_type="text/markdown",
+        )
+        store.mark_inspected(owner_id, project_id)
+        return {
+            "artifact": asdict(artifact),
+            "brief": {
+                "project_id": brief.project_id,
+                "source_id": brief.source_id,
+                "source_kind": brief.source_kind,
+                "source_label": brief.source_label,
+            },
+        }
 
     def _project_workspace_folders(self, client_id: str) -> list[dict[str, str]]:
         """Expose a small, local-only picker for declared project sources.

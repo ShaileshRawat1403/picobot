@@ -344,6 +344,42 @@ def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Pat
     assert reloaded.metadata["pico_session_orientation"]["project_id"] == project.id
 
 
+def test_browser_project_brief_is_explicit_owner_scoped_and_saved_as_an_artifact(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    source_root = tmp_path / "project-source"
+    workspace.mkdir()
+    source_root.mkdir()
+    (source_root / "README.md").write_text("# Safe project\n\nTOKEN=do-not-save\n", encoding="utf-8")
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+    owner_id = channel._memory_owner(CLIENT_A)
+    project = channel._project_store().create(
+        owner_id, title="Pico", kind="software", purpose="A safe local workbench"
+    )
+    source = channel._project_store().add_source(
+        owner_id, project.id, kind="local_folder", label="Checkout", locator=str(source_root)
+    )
+
+    result = asyncio.run(
+        channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_A, source.id)
+    )
+
+    artifacts = ArtifactStore(workspace).list(owner_id, session_key=channel._session_key(CLIENT_A, SESSION_A))
+    assert result["artifact"]["id"] == artifacts[0].id
+    assert artifacts[0].kind == "brief"
+    content = ArtifactStore(workspace).read_content(owner_id, artifacts[0].id)
+    assert "Safe project" in content
+    assert "do-not-save" not in content
+    assert "[sensitive value redacted]" in content
+    assert channel._project_store().get(owner_id, project.id).inspected_at is not None
+
+    with pytest.raises(ValueError, match="Session was not found"):
+        asyncio.run(channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_B, source.id))
+
+
 def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
