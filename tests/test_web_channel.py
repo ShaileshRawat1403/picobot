@@ -354,6 +354,71 @@ def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path
         channel._compile_browser_workflow(CLIENT_B, SESSION_A, {"brief": "A private workflow"})
 
 
+def test_browser_maintenance_is_owner_scoped_and_redacts_action_payloads(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    config = SimpleNamespace(workspace_path=workspace)
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._runtime_config = lambda: config
+    sessions = SessionManager(workspace)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+
+    project = channel._project_store().create(
+        channel._memory_owner(CLIENT_A),
+        title="Pico workbench",
+        kind="software",
+        purpose="Keep a bounded review queue for Pico.",
+    )
+    channel._set_browser_session_orientation(CLIENT_A, SESSION_A, {"project_id": project.id})
+    actions = ProposedActionStore(workspace)
+    actions.stage(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        profile_id="mission-work",
+        capability_id="governed_action",
+        tool_name="save_artifact",
+        target="Local Pico workspace",
+        summary="Review the proposed Pico brief",
+        payload_data={"private_token": "must-not-appear"},
+    )
+    actions.stage(
+        owner_id=channel._memory_owner(CLIENT_B),
+        session_key=channel._session_key(CLIENT_B, SESSION_B),
+        profile_id="mission-work",
+        capability_id="governed_action",
+        tool_name="save_artifact",
+        target="Another workspace",
+        summary="Another owner's pending action",
+        payload_data={"private_token": "also-hidden"},
+    )
+    ArtifactStore(workspace).create(
+        owner_id=channel._memory_owner(CLIENT_A),
+        session_key=channel._session_key(CLIENT_A, SESSION_A),
+        title="Review note",
+        content="Private artifact contents stay out of the cockpit.",
+    )
+
+    result = channel._browser_maintenance(CLIENT_A, SESSION_A)
+
+    assert result["scope"]["project"] == {
+        "id": project.id,
+        "title": "Pico workbench",
+        "kind": "software",
+    }
+    assert result["counts"]["approvals"] == 1
+    assert result["counts"]["artifacts_to_review"] == 1
+    assert result["next_action"] == {
+        "label": "Review pending approval",
+        "detail": "Review the proposed Pico brief",
+        "target_view": "operations",
+    }
+    rendered = json.dumps(result)
+    assert "must-not-appear" not in rendered
+    assert "also-hidden" not in rendered
+    assert "Another owner's pending action" not in rendered
+    assert "Private artifact contents" not in rendered
+    assert all("payload" not in item for item in result["attention"])
+
+
 def test_project_workspace_folder_picker_is_bounded_to_visible_workspace(tmp_path: Path):
     workspace = tmp_path / "workspace"
     (workspace / "Pico").mkdir(parents=True)

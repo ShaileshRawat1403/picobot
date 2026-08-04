@@ -134,6 +134,16 @@ class WebChannel(BaseChannel):
                     }
                 ).encode()
                 self._write_response(writer, 200, response)
+            elif path == "/api/maintenance":
+                try:
+                    if method != "GET":
+                        raise ValueError("Maintenance cockpit supports GET only")
+                    client_id = self._browser_id_from_query(query)
+                    session_id = self._valid_browser_id(self._single_query_value(query, "session_id"))
+                    result = self._browser_maintenance(client_id, session_id)
+                    self._write_response(writer, 200, json.dumps(result, ensure_ascii=False).encode())
+                except (ValueError, KeyError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path == "/api/schedules":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -2007,6 +2017,170 @@ class WebChannel(BaseChannel):
         from picobot.search import PersonalSearch
 
         return PersonalSearch(self._runtime_config().workspace_path)
+
+    def _browser_maintenance(self, client_id: str, session_id: str) -> dict[str, Any]:
+        """Project a compact, owner-scoped review queue from durable Pico evidence.
+
+        The cockpit is deliberately read-only.  It never reads private action
+        payloads, provider errors, task objectives, artifact content, or hidden
+        reasoning.  Every item links back to the existing review surface.
+        """
+        from picobot.artifacts import ArtifactStore
+
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        owner_id = self._memory_owner(client_id)
+        projects = self._project_store().list(owner_id)
+        workflows = self._workflow_store().list(owner_id)
+        workflow_titles = {item.id: item.title for item in workflows}
+        workflow_runs = self._workflow_store().list_runs(owner_id, limit=100)
+        tasks = self._task_store().list(owner_id, limit=100)
+        actions = self._action_store().list_owner(owner_id, limit=100)
+        artifacts = ArtifactStore(self._runtime_config().workspace_path).list(owner_id, limit=100)
+        missions = self._mission_store().list(owner_id, limit=100)
+        orientation = self._browser_session_orientation(client_id, session_id)
+
+        pending_actions = [item for item in actions if item.status == "proposed"]
+        waiting_workflows = [
+            item for item in workflow_runs if item.state in {"waiting_for_approval", "waiting_for_input"}
+        ]
+        active_tasks = [item for item in tasks if item.state in {"queued", "running", "waiting_for_approval"}]
+        blocked_missions = [item for item in missions if item.state == "blocked"]
+        draft_workflows = [item for item in workflows if item.state == "draft"]
+        review_artifacts = [
+            item for item in artifacts if item.status == "draft" or item.verification_status != "verified"
+        ]
+
+        attention: list[dict[str, Any]] = []
+        attention.extend(
+            {
+                "kind": "approval",
+                "title": item.summary,
+                "state": "Awaiting your approval",
+                "updated_at": item.updated_at,
+                "target_view": "operations",
+            }
+            for item in pending_actions[:4]
+        )
+        attention.extend(
+            {
+                "kind": "workflow",
+                "title": workflow_titles.get(item.workflow_id, "Workflow run"),
+                "state": "Awaiting approval" if item.state == "waiting_for_approval" else "Awaiting input",
+                "updated_at": item.updated_at,
+                "target_view": "workflows",
+                "workflow_id": item.workflow_id,
+            }
+            for item in waiting_workflows[:4]
+        )
+        attention.extend(
+            {
+                "kind": "task",
+                "title": item.title,
+                "state": item.state.replace("_", " "),
+                "updated_at": item.updated_at,
+                "target_view": "missions",
+            }
+            for item in active_tasks[:3]
+        )
+        attention.extend(
+            {
+                "kind": "mission",
+                "title": item.title,
+                "state": "Blocked",
+                "updated_at": item.updated_at,
+                "target_view": "missions",
+            }
+            for item in blocked_missions[:3]
+        )
+        attention.extend(
+            {
+                "kind": "artifact",
+                "title": item.title,
+                "state": "Needs review" if item.status == "draft" else item.verification_status,
+                "updated_at": item.updated_at,
+                "target_view": "artifacts",
+                "artifact_id": item.id,
+            }
+            for item in review_artifacts[:4]
+        )
+        attention.sort(key=lambda item: item["updated_at"], reverse=True)
+
+        if pending_actions:
+            next_action = {
+                "label": "Review pending approval",
+                "detail": pending_actions[0].summary,
+                "target_view": "operations",
+            }
+        elif waiting_workflows:
+            workflow = waiting_workflows[0]
+            next_action = {
+                "label": "Continue workflow review",
+                "detail": workflow_titles.get(workflow.workflow_id, "Workflow run"),
+                "target_view": "workflows",
+                "workflow_id": workflow.workflow_id,
+            }
+        elif active_tasks:
+            next_action = {
+                "label": "Resume active task",
+                "detail": active_tasks[0].title,
+                "target_view": "missions",
+            }
+        elif blocked_missions:
+            next_action = {
+                "label": "Unblock a mission",
+                "detail": blocked_missions[0].title,
+                "target_view": "missions",
+            }
+        elif draft_workflows:
+            next_action = {
+                "label": "Inspect workflow draft",
+                "detail": draft_workflows[0].title,
+                "target_view": "workflows",
+                "workflow_id": draft_workflows[0].id,
+            }
+        elif review_artifacts:
+            next_action = {
+                "label": "Review a durable output",
+                "detail": review_artifacts[0].title,
+                "target_view": "artifacts",
+                "artifact_id": review_artifacts[0].id,
+            }
+        elif not projects:
+            next_action = {
+                "label": "Connect a project",
+                "detail": "Make the current work legible before adding more context.",
+                "target_view": "projects",
+            }
+        else:
+            next_action = {
+                "label": "Start a weekly review",
+                "detail": "Choose one outcome worth turning into a durable artifact or workflow.",
+                "target_view": "chat",
+            }
+
+        active_project = orientation.get("project")
+        return {
+            "scope": {
+                "session_id": session_id,
+                "project": (
+                    {"id": active_project["id"], "title": active_project["title"], "kind": active_project["kind"]}
+                    if active_project
+                    else None
+                ),
+            },
+            "counts": {
+                "projects": len(projects),
+                "approvals": len(pending_actions),
+                "workflow_waits": len(waiting_workflows),
+                "active_tasks": len(active_tasks),
+                "blocked_missions": len(blocked_missions),
+                "draft_workflows": len(draft_workflows),
+                "artifacts_to_review": len(review_artifacts),
+            },
+            "next_action": next_action,
+            "attention": attention[:12],
+        }
 
     @staticmethod
     def _provider_setup():

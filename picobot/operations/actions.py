@@ -330,6 +330,20 @@ class ProposedActionStore:
             ).fetchall()
         return [self._expire_if_needed(self._action(row)) for row in rows]
 
+    def list_owner(self, owner_id: str, *, limit: int = 100) -> list[ProposedAction]:
+        """Return an owner's safe action records without exposing payloads."""
+        limit = max(1, min(limit, 100))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM proposed_actions
+                WHERE owner_id = ?
+                ORDER BY updated_at DESC LIMIT ?
+                """,
+                (owner_id, limit),
+            ).fetchall()
+        return [self._expire_if_needed(self._action(row)) for row in rows]
+
     def list_by_mission(self, owner_id: str, mission_id: str, *, limit: int = 30) -> list[ProposedAction]:
         limit = max(1, min(limit, 100))
         with self._connect() as connection:
