@@ -410,6 +410,21 @@ async def test_agent_turn_cancellation_persists_cancelled_run(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_model_call_timeout_releases_the_turn_loop(tmp_path: Path):
+    """One hung provider call must not hold future local work indefinitely."""
+    agent = AgentLoop(bus=MessageBus(), provider=_SlowProvider(), workspace=tmp_path)
+    agent._MODEL_CALL_TIMEOUT_SECONDS = 0.01
+
+    content, tools, _messages, metadata = await agent._run_agent_loop(
+        [{"role": "user", "content": "Wait forever"}], allowed_tools=set()
+    )
+
+    assert tools == []
+    assert metadata["_failed"] is True
+    assert content and "did not respond" in content
+
+
+@pytest.mark.asyncio
 async def test_agent_runs_are_session_isolated(tmp_path: Path):
     agent = AgentLoop(bus=MessageBus(), provider=_RecordingProvider(), workspace=tmp_path)
 

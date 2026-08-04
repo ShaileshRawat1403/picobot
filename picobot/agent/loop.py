@@ -82,6 +82,10 @@ class AgentLoop:
     """
 
     _TOOL_RESULT_MAX_CHARS = 16_000
+    # A provider that never returns must not hold Pico's single-owner turn
+    # lock indefinitely.  Individual bounded tasks can still apply their
+    # smaller total elapsed-time budget around the whole turn.
+    _MODEL_CALL_TIMEOUT_SECONDS = 90
 
     def __init__(
         self,
@@ -369,7 +373,18 @@ class AgentLoop:
             chat_kwargs = {"messages": messages, "tools": tool_defs, "model": model}
             if reasoning_effort is not None:
                 chat_kwargs["reasoning_effort"] = reasoning_effort
-            response = await provider.chat_with_retry(**chat_kwargs)
+            try:
+                response = await asyncio.wait_for(
+                    provider.chat_with_retry(**chat_kwargs),
+                    timeout=self._MODEL_CALL_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                failed = True
+                final_content = (
+                    "The model did not respond within 90 seconds. "
+                    "That run stopped so later work is not held in the queue."
+                )
+                break
 
             # Trusted usage only: summed from the provider response and bounded
             # to the three known integer counters. Everything else is ignored.

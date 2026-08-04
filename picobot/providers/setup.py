@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -275,6 +276,59 @@ class ProviderSetupService:
         config.agents.defaults.model = model.strip()
         save_config(config, self.config_path)
         return self.inventory()
+
+    async def list_models(self, provider_name: str) -> dict[str, Any]:
+        """Return the account-visible model identifiers for one safe provider.
+
+        Model discovery is intentionally narrow: Pico asks OpenAI's documented
+        ``/v1/models`` endpoint only when the owner opens the picker.  The
+        credential stays in the local profile and neither request headers nor
+        response bodies beyond model ids are retained or logged.
+        """
+        provider_name = self._validate_provider_name(provider_name)
+        if provider_name != "openai":
+            raise ValueError("Live model discovery is currently available for OpenAI API only")
+        config = load_config(self.config_path)
+        entry = self._entry(provider_name, config)
+        if entry["status"] not in {"configured", "ready"}:
+            raise ValueError("Configure the OpenAI API key before listing available models")
+        api_key = config.providers.openai.api_key
+        if not api_key:
+            raise ValueError("Configure the OpenAI API key before listing available models")
+
+        def fetch() -> list[str]:
+            request = Request(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
+                method="GET",
+            )
+            try:
+                with urlopen(request, timeout=10) as response:
+                    raw = response.read(2_000_000)
+            except HTTPError as exc:
+                if exc.code in {401, 403}:
+                    raise ValueError("OpenAI rejected the model catalog request") from None
+                raise ValueError("OpenAI model catalog is unavailable right now") from None
+            except (URLError, OSError):
+                raise ValueError("Pico could not reach the OpenAI model catalog") from None
+            try:
+                data = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                raise ValueError("OpenAI returned an invalid model catalog") from None
+            items = data.get("data") if isinstance(data, dict) else None
+            if not isinstance(items, list):
+                raise ValueError("OpenAI returned an invalid model catalog")
+            ids = {
+                item.get("id").strip()
+                for item in items
+                if isinstance(item, dict)
+                and isinstance(item.get("id"), str)
+                and item["id"].strip()
+                and len(item["id"].strip()) <= 240
+            }
+            return sorted(ids, key=str.casefold)
+
+        return {"provider": "openai", "models": await asyncio.to_thread(fetch)}
 
     async def test_connection(self, provider_name: str) -> dict:
         """Run a bounded, read-only readiness check where valid without modifying configuration."""

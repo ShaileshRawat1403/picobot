@@ -157,3 +157,41 @@ async def test_reconfiguring_a_provider_clears_its_stale_diagnostic(tmp_workspac
     refreshed = next(item for item in service.inventory()["providers"] if item["id"] == "openai")
     assert refreshed["status"] == "configured"
     assert refreshed["last_diagnostic"] is None
+
+
+@pytest.mark.asyncio
+async def test_openai_model_catalog_returns_only_safe_model_identifiers(tmp_workspace: Path, monkeypatch):
+    """Model discovery is explicit and never leaks the locally stored key."""
+    set_profile_provider_secret("openai", "sk-model-catalog-secret", tmp_workspace)
+
+    class Response:
+        def read(self, _limit):
+            return b'{"data":[{"id":"gpt-5"},{"id":"gpt-4.1-mini"},{"id":"gpt-5"},{"id":42}]}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    seen = {}
+
+    def fake_urlopen(request, timeout):
+        seen["url"] = request.full_url
+        seen["authorization"] = request.get_header("Authorization")
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr("picobot.providers.setup.urlopen", fake_urlopen)
+    result = await ProviderSetupService(tmp_workspace).list_models("openai")
+
+    assert result == {"provider": "openai", "models": ["gpt-4.1-mini", "gpt-5"]}
+    assert seen["url"] == "https://api.openai.com/v1/models"
+    assert seen["timeout"] == 10
+    assert "sk-model-catalog-secret" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_openai_model_catalog_requires_a_configured_openai_api(tmp_workspace: Path):
+    with pytest.raises(ValueError, match="Configure the OpenAI API key"):
+        await ProviderSetupService(tmp_workspace).list_models("openai")

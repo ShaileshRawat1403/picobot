@@ -1153,14 +1153,14 @@
               <div class="eyebrow">Runtime policy</div>
               <div class="policy-effective" id="policy-effective">Loading…</div>
             </div>
-            <button class="title-action" id="policy-close" type="button">Close</button>
+            <div class="provider-row"><button class="title-action" id="refresh-openai-models" type="button">OpenAI models</button><button class="title-action" id="policy-close" type="button">Close</button></div>
           </div>
           <div class="policy-scopes">
             <div class="card policy-scope">
               <div class="section-label" style="padding:0 0 8px"><span>This session</span><span id="policy-session-source"></span></div>
               <div class="form-row">
                 <select id="session-policy-provider" aria-label="Session provider"></select>
-                <input id="session-policy-model" autocomplete="off" maxlength="240" placeholder="Model, e.g. anthropic/claude-opus-4-5">
+                <input id="session-policy-model" list="openai-model-options" autocomplete="off" maxlength="240" placeholder="Choose or type any configured model">
               </div>
               <div class="form-row">
                 <select id="session-policy-effort" aria-label="Session reasoning effort"><option value="">Default effort</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
@@ -1175,7 +1175,7 @@
               <div class="section-label" style="padding:0 0 8px"><span>Global default</span><span id="policy-global-version"></span></div>
               <div class="form-row">
                 <select id="global-policy-provider" aria-label="Global provider"></select>
-                <input id="global-policy-model" autocomplete="off" maxlength="240" placeholder="Model, e.g. anthropic/claude-opus-4-5">
+                <input id="global-policy-model" list="openai-model-options" autocomplete="off" maxlength="240" placeholder="Choose or type any configured model">
               </div>
               <div class="form-row">
                 <select id="global-policy-effort" aria-label="Global reasoning effort"><option value="">Default effort</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
@@ -1187,7 +1187,8 @@
               </div>
             </div>
           </div>
-          <p class="provider-note">The effective policy is resolved before each new run and applies only to later turns. It never rewrites past runs. Only providers already configured in this local profile can be selected, and reasoning effort is applied only where the selected provider actually forwards it.</p>
+          <datalist id="openai-model-options"></datalist>
+          <p class="provider-note" id="openai-model-note">The effective policy is resolved before each new run and applies only to later turns. OpenAI models are fetched only when you request the catalog; you can always type a supported model identifier directly.</p>
         </div>
         <div class="transcript" id="transcript"></div>
         <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span id="composer-project-context">No project context</span></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Pico remembers only what you explicitly save.</div></div>
@@ -1922,6 +1923,7 @@
     $('clear-session-policy').onclick = () => clearPolicy('session');
     $('save-global-policy').onclick = () => savePolicy('global');
     $('clear-global-policy').onclick = () => clearPolicy('global');
+    $('refresh-openai-models').onclick = loadOpenAIModels;
     $('utility-profile').onclick = () => showView('operations');
     $('utility-missions').onclick = () => showView('missions');
     $('utility-approvals').onclick = () => showView('operations');
@@ -1960,6 +1962,23 @@
         const cockpit = $('cockpit-policy-value');
         if (cockpit && data.effective) { cockpit.textContent = `${data.effective.provider}/${data.effective.model}`; cockpit.title = data.effective.valid ? `Serving via ${data.effective.source}. Click to change runtime policy.` : `Defaulted (${data.effective.reason || 'unavailable'}). Click to change runtime policy.`; }
       } catch { const cockpit = $('cockpit-policy-value'); if (cockpit) { cockpit.textContent = 'Unavailable'; cockpit.title = 'Runtime policy is unavailable. Click to retry.'; } if (!panel.hidden) toast('Pico could not load the runtime policy.'); }
+    }
+    async function loadOpenAIModels() {
+      const button = $('refresh-openai-models'), note = $('openai-model-note'), options = $('openai-model-options');
+      if (!button || !note || !options) return;
+      const original = button.textContent; button.disabled = true; button.textContent = 'Loading…';
+      try {
+        const response = await api('/api/providers/openai/models');
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'OpenAI models are unavailable.');
+        const models = Array.isArray(data.models) ? data.models : [];
+        options.innerHTML = models.map((model) => `<option value="${escapeHtml(model)}"></option>`).join('');
+        note.textContent = models.length ? `${models.length} OpenAI API models are available to this key. Pick one above or type a model identifier directly.` : 'OpenAI returned no selectable models for this key.';
+        toast(models.length ? 'OpenAI model catalog loaded.' : 'No OpenAI models were returned.');
+      } catch (error) {
+        note.textContent = error instanceof Error ? error.message : 'OpenAI model catalog is unavailable.';
+        toast('Pico could not load OpenAI models.');
+      } finally { button.disabled = false; button.textContent = original; }
     }
     function policyPayload(scope) { const prefix = scope === 'session' ? 'session-policy' : 'global-policy'; return { provider: $(`${prefix}-provider`).value || null, model: $(`${prefix}-model`).value.trim() || null, reasoning_effort: $(`${prefix}-effort`).value || null, response_mode: $(`${prefix}-mode`).value || 'default' }; }
     async function savePolicy(scope) {

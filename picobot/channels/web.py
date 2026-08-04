@@ -944,6 +944,10 @@ class WebChannel(BaseChannel):
                         response = json.dumps(
                             await setup.test_connection(provider_name), ensure_ascii=False
                         ).encode()
+                    elif method == "GET" and operation == "models":
+                        response = json.dumps(
+                            await setup.list_models(provider_name), ensure_ascii=False
+                        ).encode()
                     else:
                         raise ValueError("Provider route was not found")
                     self._write_response(writer, 200, response)
