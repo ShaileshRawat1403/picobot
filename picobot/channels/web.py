@@ -295,7 +295,13 @@ class WebChannel(BaseChannel):
                             writer,
                             200,
                             json.dumps(
-                                {"project": project.to_dict(), "sources": [item.to_dict() for item in store.sources(owner_id, project_id)], "links": [item.to_dict() for item in store.links(owner_id, project_id)], "snapshots": [item.to_dict() for item in store.snapshots(owner_id, project_id)]},
+                                {
+                                    "project": project.to_dict(),
+                                    "sources": [item.to_dict() for item in store.sources(owner_id, project_id)],
+                                    "links": [item.to_dict() for item in store.links(owner_id, project_id)],
+                                    "snapshots": [item.to_dict() for item in store.snapshots(owner_id, project_id)],
+                                    "activity": [item.to_dict() for item in store.activity(owner_id, project_id)],
+                                },
                                 ensure_ascii=False,
                             ).encode(),
                         )
@@ -372,6 +378,14 @@ class WebChannel(BaseChannel):
                             content_type=content_type,
                             source_run_id=source_run_id,
                             source_mission_id=source_mission_id,
+                        )
+                        self._record_browser_project_activity(
+                            client_id,
+                            session_id,
+                            kind="artifact",
+                            resource_id=artifact.id,
+                            title=artifact.title,
+                            summary=f"{artifact.kind} · revision {artifact.revision}",
                         )
                         self._write_response(
                             writer, 201, json.dumps({"artifact": asdict(artifact)}).encode()
@@ -1862,6 +1876,48 @@ class WebChannel(BaseChannel):
 
         return ProjectStore(self._runtime_config().workspace_path)
 
+    def _record_browser_project_activity(
+        self,
+        client_id: str,
+        session_id: object,
+        *,
+        kind: str,
+        title: str,
+        resource_id: str | None = None,
+        summary: str | None = None,
+    ) -> None:
+        """Link a browser-created work product to the selected project only.
+
+        A session has to explicitly orient itself to a project before Pico
+        records activity there.  The timeline stores labels and IDs, never
+        artifact contents, prompts, action payloads, or provider errors.
+        """
+        try:
+            from picobot.session.orientation import get_orientation
+
+            valid_session_id = self._valid_browser_id(session_id)
+            self._require_browser_session(client_id, valid_session_id)
+            session = self._session_manager().get_or_create(
+                self._session_key(client_id, valid_session_id)
+            )
+            orientation = get_orientation(session.metadata)
+            if not orientation.project_id:
+                return
+            self._project_store().record_activity(
+                self._memory_owner(client_id),
+                orientation.project_id,
+                session.key,
+                kind=kind,
+                title=title,
+                resource_id=resource_id,
+                summary=summary,
+            )
+        except KeyError:
+            # The orientation can outlive an intentionally removed project.
+            return
+        except Exception:
+            logger.warning("Could not record browser project activity")
+
     async def _browser_project_brief(
         self,
         client_id: str,
@@ -1897,6 +1953,14 @@ class WebChannel(BaseChannel):
             content=brief.content,
             kind="brief",
             content_type="text/markdown",
+        )
+        self._record_browser_project_activity(
+            client_id,
+            valid_session_id,
+            kind="artifact",
+            resource_id=artifact.id,
+            title=artifact.title,
+            summary="Read-only project brief",
         )
         store.mark_inspected(owner_id, project_id)
         return {
@@ -2586,6 +2650,14 @@ class WebChannel(BaseChannel):
             title=title,
             objective=objective,
             current_step=current_step,
+        )
+        self._record_browser_project_activity(
+            client_id,
+            session_id,
+            kind="mission",
+            resource_id=mission.id,
+            title=mission.title,
+            summary="Mission created",
         )
         return mission.to_dict()
 

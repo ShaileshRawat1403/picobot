@@ -362,6 +362,7 @@ def test_browser_project_brief_is_explicit_owner_scoped_and_saved_as_an_artifact
     source = channel._project_store().add_source(
         owner_id, project.id, kind="local_folder", label="Checkout", locator=str(source_root)
     )
+    channel._set_browser_session_orientation(CLIENT_A, SESSION_A, {"project_id": project.id})
 
     result = asyncio.run(
         channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_A, source.id)
@@ -375,6 +376,9 @@ def test_browser_project_brief_is_explicit_owner_scoped_and_saved_as_an_artifact
     assert "do-not-save" not in content
     assert "[sensitive value redacted]" in content
     assert channel._project_store().get(owner_id, project.id).inspected_at is not None
+    activity = channel._project_store().activity(owner_id, project.id)
+    assert [(item.kind, item.resource_id) for item in activity] == [("artifact", artifacts[0].id)]
+    assert "do-not-save" not in str(activity[0].to_dict())
 
     with pytest.raises(ValueError, match="Session was not found"):
         asyncio.run(channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_B, source.id))

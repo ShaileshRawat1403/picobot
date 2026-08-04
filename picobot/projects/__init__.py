@@ -3,10 +3,11 @@
 from picobot.projects.context import ProjectContext, ProjectContextResolver
 from picobot.projects.awareness import ProjectAwareness, ProjectAwarenessError, ProjectAwarenessInspector
 from picobot.projects.brief import ProjectBrief, ProjectBriefError, ProjectBriefInspector
-from picobot.projects.store import Project, ProjectLink, ProjectSnapshot, ProjectSource, ProjectStore
+from picobot.projects.store import Project, ProjectActivity, ProjectLink, ProjectSnapshot, ProjectSource, ProjectStore
 
 __all__ = [
     "Project",
+    "ProjectActivity",
     "ProjectAwareness",
     "ProjectAwarenessError",
     "ProjectAwarenessInspector",

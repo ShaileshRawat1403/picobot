@@ -80,6 +80,24 @@ class ProjectSnapshot:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class ProjectActivity:
+    """A safe durable link from a project to one Pico work product or event."""
+
+    id: str
+    project_id: str
+    owner_id: str
+    session_key: str
+    kind: str
+    resource_id: str | None
+    title: str
+    summary: str | None
+    created_at: str
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
 class ProjectStore:
     """Persist additive owner-scoped project context in the Pico workspace."""
 
@@ -132,6 +150,17 @@ class ProjectStore:
                 );
                 CREATE INDEX IF NOT EXISTS project_snapshots_project_observed_idx
                     ON project_snapshots(project_id, observed_at DESC);
+                CREATE TABLE IF NOT EXISTS project_activity (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, owner_id TEXT NOT NULL,
+                    session_key TEXT NOT NULL, kind TEXT NOT NULL, resource_id TEXT,
+                    title TEXT NOT NULL, summary TEXT, created_at TEXT NOT NULL,
+                    FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS project_activity_project_created_idx
+                    ON project_activity(project_id, created_at DESC);
+                CREATE UNIQUE INDEX IF NOT EXISTS project_activity_resource_kind_idx
+                    ON project_activity(project_id, kind, resource_id)
+                    WHERE resource_id IS NOT NULL;
                 CREATE TABLE IF NOT EXISTS project_links (
                     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, related_project_id TEXT NOT NULL,
                     relation TEXT NOT NULL, summary TEXT, created_at TEXT NOT NULL,
@@ -353,6 +382,63 @@ class ProjectStore:
             )
             for row in rows
         ]
+
+    def record_activity(
+        self,
+        owner_id: str,
+        project_id: str,
+        session_key: object,
+        *,
+        kind: object,
+        title: object,
+        resource_id: object = None,
+        summary: object = None,
+    ) -> ProjectActivity:
+        """Record project-owned Pico work without copying a transcript or payload."""
+        self.get(owner_id, project_id)
+        clean_session = self._text(session_key, "activity session", 320)
+        clean_kind = self._text(kind, "activity kind", 64)
+        clean_title = self._text(title, "activity title", 240)
+        clean_resource = self._text(resource_id, "activity resource", 320, required=False)
+        clean_summary = self._text(summary, "activity summary", 800, required=False)
+        activity = ProjectActivity(
+            id=uuid.uuid4().hex,
+            project_id=project_id,
+            owner_id=owner_id,
+            session_key=clean_session,
+            kind=clean_kind,
+            resource_id=clean_resource,
+            title=clean_title,
+            summary=clean_summary,
+            created_at=self._now(),
+        )
+        with self._connect() as connection:
+            if activity.resource_id:
+                existing = connection.execute(
+                    "SELECT * FROM project_activity WHERE project_id=? AND kind=? AND resource_id=?",
+                    (project_id, activity.kind, activity.resource_id),
+                ).fetchone()
+                if existing is not None:
+                    return ProjectActivity(**dict(existing))
+            connection.execute(
+                "INSERT INTO project_activity VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                tuple(asdict(activity).values()),
+            )
+            connection.execute(
+                "UPDATE projects SET updated_at=? WHERE id=? AND owner_id=?",
+                (activity.created_at, project_id, owner_id),
+            )
+        return activity
+
+    def activity(self, owner_id: str, project_id: str, *, limit: int = 40) -> list[ProjectActivity]:
+        self.get(owner_id, project_id)
+        limit = max(1, min(int(limit), 100))
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM project_activity WHERE project_id=? AND owner_id=? ORDER BY created_at DESC LIMIT ?",
+                (project_id, owner_id, limit),
+            ).fetchall()
+        return [ProjectActivity(**dict(row)) for row in rows]
 
     def mark_inspected(self, owner_id: str, project_id: str) -> Project:
         self.get(owner_id, project_id)

@@ -909,6 +909,42 @@ class AgentLoop:
             return self._queued_project_context_snapshots[queued_run_id]
         return self.project_contexts.resolve(owner_id, orientation.project_id)
 
+    def _record_project_run_activity(
+        self,
+        owner_id: str,
+        session: Session,
+        orientation: SessionOrientation,
+        run: RunRecord,
+    ) -> None:
+        """Link a terminal project-oriented run without copying its request.
+
+        The project timeline is a navigation aid, not another transcript.  It
+        keeps only the run receipt fields that are already visible in the run
+        detail view, and failure to write it can never change a completed turn.
+        """
+        if not orientation.project_id or run.state not in {
+            "completed",
+            "failed",
+            "cancelled",
+            "waiting_for_approval",
+        }:
+            return
+        try:
+            self.project_contexts.store.record_activity(
+                owner_id,
+                orientation.project_id,
+                session.key,
+                kind="run",
+                resource_id=run.id,
+                title=f"Pico run {run.state.replace('_', ' ')}",
+                summary=f"{run.capability_profile} · {run.provider}/{run.model}",
+            )
+        except KeyError:
+            # A project may be removed or archived after a turn was queued.
+            return
+        except Exception:
+            logger.warning("Could not link run {} to its project timeline", run.id[:8])
+
     def _session_project_brief_context(
         self, session: Session, owner_id: str
     ) -> ResolvedProjectBrief | None:
@@ -1225,6 +1261,7 @@ class AgentLoop:
             )
         run_task_id = task_id or getattr(run, "task_id", None)
         run = self.runs.mark_running(owner_id, run.id, provider=provider, model=model)
+        run_orientation = self._orientation_for_submitted_turn(session, queued_run_id)
         activity_context["run_id"] = run.id
         self._set_tool_context(
             activity_context.get("channel", "web"),
@@ -1398,6 +1435,7 @@ class AgentLoop:
                 if session.metadata.get("pico_active_task_id") == run_task_id:
                     session.metadata.pop("pico_active_task_id", None)
                     self.sessions.save(session)
+            self._record_project_run_activity(owner_id, session, run_orientation, run)
             raise
         except Exception:
             logger.exception("Run {} failed for session {}", run.id[:8], session.key)
@@ -1428,6 +1466,7 @@ class AgentLoop:
                 if session.metadata.get("pico_active_task_id") == run_task_id:
                     session.metadata.pop("pico_active_task_id", None)
                     self.sessions.save(session)
+            self._record_project_run_activity(owner_id, session, run_orientation, run)
             raise
 
         if getattr(run, "mission_id", None):
@@ -1437,6 +1476,7 @@ class AgentLoop:
                 )
             except Exception:
                 pass
+        self._record_project_run_activity(owner_id, session, run_orientation, run)
         return final_content, all_msgs, response_meta, run
 
     async def _process_message(

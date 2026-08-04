@@ -106,3 +106,32 @@ def test_project_context_resolver_is_bounded_read_only_and_owner_scoped(tmp_path
 
     store.update("owner-a", pico.id, title="Pico", kind="software", purpose="Personal work partner", capabilities=[], status="archived")
     assert ProjectContextResolver(tmp_path).resolve("owner-a", pico.id) is None
+
+
+def test_project_activity_is_owner_scoped_and_deduplicates_linked_work(tmp_path: Path):
+    store = ProjectStore(tmp_path)
+    project = store.create("owner-a", title="Pico", kind="software", purpose="Workbench")
+
+    created = store.record_activity(
+        "owner-a",
+        project.id,
+        "web:session-a",
+        kind="artifact",
+        resource_id="artifact-123",
+        title="Project brief",
+        summary="brief · revision 1",
+    )
+    duplicate = store.record_activity(
+        "owner-a",
+        project.id,
+        "web:session-a",
+        kind="artifact",
+        resource_id="artifact-123",
+        title="Changed title is ignored",
+        summary="This must not create another activity row",
+    )
+
+    assert duplicate == created
+    assert store.activity("owner-a", project.id) == [created]
+    with pytest.raises(KeyError):
+        store.activity("owner-b", project.id)
