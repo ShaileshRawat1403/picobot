@@ -55,6 +55,19 @@ def test_project_can_declare_local_and_github_sources_together(tmp_path: Path):
     assert store.sources("owner", project.id) == [github, local]
 
 
+def test_project_source_can_be_removed_only_from_its_own_project(tmp_path: Path):
+    store = ProjectStore(tmp_path)
+    project = store.create("owner", title="Pico", kind="software", purpose="Workbench")
+    other = store.create("owner", title="Other", kind="software", purpose="Separate work")
+    source = store.add_source("owner", project.id, kind="local_folder", label="Workspace", locator="/private/pico")
+
+    with pytest.raises(KeyError):
+        store.remove_source("owner", other.id, source.id)
+
+    store.remove_source("owner", project.id, source.id)
+    assert store.sources("owner", project.id) == []
+
+
 @pytest.mark.parametrize(
     ("kind", "locator"),
     [("url", "https://user:secret@example.com"), ("github_repo", "https://github.com/owner/repo")],

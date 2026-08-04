@@ -312,6 +312,10 @@ class WebChannel(BaseChannel):
                         payload = self._json_body(body)
                         source = store.add_source(owner_id, project_id, kind=payload.get("kind"), label=payload.get("label"), locator=payload.get("locator"))
                         self._write_response(writer, 201, json.dumps({"source": source.to_dict()}).encode())
+                    elif method == "DELETE" and operation.startswith("sources/"):
+                        _, source_id = operation.split("/", 1)
+                        store.remove_source(owner_id, project_id, source_id)
+                        self._write_response(writer, 204, b"")
                     elif method == "POST" and operation == "links":
                         payload = self._json_body(body)
                         link = store.link(owner_id, project_id, payload.get("related_project_id"), relation=payload.get("relation"), summary=payload.get("summary"))

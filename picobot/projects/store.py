@@ -216,6 +216,24 @@ class ProjectStore:
             rows = connection.execute("SELECT * FROM project_sources WHERE project_id=? ORDER BY created_at DESC", (project_id,)).fetchall()
         return [ProjectSource(**dict(row)) for row in rows]
 
+    def remove_source(self, owner_id: str, project_id: str, source_id: str) -> None:
+        """Remove one declared context reference without affecting the project itself."""
+        self.get(owner_id, project_id)
+        if not isinstance(source_id, str) or not self._ID_RE.fullmatch(source_id):
+            raise ValueError("Project source identifier is invalid")
+        now = self._now()
+        with self._connect() as connection:
+            removed = connection.execute(
+                "DELETE FROM project_sources WHERE id=? AND project_id=?",
+                (source_id, project_id),
+            ).rowcount
+            if removed != 1:
+                raise KeyError("Project source was not found")
+            connection.execute(
+                "UPDATE projects SET updated_at=? WHERE id=? AND owner_id=?",
+                (now, project_id, owner_id),
+            )
+
     def link(self, owner_id: str, project_id: str, related_project_id: str, *, relation: object, summary: object = None) -> ProjectLink:
         if project_id == related_project_id:
             raise ValueError("A project cannot link to itself")
