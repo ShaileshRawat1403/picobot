@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from picobot.workflows import WorkflowEngine, WorkflowStore
+from picobot.workflows import WorkflowDraftCompiler, WorkflowEngine, WorkflowStore
 from picobot.artifacts import ArtifactStore
 
 
@@ -200,6 +200,76 @@ def test_artifact_node_creates_durable_output(tmp_path: Path):
     artifacts = ArtifactStore(tmp_path).list(OWNER, session_key=SESSION)
     assert len(artifacts) == 1
     assert ArtifactStore(tmp_path).read_content(OWNER, artifacts[0].id) == "A durable note"
+
+
+def test_compiled_workflow_preserves_explicit_agent_outcome_after_approval(tmp_path: Path):
+    proposal = WorkflowDraftCompiler().compile(
+        "Turn this bounded source review into a decision brief.",
+        profile_id="personal-work",
+        source_mode="brief",
+        artifact_kind="brief",
+    )
+    store = make_store(tmp_path)
+    workflow = store.create_draft(
+        owner_id=OWNER,
+        session_key=SESSION,
+        title=proposal.title,
+        description=proposal.description,
+        nodes=proposal.nodes,
+        edges=proposal.edges,
+    )
+    assert next(node for node in workflow.nodes if node.kind == "agent").config["contract"] == {
+        "input": "brief",
+        "output": "text",
+    }
+    assert next(node for node in workflow.nodes if node.kind == "artifact").config["content_from"] == "previous_output"
+    store.transition(OWNER, workflow.id, "approved")
+    run = store.start_run(OWNER, workflow.id, SESSION)
+    engine = WorkflowEngine(store, ArtifactStore(tmp_path))
+
+    first = engine.run_until_wait(OWNER, run.id)[-1]
+    assert first.run.state == "waiting_for_input"
+    assert first.node_id == "think"
+    second = engine.run_until_wait(
+        OWNER,
+        run.id,
+        resume=True,
+        output_summary="Recommendation: preserve the decision brief and defer execution.",
+    )[-1]
+    assert second.run.state == "waiting_for_approval"
+    assert second.node_id == "review"
+    completed = engine.run_until_wait(OWNER, run.id, resume=True)[-1]
+    assert completed.run.state == "completed"
+
+    detail = store.detail(OWNER, run.id)
+    think = next(item for item in detail["nodes"] if item["node_id"] == "think")
+    assert think["output_summary"] == "Recommendation: preserve the decision brief and defer execution."
+    assert detail["run"]["result_ref"]
+    artifacts = ArtifactStore(tmp_path).list(OWNER, session_key=SESSION)
+    assert len(artifacts) == 1
+    assert ArtifactStore(tmp_path).read_content(OWNER, artifacts[0].id) == think["output_summary"]
+
+
+def test_contract_rejects_invalid_artifact_shape(tmp_path: Path):
+    store = make_store(tmp_path)
+    nodes = [
+        {"id": "start", "kind": "manual_trigger", "title": "Start"},
+        {
+            "id": "artifact",
+            "kind": "artifact",
+            "title": "Capture",
+            "config": {"contract": {"input": "previous_output", "output": "text"}},
+        },
+        {"id": "finish", "kind": "end", "title": "Finish"},
+    ]
+    edges = [
+        {"id": "e1", "source": "start", "target": "artifact"},
+        {"id": "e2", "source": "artifact", "target": "finish"},
+    ]
+    with pytest.raises(ValueError, match="Artifact nodes must produce an artifact"):
+        store.create_draft(
+            owner_id=OWNER, session_key=SESSION, title="Bad artifact", description=None, nodes=nodes, edges=edges
+        )
 
 
 def test_node_result_is_idempotent_when_a_run_is_retried(tmp_path: Path):

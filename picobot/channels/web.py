@@ -576,6 +576,7 @@ class WebChannel(BaseChannel):
                             run_id,
                             resume=True,
                             result_ref=payload.get("result_ref"),
+                            output_summary=payload.get("output_summary"),
                         )
                         self._write_response(writer, 200, json.dumps({"steps": [item.to_dict() for item in result]}, ensure_ascii=False).encode())
                     elif method == "POST" and operation == "cancel":

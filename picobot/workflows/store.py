@@ -98,6 +98,7 @@ class WorkflowNodeRun:
     started_at: str | None
     ended_at: str | None
     result_ref: str | None = None
+    output_summary: str | None = None
     failure_category: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -186,6 +187,43 @@ class WorkflowStore:
     _MAX_LIST = 100
     _SECRET_KEYS = {"token", "secret", "password", "api_key", "access_token", "refresh_token"}
     _EDGE_CONDITIONS = {"success", "error", "approved", "rejected", "timeout", "true", "false"}
+    _CONTRACT_INPUTS = {
+        "none",
+        "trigger",
+        "schedule",
+        "brief",
+        "shared_tab",
+        "previous_output",
+        "owner_input",
+        "decision",
+        "value",
+        "resume",
+        "result",
+    }
+    _CONTRACT_OUTPUTS = {
+        "none",
+        "event",
+        "text",
+        "source_summary",
+        "decision",
+        "branch",
+        "artifact",
+        "resume",
+        "done",
+        "result",
+    }
+    _DEFAULT_CONTRACTS = {
+        "manual_trigger": {"input": "none", "output": "event"},
+        "schedule_trigger": {"input": "none", "output": "event"},
+        "agent": {"input": "brief", "output": "text"},
+        "browser_read": {"input": "shared_tab", "output": "source_summary"},
+        "browser_action": {"input": "owner_input", "output": "result"},
+        "approval": {"input": "decision", "output": "decision"},
+        "condition": {"input": "value", "output": "branch"},
+        "artifact": {"input": "previous_output", "output": "artifact"},
+        "wait": {"input": "resume", "output": "resume"},
+        "end": {"input": "result", "output": "done"},
+    }
 
     def __init__(self, workspace: Path):
         root = workspace / "workflows"
@@ -252,6 +290,7 @@ class WorkflowStore:
                     started_at TEXT,
                     ended_at TEXT,
                     result_ref TEXT,
+                    output_summary TEXT,
                     failure_category TEXT
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS workflow_node_runs_attempt_idx
@@ -269,6 +308,14 @@ class WorkflowStore:
                     ON workflow_events(workflow_run_id, created_at DESC);
                 """
             )
+            # Existing local ledgers predate durable, owner-supplied output
+            # summaries.  Keep the migration additive and idempotent.
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(workflow_node_runs)").fetchall()
+            }
+            if "output_summary" not in columns:
+                connection.execute("ALTER TABLE workflow_node_runs ADD COLUMN output_summary TEXT")
 
     @staticmethod
     def _now() -> str:
@@ -341,6 +388,45 @@ class WorkflowStore:
         raise ValueError("Workflow node config values must be text, numbers, booleans, null, objects, or lists")
 
     @classmethod
+    def _node_config(cls, kind: str, value: object) -> dict[str, Any]:
+        """Normalize a small, typed node contract alongside its safe config.
+
+        Contracts are descriptive: they explain the owner-approved shape of a
+        handoff but never grant a provider, browser, or code-execution path.
+        Older drafts get an explicit default on read/save so their execution
+        evidence stays interpretable.
+        """
+        config = cls._safe_config(value)
+        raw_contract = config.get("contract")
+        if raw_contract is None:
+            contract = dict(cls._DEFAULT_CONTRACTS[kind])
+        else:
+            if not isinstance(raw_contract, dict) or set(raw_contract) - {"input", "output"}:
+                raise ValueError("Workflow node contract must contain only input and output")
+            input_kind = raw_contract.get("input")
+            output_kind = raw_contract.get("output")
+            if not isinstance(input_kind, str) or input_kind not in cls._CONTRACT_INPUTS:
+                raise ValueError("Workflow node contract input is not supported")
+            if not isinstance(output_kind, str) or output_kind not in cls._CONTRACT_OUTPUTS:
+                raise ValueError("Workflow node contract output is not supported")
+            contract = {"input": input_kind, "output": output_kind}
+
+        if kind == "artifact":
+            content_from = config.get("content_from")
+            if content_from is not None and content_from != "previous_output":
+                raise ValueError("Artifact content source must be previous_output")
+            if contract["output"] != "artifact":
+                raise ValueError("Artifact nodes must produce an artifact")
+        if kind in {"manual_trigger", "schedule_trigger"} and contract["output"] != "event":
+            raise ValueError("Trigger nodes must produce an event")
+        if kind == "approval" and contract["output"] != "decision":
+            raise ValueError("Approval nodes must produce a decision")
+        if kind == "end" and contract["output"] != "done":
+            raise ValueError("End nodes must produce done")
+        config["contract"] = contract
+        return config
+
+    @classmethod
     def _normalize_graph(
         cls, nodes: object, edges: object
     ) -> tuple[list[WorkflowNode], list[WorkflowEdge]]:
@@ -381,7 +467,7 @@ class WorkflowStore:
                     kind=kind,
                     title=title,
                     description=description,
-                    config=cls._safe_config(raw.get("config")),
+                    config=cls._node_config(kind, raw.get("config")),
                     x=int(x),
                     y=int(y),
                 )
@@ -713,6 +799,7 @@ class WorkflowStore:
         *,
         attempt: int = 1,
         result_ref: str | None = None,
+        output_summary: str | None = None,
         failure_category: str | None = None,
     ) -> WorkflowNodeRun:
         run = self.get_run(owner_id, run_id)
@@ -725,6 +812,7 @@ class WorkflowStore:
         if isinstance(attempt, bool) or not isinstance(attempt, int) or not 1 <= attempt <= 10:
             raise ValueError("Workflow node attempt must be between 1 and 10")
         result_ref = self._text(result_ref, "result reference", 400, required=False)
+        output_summary = self._text(output_summary, "output summary", 1_600, required=False)
         failure = self._text(failure_category, "failure category", 120, required=False)
         now = self._now()
         node_run = WorkflowNodeRun(
@@ -738,6 +826,7 @@ class WorkflowStore:
             started_at=now if state in {"running", "waiting_for_approval", "waiting_for_input"} else None,
             ended_at=now if state in {"succeeded", "failed", "skipped", "cancelled"} else None,
             result_ref=result_ref,
+            output_summary=output_summary,
             failure_category=failure,
         )
         with self._connect() as connection:
@@ -750,8 +839,8 @@ class WorkflowStore:
                     """
                     INSERT INTO workflow_node_runs(
                         id, workflow_run_id, node_id, attempt, state, created_at, updated_at,
-                        started_at, ended_at, result_ref, failure_category
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        started_at, ended_at, result_ref, output_summary, failure_category
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tuple(asdict(node_run).values()),
                 )
@@ -761,7 +850,7 @@ class WorkflowStore:
                     """
                     UPDATE workflow_node_runs
                     SET state = ?, updated_at = ?, started_at = ?, ended_at = ?,
-                        result_ref = ?, failure_category = ?
+                        result_ref = ?, output_summary = ?, failure_category = ?
                     WHERE id = ?
                     """,
                     (
@@ -770,6 +859,7 @@ class WorkflowStore:
                         prior.started_at or node_run.started_at,
                         node_run.ended_at or prior.ended_at,
                         result_ref or prior.result_ref,
+                        output_summary or prior.output_summary,
                         failure or prior.failure_category,
                         prior.id,
                     ),
@@ -780,6 +870,45 @@ class WorkflowStore:
                 (run.id, node_id, attempt),
             ).fetchone()
         return self._node_run(row)
+
+    def latest_output_summary(self, owner_id: str, run_id: str, *, exclude_node_id: str | None = None) -> str | None:
+        """Return the latest explicit node outcome, never an opaque payload."""
+        run = self.get_run(owner_id, run_id)
+        with self._connect() as connection:
+            if exclude_node_id:
+                row = connection.execute(
+                    """
+                    SELECT output_summary FROM workflow_node_runs
+                    WHERE workflow_run_id = ? AND state = 'succeeded'
+                      AND output_summary IS NOT NULL AND node_id != ?
+                    ORDER BY updated_at DESC, id DESC LIMIT 1
+                    """,
+                    (run.id, self._required_identifier(exclude_node_id, "node id")),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT output_summary FROM workflow_node_runs
+                    WHERE workflow_run_id = ? AND state = 'succeeded'
+                      AND output_summary IS NOT NULL
+                    ORDER BY updated_at DESC, id DESC LIMIT 1
+                    """,
+                    (run.id,),
+                ).fetchone()
+        return str(row["output_summary"]) if row else None
+
+    def set_run_result_ref(self, owner_id: str, run_id: str, result_ref: str) -> WorkflowRun:
+        """Link a completed workflow to a safe durable result identifier."""
+        run = self.get_run(owner_id, run_id)
+        result_ref = self._text(result_ref, "result reference", 400, required=True)
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE workflow_runs SET result_ref = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
+                (result_ref, self._now(), run.id, run.owner_id),
+            )
+            self._event(connection, run.workflow_id, run.id, run.current_node_id, "run_result_linked", "Workflow result linked.")
+            row = connection.execute("SELECT * FROM workflow_runs WHERE id = ?", (run.id,)).fetchone()
+        return self._run(row)
 
     def latest_node_run(self, owner_id: str, run_id: str, node_id: str) -> WorkflowNodeRun | None:
         """Return the latest attempt for a node without exposing private payloads."""
