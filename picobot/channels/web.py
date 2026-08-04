@@ -2106,6 +2106,102 @@ class WebChannel(BaseChannel):
         )
         attention.sort(key=lambda item: item["updated_at"], reverse=True)
 
+        def column(column_id: str, title: str, hint: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+            cards = sorted(items, key=lambda item: item["updated_at"], reverse=True)[:8]
+            return {
+                "id": column_id,
+                "title": title,
+                "hint": hint,
+                "count": len(items),
+                "cards": cards,
+            }
+
+        board = [
+            column(
+                "prepare",
+                "Prepare",
+                "A bounded next step needs framing.",
+                [
+                    {
+                        "kind": "workflow",
+                        "title": item.title,
+                        "state": "Draft workflow",
+                        "updated_at": item.updated_at,
+                        "target_view": "workflows",
+                        "workflow_id": item.id,
+                    }
+                    for item in draft_workflows
+                ]
+                + [
+                    {
+                        "kind": "mission",
+                        "title": item.title,
+                        "state": "Blocked",
+                        "updated_at": item.updated_at,
+                        "target_view": "missions",
+                    }
+                    for item in blocked_missions
+                ],
+            ),
+            column(
+                "active",
+                "In motion",
+                "Work already has a governed state.",
+                [
+                    {
+                        "kind": "task",
+                        "title": item.title,
+                        "state": item.state.replace("_", " "),
+                        "updated_at": item.updated_at,
+                        "target_view": "missions",
+                    }
+                    for item in active_tasks
+                ],
+            ),
+            column(
+                "waiting",
+                "Waiting on you",
+                "A human decision is required before Pico continues.",
+                [
+                    {
+                        "kind": "approval",
+                        "title": item.summary,
+                        "state": "Awaiting your approval",
+                        "updated_at": item.updated_at,
+                        "target_view": "operations",
+                    }
+                    for item in pending_actions
+                ]
+                + [
+                    {
+                        "kind": "workflow",
+                        "title": workflow_titles.get(item.workflow_id, "Workflow run"),
+                        "state": "Awaiting approval" if item.state == "waiting_for_approval" else "Awaiting input",
+                        "updated_at": item.updated_at,
+                        "target_view": "workflows",
+                        "workflow_id": item.workflow_id,
+                    }
+                    for item in waiting_workflows
+                ],
+            ),
+            column(
+                "review",
+                "Verify & retain",
+                "Turn useful local work into trustworthy durable output.",
+                [
+                    {
+                        "kind": "artifact",
+                        "title": item.title,
+                        "state": "Needs review" if item.status == "draft" else item.verification_status,
+                        "updated_at": item.updated_at,
+                        "target_view": "artifacts",
+                        "artifact_id": item.id,
+                    }
+                    for item in review_artifacts
+                ],
+            ),
+        ]
+
         if pending_actions:
             next_action = {
                 "label": "Review pending approval",
@@ -2180,6 +2276,7 @@ class WebChannel(BaseChannel):
             },
             "next_action": next_action,
             "attention": attention[:12],
+            "board": board,
         }
 
     @staticmethod

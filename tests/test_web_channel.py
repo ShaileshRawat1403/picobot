@@ -417,6 +417,14 @@ def test_browser_maintenance_is_owner_scoped_and_redacts_action_payloads(tmp_pat
     assert "Another owner's pending action" not in rendered
     assert "Private artifact contents" not in rendered
     assert all("payload" not in item for item in result["attention"])
+    assert [column["id"] for column in result["board"]] == [
+        "prepare",
+        "active",
+        "waiting",
+        "review",
+    ]
+    assert result["board"][2]["cards"][0]["title"] == "Review the proposed Pico brief"
+    assert "must-not-appear" not in json.dumps(result["board"])
 
 
 def test_project_workspace_folder_picker_is_bounded_to_visible_workspace(tmp_path: Path):

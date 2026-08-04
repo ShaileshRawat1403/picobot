@@ -961,6 +961,22 @@
     .maintenance-count { min-height:71px; display:grid; align-content:space-between; gap:8px; padding:10px 11px; border:1px solid #e2e8f2; border-radius:8px; background:#ffffffa8; }
     .maintenance-count strong { color:#4b5a78; font-size:19px; font-weight:680; letter-spacing:-.04em; }
     .maintenance-count span { color:#8e9aaf; font-size:10px; font-weight:650; line-height:1.25; }
+    .maintenance-board { display:grid; grid-template-columns:repeat(4,minmax(205px,1fr)); gap:9px; overflow-x:auto; padding-bottom:3px; }
+    .maintenance-column { min-height:238px; display:flex; flex-direction:column; border:1px solid #e2e8f2; border-radius:9px; background:#ffffff95; overflow:hidden; }
+    .maintenance-column-head { padding:10px 11px 9px; border-bottom:1px solid #e9edf4; }
+    .maintenance-column-title { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#56647e; font-size:11px; font-weight:760; }
+    .maintenance-column-title span { display:inline-grid; min-width:18px; height:18px; place-items:center; border-radius:999px; color:#7e8aa0; background:#f0f3f9; font-size:9px; }
+    .maintenance-column-hint { min-height:28px; margin:5px 0 0; color:#99a3b3; font-size:9px; line-height:1.35; }
+    .maintenance-cards { display:grid; align-content:start; gap:6px; padding:7px; }
+    .maintenance-card { width:100%; display:grid; gap:5px; padding:9px; border:1px solid #e4e9f3; border-radius:7px; color:#536078; background:#fff; text-align:left; cursor:pointer; box-shadow:0 2px 5px #26365506; }
+    .maintenance-card:hover { border-color:#bfcdf0; background:#f9fbff; box-shadow:0 4px 10px #405c9f0c; }
+    .maintenance-card-top { display:flex; align-items:center; gap:6px; min-width:0; }
+    .maintenance-card-kind { flex:none; width:6px; height:6px; border-radius:50%; background:#aab7d3; }
+    .maintenance-card-kind.approval { background:#c4862e; } .maintenance-card-kind.workflow { background:#6e82cf; } .maintenance-card-kind.artifact { background:#4d9d83; } .maintenance-card-kind.mission { background:#9b79bd; } .maintenance-card-kind.task { background:#6482ac; }
+    .maintenance-card-title { overflow:hidden; color:#58667e; font-size:11px; font-weight:680; text-overflow:ellipsis; white-space:nowrap; }
+    .maintenance-card-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; color:#99a3b2; font-size:9px; }
+    .maintenance-card-meta span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .maintenance-column-empty { padding:11px 3px 4px; color:#a1aab8; font-size:10px; line-height:1.45; }
     .maintenance-attention { display:grid; gap:3px; }
     .maintenance-item { width:100%; display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 3px; border:0; border-bottom:1px solid #e9edf4; background:transparent; color:#48556c; text-align:left; cursor:pointer; }
     .maintenance-item:last-child { border-bottom:0; }
@@ -975,7 +991,7 @@
     .maintenance-item time { color:#9aa4b4; font-size:10px; white-space:nowrap; }
     .maintenance-empty { padding:14px 3px 2px; color:#8a95a8; font-size:12px; }
     .maintenance-note { margin:12px 1px 0; color:#8b96a8; font-size:11px; line-height:1.5; }
-    @media (max-width:760px) { .maintenance-next { grid-template-columns:1fr; gap:12px; } .maintenance-next .action { justify-self:start; } .maintenance-counts { grid-template-columns:repeat(2,minmax(0,1fr)); } .maintenance-item { grid-template-columns:auto minmax(0,1fr); } .maintenance-item time { display:none; } }
+    @media (max-width:760px) { .maintenance-next { grid-template-columns:1fr; gap:12px; } .maintenance-next .action { justify-self:start; } .maintenance-counts { grid-template-columns:repeat(2,minmax(0,1fr)); } .maintenance-board { grid-template-columns:repeat(4,minmax(220px,1fr)); } .maintenance-item { grid-template-columns:auto minmax(0,1fr); } .maintenance-item time { display:none; } }
     @media (max-width:1100px) { .workflow-builder { grid-template-columns:180px minmax(0,1fr); } .workflow-inspector { grid-column:1 / -1; } }
     @media (max-width:720px) { .workflow-builder { grid-template-columns:1fr; } .workflow-canvas { min-height:440px; } .workflow-head { align-items:flex-start; flex-direction:column; } .workflow-mode .rail { width:100%; } .workflow-mode main { margin-left:0; width:100%; } .workflow-mode .brand > span:last-child { display:inline; } }
    </style>
@@ -1109,7 +1125,7 @@
           <div class="workspace-head"><div><div class="eyebrow">Daily and weekly review</div><h2>Maintenance cockpit</h2><p>One grounded view of what deserves attention. Pico reads existing evidence here; it does not start or execute work.</p></div><button class="action secondary" id="maintenance-refresh" type="button">Refresh</button></div>
           <section class="card maintenance-next" id="maintenance-next"><div><div class="maintenance-kicker">Next useful action</div><h3>Checking your workbench</h3><p>Loading the review queue from your local Pico evidence.</p></div></section>
           <div class="maintenance-counts" id="maintenance-counts" aria-label="Review queue counts"></div>
-          <section class="card"><div class="workspace-panel-head"><span>Needs attention</span><span id="maintenance-scope">Owner scoped</span></div><div class="maintenance-attention" id="maintenance-attention"><div class="maintenance-empty">Loading review items…</div></div></section>
+          <section class="card"><div class="workspace-panel-head"><span>Work in view</span><span id="maintenance-scope">Owner scoped</span></div><div class="maintenance-board" id="maintenance-board"><div class="maintenance-empty">Loading review stages…</div></div></section>
           <p class="maintenance-note">A useful weekly review is small: clear what is waiting, verify one durable output, and choose one outcome to carry forward.</p>
         </div>
       </section>
@@ -1173,12 +1189,12 @@
       $('maintenance-next-action').onclick = () => openMaintenanceTarget(next);
       const labels = [['approvals','Approvals'],['workflow_waits','Workflow waits'],['active_tasks','Active tasks'],['blocked_missions','Blocked missions'],['draft_workflows','Workflow drafts'],['artifacts_to_review','Artifacts to review'],['projects','Connected projects']];
       $('maintenance-counts').innerHTML = labels.map(([key,label]) => `<div class="maintenance-count"><strong>${Number(counts[key] || 0)}</strong><span>${label}</span></div>`).join('');
-      const attention = data.attention || [], list = $('maintenance-attention');
-      if (!attention.length) { list.innerHTML = '<div class="maintenance-empty">Nothing is waiting. Keep the next review small and deliberate.</div>'; return; }
-      list.innerHTML = '';
-      attention.forEach((item) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'maintenance-item'; button.innerHTML = `<span class="maintenance-kind ${escapeHtml(item.kind || '')}" aria-hidden="true"></span><span><span class="maintenance-item-title">${escapeHtml(item.title)}</span><span class="maintenance-item-state">${escapeHtml(item.state)}</span></span><time>${escapeHtml(formatTime(item.updated_at))}</time>`; button.onclick = () => openMaintenanceTarget(item); list.appendChild(button); });
+      const board = $('maintenance-board');
+      board.innerHTML = '';
+      (data.board || []).forEach((column) => { const section = document.createElement('section'); section.className = `maintenance-column maintenance-column-${escapeHtml(column.id || '')}`; const cards = column.cards || []; section.innerHTML = `<div class="maintenance-column-head"><div class="maintenance-column-title"><span>${escapeHtml(column.title)}</span><span>${Number(column.count || 0)}</span></div><p class="maintenance-column-hint">${escapeHtml(column.hint)}</p></div><div class="maintenance-cards"></div>`; const list = section.querySelector('.maintenance-cards'); if (!cards.length) list.innerHTML = '<div class="maintenance-column-empty">Nothing here right now.</div>'; else cards.forEach((item) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'maintenance-card'; button.innerHTML = `<span class="maintenance-card-top"><span class="maintenance-card-kind ${escapeHtml(item.kind || '')}" aria-hidden="true"></span><span class="maintenance-card-title">${escapeHtml(item.title)}</span></span><span class="maintenance-card-meta"><span>${escapeHtml(item.state)}</span><time>${escapeHtml(formatTime(item.updated_at))}</time></span>`; button.onclick = () => openMaintenanceTarget(item); list.appendChild(button); }); board.appendChild(section); });
+      if (!board.children.length) board.innerHTML = '<div class="maintenance-empty">Nothing is waiting. Keep the next review small and deliberate.</div>';
     }
-    async function loadMaintenance() { const next = $('maintenance-next'), list = $('maintenance-attention'); if (!next || !list) return; list.innerHTML = '<div class="maintenance-empty">Loading review items…</div>'; try { const response = await api(`/api/maintenance?session_id=${encodeURIComponent(sessionId)}`); if (!response.ok) throw new Error(); renderMaintenance(await response.json()); } catch { next.innerHTML = '<div><div class="maintenance-kicker">Local review</div><h3>Maintenance is unavailable</h3><p>Reconnect Pico, then refresh this read-only review queue.</p></div>'; $('maintenance-counts').innerHTML = ''; list.innerHTML = '<div class="maintenance-empty">Pico could not load the local review queue.</div>'; } }
+    async function loadMaintenance() { const next = $('maintenance-next'), board = $('maintenance-board'); if (!next || !board) return; board.innerHTML = '<div class="maintenance-empty">Loading review stages…</div>'; try { const response = await api(`/api/maintenance?session_id=${encodeURIComponent(sessionId)}`); if (!response.ok) throw new Error(); renderMaintenance(await response.json()); } catch { next.innerHTML = '<div><div class="maintenance-kicker">Local review</div><h3>Maintenance is unavailable</h3><p>Reconnect Pico, then refresh this read-only review queue.</p></div>'; $('maintenance-counts').innerHTML = ''; board.innerHTML = '<div class="maintenance-empty">Pico could not load the local review stages.</div>'; } }
     function toast(message) { $('toast').textContent = message; $('toast').classList.add('show'); clearTimeout(window.toastTimer); window.toastTimer = setTimeout(() => $('toast').classList.remove('show'), 3200); }
     function setConnected(value) { connected = value; $('connection-dot').classList.toggle('ready', value); $('runtime-dot').classList.toggle('ready', value); $('utility-dot').classList.toggle('ready', value); $('connection-text').textContent = value ? 'Connected locally' : 'Reconnecting'; $('runtime-status').textContent = value ? 'Pico is ready' : 'Connecting'; $('utility-status').textContent = value ? 'Local session ready' : 'Reconnecting locally'; $('send').disabled = !value; }
     function setSessionTitle(title) { currentSessionTitle = title || 'New session'; $('page-title').textContent = currentSessionTitle; $('session-title-input').value = currentSessionTitle; if ($('cockpit-session-title')) $('cockpit-session-title').textContent = currentSessionTitle; if ($('utility-session-value')) $('utility-session-value').textContent = currentSessionTitle; }
