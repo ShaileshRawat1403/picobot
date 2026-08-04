@@ -157,6 +157,24 @@ def test_browser_rejects_invalid_payload_without_publishing_it():
     asyncio.run(scenario())
 
 
+def test_project_folder_chooser_returns_only_user_selected_directory(tmp_path: Path, monkeypatch):
+    """The native picker is user initiated and never scans the selected tree."""
+    channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+    channel._require_browser_session = lambda client_id, session_id: None  # type: ignore[method-assign]
+    monkeypatch.setattr("picobot.channels.web.shutil.which", lambda command: "/usr/bin/osascript")
+    captured = {}
+
+    def selected_folder(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0, stdout=f"{tmp_path}/\n")
+
+    monkeypatch.setattr("picobot.channels.web.subprocess.run", selected_folder)
+    selected = channel._choose_project_local_folder(CLIENT_A, SESSION_A)
+    assert selected == str(tmp_path.resolve())
+    assert captured["command"][:2] == ["osascript", "-e"]
+    assert "choose folder" in captured["command"][2]
+
+
 def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)

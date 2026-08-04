@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -260,6 +261,24 @@ class WebChannel(BaseChannel):
                         ).encode(),
                     )
                 except ValueError as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif path == "/api/projects/choose-local-folder":
+                try:
+                    if method != "POST":
+                        raise ValueError("Local folder chooser supports POST only")
+                    client_id = self._browser_id_from_query(query)
+                    payload = self._json_body(body)
+                    folder = await asyncio.to_thread(
+                        self._choose_project_local_folder,
+                        client_id,
+                        payload.get("session_id"),
+                    )
+                    self._write_response(
+                        writer,
+                        200,
+                        json.dumps({"folder": folder}, ensure_ascii=False).encode(),
+                    )
+                except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
             elif path.startswith("/api/projects/"):
                 try:
@@ -1827,6 +1846,37 @@ class WebChannel(BaseChannel):
                 continue
             folders.append({"locator": item.name, "label": item.name})
         return folders
+
+    def _choose_project_local_folder(self, client_id: str, session_id: object) -> str:
+        """Open the native macOS folder chooser after an explicit UI request.
+
+        The returned path is only a project reference.  Pico does not inspect
+        the folder or gain authority to read it from this interaction.
+        """
+        valid_session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, valid_session_id)
+        if os.name != "posix" or shutil.which("osascript") is None:
+            raise ValueError("Native folder selection is available on macOS only")
+        try:
+            result = subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'POSIX path of (choose folder with prompt "Choose a local project folder for Pico")',
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError("Pico could not open the local folder chooser") from exc
+        if result.returncode != 0 or not result.stdout.strip():
+            raise ValueError("No local folder was selected")
+        selected = Path(result.stdout.strip()).expanduser()
+        if not selected.is_dir():
+            raise ValueError("Selected local folder is unavailable")
+        return str(selected.resolve())
 
     @staticmethod
     def _artifact_download_name(artifact, revision: int | None = None) -> str:
