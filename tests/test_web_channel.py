@@ -1089,3 +1089,49 @@ def test_http_unterminated_head_is_rejected():
             await channel._read_request(reader)
 
     asyncio.run(scenario())
+
+
+class _ScriptedReader:
+    """Minimal async reader returning one pre-set chunk per read call."""
+
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    async def read(self, n: int) -> bytes:
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
+
+
+def test_http_small_head_not_rejected_when_body_rides_same_buffer():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        payload = b"y" * 50000
+        head = (
+            b"POST /api/schedules HTTP/1.1\r\n"
+            + f"Content-Length: {len(payload)}\r\n".encode()
+            + b"Host: localhost\r\n\r\n"
+        )
+        # The head terminator arrives in the same read as the body. The old code
+        # capped the whole accumulated buffer at 16 KiB and rejected this small
+        # head even though the head portion itself is tiny.
+        reader = _ScriptedReader([head[:20], head[20:] + payload])
+
+        head_bytes, body = await channel._read_request(reader)
+
+        assert head_bytes.startswith(b"POST /api/schedules")
+        assert body == payload
+
+    asyncio.run(scenario())
+
+
+def test_http_genuinely_oversized_head_is_rejected():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        big_head = b"GET / HTTP/1.1\r\nX-Pad: " + b"a" * 20000 + b"\r\n\r\n"
+        reader = _ScriptedReader([big_head])
+
+        with pytest.raises(_MalformedRequest):
+            await channel._read_request(reader)
+
+    asyncio.run(scenario())

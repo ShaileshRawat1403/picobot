@@ -1739,19 +1739,21 @@ class WebChannel(BaseChannel):
         Raises ``_MalformedRequest`` for an oversized or unterminated head, and
         ``_RequestTooLarge`` when the declared body exceeds the cap.
         """
-        head = bytearray()
-        while b"\r\n\r\n" not in head:
+        buffer = bytearray()
+        while True:
+            sep = buffer.find(b"\r\n\r\n")
+            if sep != -1:
+                break
+            if len(buffer) > 16384:
+                raise _MalformedRequest("Request head is too large")
             chunk = await reader.read(16384)
             if not chunk:
-                break
-            head.extend(chunk)
-            if len(head) > 16384:
-                raise _MalformedRequest("Request head is too large")
-        sep = head.find(b"\r\n\r\n")
-        if sep == -1:
-            raise _MalformedRequest("Unterminated request head")
-        head_bytes = bytes(head[:sep])
-        body = bytes(head[sep + 4 :])
+                raise _MalformedRequest("Unterminated request head")
+            buffer.extend(chunk)
+        if sep > 16384:
+            raise _MalformedRequest("Request head is too large")
+        head_bytes = bytes(buffer[:sep])
+        body = bytes(buffer[sep + 4 :])
         content_length = 0
         for raw in head_bytes.split(b"\r\n"):
             name, _, value = raw.partition(b":")
