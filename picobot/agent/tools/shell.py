@@ -204,14 +204,28 @@ class ExecTool(Tool):
         cmd = command.strip()
         lower = cmd.lower()
 
+        if self._has_command_substitution(cmd):
+            return (
+                "Error: Command blocked by safety guard "
+                "(command/process substitution is not allowed)"
+            )
+
         for pattern in self.deny_patterns:
             if re.search(pattern, lower):
                 return "Error: Command blocked by safety guard (dangerous pattern detected)"
 
         if self.enforce_allowlist and not self.allow_patterns:
-            cmd_base = self._extract_command_base(command)
-            if cmd_base and cmd_base not in SAFE_COMMANDS_ALLOWLIST:
-                return f"Error: Command '{cmd_base}' not in allowlist. Use file tools or DAX for file operations."
+            segments = self._split_into_segments(cmd)
+            if not segments:
+                return "Error: Command blocked by safety guard (empty command)"
+            for segment in segments:
+                cmd_base = self._extract_command_base(segment[0]) if segment else None
+                if not cmd_base or cmd_base not in SAFE_COMMANDS_ALLOWLIST:
+                    label = cmd_base or (segment[0] if segment else "")
+                    return (
+                        f"Error: Command '{label}' not in allowlist. "
+                        "Use file tools or DAX for file operations."
+                    )
 
         if self.allow_patterns:
             if not any(re.search(p, lower) for p in self.allow_patterns):
@@ -246,6 +260,96 @@ class ExecTool(Tool):
         except Exception:
             cmd = command.strip().split()[0] if command.strip() else ""
             return os.path.basename(cmd).lower() if cmd else None
+
+    # Markers that let a shell run an inner command from inside what looks
+    # like a single "word" (so a naive first-token allowlist check never
+    # sees them). There is no legitimate need for these given this tool's
+    # stated purpose (read-only commands, status checks, running scripts),
+    # so they are rejected outright rather than parsed.
+    _SUBSTITUTION_MARKERS = ("`", "$(", "<(", ">(")
+
+    # A shlex token made up solely of these characters is a shell control
+    # operator (`;`, `&`, `&&`, `||`, `|`, `;;`, `(`, `)`, ...), never a
+    # command name, so it always starts a new command segment. Redirection
+    # characters (`>`, `<`) are deliberately excluded: their target is not a
+    # separate command and should stay attached to the current segment.
+    _SEPARATOR_CHARS = set(";&|()")
+
+    @classmethod
+    def _has_command_substitution(cls, command: str) -> bool:
+        """Detect command/process substitution, which can hide an
+        unvetted inner command inside what the allowlist check would
+        otherwise treat as a single safe token."""
+        return any(marker in command for marker in cls._SUBSTITUTION_MARKERS)
+
+    @staticmethod
+    def _normalize_newlines_outside_quotes(command: str) -> str:
+        """Convert bare newlines to `;` so a multi-line command is treated
+        the same way a POSIX shell treats it: as separate statements.
+        Newlines inside a quoted string are left untouched."""
+        out: list[str] = []
+        quote: str | None = None
+        escape = False
+        for ch in command:
+            if escape:
+                out.append(ch)
+                escape = False
+                continue
+            if ch == "\\" and quote != "'":
+                out.append(ch)
+                escape = True
+                continue
+            if quote:
+                if ch == quote:
+                    quote = None
+                out.append(ch)
+                continue
+            if ch in ("'", '"'):
+                quote = ch
+                out.append(ch)
+                continue
+            out.append(";" if ch == "\n" else ch)
+        return "".join(out)
+
+    @classmethod
+    def _split_into_segments(cls, command: str) -> list[list[str]]:
+        """Split a shell command into per-command token segments.
+
+        `create_subprocess_shell` hands the whole string to a real shell, so
+        `;`, `&`, `&&`, `||`, `|`, `(...)`, and newlines each start a new
+        command. A base-command allowlist that only inspects the first token
+        of the raw string (as this tool used to) is trivially bypassed by
+        chaining an allowed command with a disallowed one, e.g.
+        `pwd && curl ... | sh`. This tokenizes with shell-aware punctuation
+        splitting (so operators are recognized even next to quoted
+        arguments) and returns the leading token of every resulting segment
+        for allowlist checking. Redirection targets (`>`, `>>`, `<`) are
+        left inside their segment since they are not separate commands.
+        """
+        normalized = cls._normalize_newlines_outside_quotes(command)
+        lexer = shlex.shlex(normalized, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            tokens = list(lexer)
+        except ValueError:
+            # Unbalanced quotes or similar. Fail closed: treat the raw
+            # leading word as the only segment so the allowlist check below
+            # still runs instead of silently allowing an unparsable command.
+            first = command.strip().split()[:1]
+            return [first] if first else []
+
+        segments: list[list[str]] = []
+        current: list[str] = []
+        for tok in tokens:
+            if tok and set(tok) <= cls._SEPARATOR_CHARS:
+                if current:
+                    segments.append(current)
+                    current = []
+                continue
+            current.append(tok)
+        if current:
+            segments.append(current)
+        return segments
 
     @staticmethod
     def _extract_absolute_paths(command: str) -> list[str]:
