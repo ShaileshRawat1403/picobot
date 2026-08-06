@@ -1199,16 +1199,17 @@ def memory(
 
 
 @app.command()
-def skills():
+def skills(
+    filter_name: str | None = typer.Option(
+        None, "--filter-name", "-f", help="Filter by skill name"
+    ),
+):
     """List and manage skills."""
     from picobot.agent.skills import SkillsLoader
     from picobot.config.paths import get_workspace_path
 
-    import typer
     from rich.console import Console
     from rich.table import Table
-
-    filter_name = typer.Option(None, help="Filter by skill name")
 
     console = Console()
     workspace = get_workspace_path()
@@ -1231,17 +1232,15 @@ def skills():
 
 
 @app.command()
-def webhook():
+def webhook(
+    subcmd: str = typer.Argument(..., help="subcommand: list, enable, disable"),
+    url: str | None = typer.Option(None, "--url", help="Webhook URL"),
+    secret: str | None = typer.Option(None, "--secret", help="Webhook secret"),
+):
     """Manage webhooks."""
     from picobot.config.loader import load_config
-    from picobot.config.schema import WebhookConfig
 
-    import typer
     from rich.console import Console
-
-    subcmd = typer.Argument(..., help="subcommand: list, enable, disable")
-    url = typer.Option(None, help="Webhook URL")
-    secret = typer.Option(None, help="Webhook secret")
 
     console = Console()
     config = load_config()
@@ -1256,22 +1255,24 @@ def webhook():
         console.print("[yellow]Edit config.json to enable webhook:[/yellow]")
         console.print("  picobot config set webhook.enabled true")
         console.print(f"  picobot config set webhook.url {url}")
+        if secret:
+            console.print(f"  picobot config set webhook.secret {secret}")
     else:
         console.print("[yellow]Usage:[/yellow]")
         console.print("  picobot webhook list")
-        console.print("  picobot webhook enable --url https://...")
+        console.print("  picobot webhook enable --url https://... [--secret ...]")
 
 
 @app.command()
-def analytics():
+def analytics(
+    days: int = typer.Option(7, "--days", "-d", help="Number of days to show"),
+):
     """Show usage analytics."""
     from picobot.config.paths import get_workspace_path
     from picobot.bus.analytics import get_analytics
 
-    import typer
     from rich.console import Console
 
-    days = typer.Option(7, help="Number of days to show")
     console = Console()
     workspace = get_workspace_path()
     analytics = get_analytics(workspace)
@@ -1289,7 +1290,6 @@ def mcp():
     """List MCP servers and their tools."""
     from picobot.config.loader import load_config
 
-    import typer
     from rich.console import Console
     from rich.table import Table
 
