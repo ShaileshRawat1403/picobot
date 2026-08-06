@@ -18,8 +18,8 @@ from picobot.memory.store import PersonalMemoryStore
 from picobot.providers.base import LLMProvider, LLMResponse
 from picobot.session.manager import SessionManager
 
-OWNER = "web:browser:owner-a"
-SESSION = "web:web:owner-a:session-a"
+OWNER = "local:owner"
+SESSION = "web:web:session-a"
 
 
 def _message(role: str, text: str) -> dict:
@@ -227,11 +227,11 @@ async def test_records_are_owner_and_session_scoped(tmp_path: Path):
     service = CompactionService(tmp_path, summarizer=_FakeSummarizer(), cooldown_minutes=0)
     await service.build_window(history, owner_id=OWNER, session_key=SESSION, budget_tokens=25_000)
     await service.build_window(
-        history, owner_id="web:browser:owner-b", session_key="web:web:owner-b:session-b", budget_tokens=25_000
+        history, owner_id="telegram:987654321", session_key="telegram:chat-b", budget_tokens=25_000
     )
     assert len(service.store.list(OWNER, SESSION)) == 1
-    assert service.store.latest_completed(OWNER, "web:web:owner-a:other") is None
-    assert service.store.latest_completed("web:browser:owner-b", SESSION) is None
+    assert service.store.latest_completed(OWNER, "web:web:other-session") is None
+    assert service.store.latest_completed("telegram:987654321", SESSION) is None
 
 
 @pytest.mark.asyncio
@@ -270,7 +270,7 @@ async def test_compaction_never_writes_personal_memory(tmp_path: Path):
 
     memory = PersonalMemoryStore(tmp_path)
     assert memory.list(OWNER) == []
-    assert memory.list("web:browser:owner-b") == []
+    assert memory.list("telegram:987654321") == []
 
 
 def test_record_public_view_is_safe_and_bounded(tmp_path: Path):
@@ -325,8 +325,8 @@ def test_record_public_view_is_safe_and_bounded(tmp_path: Path):
 
 def test_web_context_response_shows_safe_compaction_block(tmp_path: Path, monkeypatch):
     workspace = tmp_path / "workspace"
-    web_owner = "web:browser:browser_identity_0001"
-    web_session = "web:web:browser_identity_0001:session_identity_0001"
+    web_owner = "local:owner"
+    web_session = "web:web:session_identity_0001"
     manager = SessionManager(workspace)
     session = manager.get_or_create(web_session)
     session.add_message("user", "hello")
@@ -395,7 +395,7 @@ async def test_agent_uses_its_active_provider_for_compaction_when_no_auxiliary_i
     await agent._process_message(
         InboundMessage(channel="web", sender_id="browser:owner-a", chat_id="chat-a", content="Summarize")
     )
-    completed = CompactionStore(workspace).latest_completed("web:browser:owner-a", "web:chat-a")
+    completed = CompactionStore(workspace).latest_completed("local:owner", "web:chat-a")
     assert completed is not None
     assert completed.provider == "test-provider"
     assert completed.model == "test-model"
@@ -442,7 +442,7 @@ async def test_agent_integrates_compaction_and_resumes_with_latest_handoff(tmp_p
     )
 
     store = CompactionStore(workspace)
-    completed = store.latest_completed("web:browser:owner-a", "web:chat-a")
+    completed = store.latest_completed("local:owner", "web:chat-a")
     assert completed is not None and completed.outcome == "completed"
 
     # The source transcript is untouched: the handoff is never persisted.
@@ -451,7 +451,7 @@ async def test_agent_integrates_compaction_and_resumes_with_latest_handoff(tmp_p
         str(message.get("content", "")).startswith("[Compaction Handoff")
         for message in session.messages
     )
-    assert PersonalMemoryStore(workspace).list("web:browser:owner-a") == []
+    assert PersonalMemoryStore(workspace).list("local:owner") == []
 
     # The new turn shifts the protected-tail boundary, so the old handoff no
     # longer covers every omitted source message and Pico recompacts safely.
@@ -466,4 +466,4 @@ async def test_agent_integrates_compaction_and_resumes_with_latest_handoff(tmp_p
         str(message.get("content", "")).startswith("[Compaction Handoff")
         for message in second_model_call
     )
-    assert len(store.list("web:browser:owner-a", "web:chat-a")) == 2
+    assert len(store.list("local:owner", "web:chat-a")) == 2

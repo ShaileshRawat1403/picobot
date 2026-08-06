@@ -145,21 +145,28 @@ def test_browser_command_result_is_refused_after_expiry(tmp_path: Path):
 async def test_browser_bridge_blocks_sensitive_tabs_and_tool_reads_only_bound_session(tmp_path: Path):
     workspace = tmp_path / "workspace"
     store = BrowserBridgeStore(workspace)
-    code = store.create_ticket("web:browser:owner-a", "web:web:owner-a:session-a")
+    code = store.create_ticket("local:owner", "web:web:session-a")
     with pytest.raises(ValueError, match="Sensitive"):
         store.share(code, 42, "https://example.com/login", "Sign in", "Never capture this")
 
-    shared, _ = _share(store)
+    code = store.create_ticket("local:owner", "web:web:session-a")
+    shared, _ = store.share(
+        code,
+        42,
+        "https://example.com/docs",
+        "Example documentation",
+        "Safe visible text\napi_key: sk-this-must-not-be-stored-or-returned",
+    )
     tool = BrowserReadSharedTabTool(workspace)
     tool.set_context("web", "web:owner-a:session-a")
     result = await tool.execute(max_characters=500)
     assert shared.id
-    assert tool._owner_id == "web:browser:owner-a"
-    assert tool._session_key == "web:web:owner-a:session-a"
+    assert tool._owner_id == "local:owner"
+    assert tool._session_key == "web:web:session-a"
     assert "Example documentation" in result
     assert "[redacted]" in result
 
-    tool.set_context("web", "web:owner-b:session-a")
+    tool.set_context("web", "web:owner-a:session-b")
     assert "No browser tab is shared" in await tool.execute()
 
 
@@ -307,7 +314,7 @@ async def test_agent_can_read_only_the_tab_paired_to_its_browser_review_session(
     session.metadata["pico_operation_profile"] = "browser-review"
     agent.sessions.save(session)
     store = BrowserBridgeStore(tmp_path)
-    code = store.create_ticket("web:browser:owner-a", "web:web:owner-a:session-a")
+    code = store.create_ticket("local:owner", "web:web:session-a")
     store.share(code, 42, "https://example.com/docs", "Example docs", "Reviewable shared text")
 
     response = await agent._process_message(

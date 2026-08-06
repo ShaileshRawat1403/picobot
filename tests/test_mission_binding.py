@@ -44,10 +44,10 @@ def test_selection_validation_and_isolation(
     tmp_workspace: Path, mission_store: MissionStore, session_manager: SessionManager
 ):
     """Test 1 & 2: Active mission selection validation & owner/session isolation."""
-    owner_a = "web:browser:userA"
-    session_key_a = "web:web:userA:sess1"
-    session_key_other = "web:web:userA:sess2"
-    owner_b = "web:browser:userB"
+    owner_a = "local:owner"
+    session_key_a = "web:web:sess1"
+    session_key_other = "web:web:sess2"
+    owner_b = "telegram:userB"
 
     # Create missions in different states for session_key_a
     draft_m = mission_store.create(owner_id=owner_a, session_key=session_key_a, title="Draft Mission", objective="Obj A")
@@ -90,8 +90,8 @@ def test_single_selection_and_clearing(
     tmp_workspace: Path, mission_store: MissionStore, session_manager: SessionManager
 ):
     """Test 3: At most one selected mission per session and clearing allowed."""
-    owner = "web:browser:user1"
-    session_key = "web:web:user1:sess1"
+    owner = "local:owner"
+    session_key = "web:web:sess1"
 
     m1 = mission_store.create(owner_id=owner, session_key=session_key, title="Mission 1", objective="Obj 1")
     m1 = mission_store.transition(owner, m1.id, "active")
@@ -119,10 +119,9 @@ def test_run_evidence_persistence_and_no_history_rewrite(
     tmp_workspace: Path, mission_store: MissionStore, run_store: RunStore, session_manager: SessionManager
 ):
     """Test 4 & 5: Persisting mission_id on runs and non-rewriting of historical evidence."""
-    owner = "web:browser:user1"
+    owner = "local:owner"
     client_id = "user1"
-    session_id = "sess1"
-    session_key = f"web:web:{client_id}:{session_id}"
+    session_key = "web:web:sess1"
 
     m1 = mission_store.create(owner_id=owner, session_key=session_key, title="Mission 1", objective="Obj 1")
     m1 = mission_store.transition(owner, m1.id, "active")
@@ -132,13 +131,13 @@ def test_run_evidence_persistence_and_no_history_rewrite(
 
     # Turn 1: Run created while m1 is selected
     session.metadata["pico_active_mission_id"] = m1.id
-    msg1 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id=f"web:{client_id}:{session_id}", content="Hello 1")
+    msg1 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id="web:sess1", content="Hello 1")
     run1 = loop._queue_run(msg1)
     assert run1.mission_id == m1.id
 
     # Turn 2: Clear active mission selection
     session.metadata.pop("pico_active_mission_id", None)
-    msg2 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id=f"web:{client_id}:{session_id}", content="Hello 2")
+    msg2 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id="web:sess1", content="Hello 2")
     run2 = loop._queue_run(msg2)
     assert run2.mission_id is None
 
@@ -156,9 +155,9 @@ def test_queued_turn_uses_its_submitted_mission_snapshot(
     tmp_workspace: Path, mission_store: MissionStore, session_manager: SessionManager
 ):
     """Changing the active selection while a run waits cannot change its context."""
-    owner = "web:browser:user1"
-    client_id, session_id = "user1", "sess1"
-    session_key = f"web:web:{client_id}:{session_id}"
+    owner = "local:owner"
+    client_id = "user1"
+    session_key = "web:web:sess1"
     first = mission_store.transition(
         owner,
         mission_store.create(owner_id=owner, session_key=session_key, title="First", objective="First goal").id,
@@ -174,7 +173,7 @@ def test_queued_turn_uses_its_submitted_mission_snapshot(
 
     session.metadata["pico_active_mission_id"] = first.id
     queued = loop._queue_run(
-        InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id=f"web:{client_id}:{session_id}", content="queued")
+        InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id="web:sess1", content="queued")
     )
     session.metadata["pico_active_mission_id"] = second.id
 

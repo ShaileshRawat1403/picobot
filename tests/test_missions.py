@@ -175,9 +175,8 @@ def test_browser_mission_helpers_derive_owner_and_require_saved_session(tmp_path
     assert [item["id"] for item in channel._list_browser_missions(client_a, session_id=session_a)] == [
         created["id"]
     ]
-    with pytest.raises(ValueError, match="Session was not found"):
-        channel._list_browser_missions(client_a, session_id=session_b)
-    with pytest.raises(KeyError, match="not found"):
+    assert channel._list_browser_missions(client_a, session_id=session_b) == []
+    with pytest.raises(ValueError, match="does not belong to this session"):
         channel._browser_mission_detail(client_b, session_b, created["id"])
     with pytest.raises(ValueError, match="Session was not found"):
         channel._create_browser_mission(

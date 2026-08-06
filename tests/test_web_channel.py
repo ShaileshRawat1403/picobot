@@ -175,13 +175,15 @@ def test_project_folder_chooser_returns_only_user_selected_directory(tmp_path: P
     assert "choose folder" in captured["command"][2]
 
 
-def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path: Path):
+def test_browser_data_helpers_share_sessions_and_memory_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
     channel._runtime_config = lambda: config
 
     sessions = SessionManager(workspace)
+    assert channel._session_key(CLIENT_A, SESSION_A) == channel._session_key(CLIENT_B, SESSION_A)
+    assert channel._memory_owner(CLIENT_A) == channel._memory_owner(CLIENT_B)
     own_key = channel._session_key(CLIENT_A, SESSION_A)
     other_key = channel._session_key(CLIENT_B, SESSION_B)
     own = sessions.get_or_create(own_key)
@@ -189,24 +191,24 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
     own.add_message("assistant", "I will prepare the first slice.", run_id="run-123")
     sessions.save(own)
     other = sessions.get_or_create(other_key)
-    other.add_message("user", "Private other identity conversation")
+    other.add_message("user", "A different thread on the same workbench")
     sessions.save(other)
 
     listed = channel._list_browser_sessions(CLIENT_A)
-    assert listed == [
-        {
-            "id": SESSION_A,
-            "title": "Plan Pico's personal workbench",
-            "created_at": listed[0]["created_at"],
-            "updated_at": listed[0]["updated_at"],
-            "message_count": 2,
-            "archived": False,
-            "active_mission": None,
-            "active_task": None,
-            "latest_run": None,
-        }
-    ]
-    transcript = channel._browser_transcript(CLIENT_A, SESSION_A)
+    own_entry = next(item for item in listed if item["id"] == SESSION_A)
+    assert own_entry == {
+        "id": SESSION_A,
+        "title": "Plan Pico's personal workbench",
+        "created_at": own_entry["created_at"],
+        "updated_at": own_entry["updated_at"],
+        "message_count": 2,
+        "archived": False,
+        "active_mission": None,
+        "active_task": None,
+        "latest_run": None,
+    }
+    assert {item["id"] for item in listed} == {SESSION_A, SESSION_B}
+    transcript = channel._browser_transcript(CLIENT_B, SESSION_A)
     assert [item["content"] for item in transcript["messages"]] == [
         "Plan Pico's personal workbench",
         "I will prepare the first slice.",
@@ -215,8 +217,11 @@ def test_browser_data_helpers_scope_sessions_and_memory_to_one_identity(tmp_path
 
     store = PersonalMemoryStore(workspace)
     own_memory = store.remember(channel._memory_owner(CLIENT_A), "I prefer short updates")
-    store.remember(channel._memory_owner(CLIENT_B), "Do not expose this")
-    assert [item.id for item in store.list(channel._memory_owner(CLIENT_A))] == [own_memory.id]
+    shared_memory = store.remember(channel._memory_owner(CLIENT_B), "Shared preference")
+    assert {item.id for item in store.list(channel._memory_owner(CLIENT_A))} == {
+        own_memory.id,
+        shared_memory.id,
+    }
 
 
 def test_browser_schedules_are_durable_and_owner_scoped(tmp_path: Path):
@@ -262,7 +267,7 @@ def test_browser_schedule_payload_requires_one_bounded_schedule_type():
         WebChannel._browser_schedule_payload({"every_seconds": 5})
 
 
-def test_browser_session_title_is_explicit_durable_and_scoped_to_its_owner(tmp_path: Path):
+def test_browser_session_title_is_explicit_durable_and_shared_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -272,13 +277,13 @@ def test_browser_session_title_is_explicit_durable_and_scoped_to_its_owner(tmp_p
 
     assert title == "Website Ops review"
     assert channel._list_browser_sessions(CLIENT_A)[0]["title"] == "Website Ops review"
-    assert channel._list_browser_sessions(CLIENT_B) == []
+    assert channel._list_browser_sessions(CLIENT_B)[0]["title"] == "Website Ops review"
 
     reloaded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
     assert reloaded.metadata["pico_web_title"] == "Website Ops review"
 
 
-def test_browser_session_stance_is_durable_and_owner_scoped(tmp_path: Path):
+def test_browser_session_stance_is_durable_and_shared_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -293,8 +298,7 @@ def test_browser_session_stance_is_durable_and_owner_scoped(tmp_path: Path):
     changed = channel._set_browser_session_stance(CLIENT_A, SESSION_A, "review")
     assert changed["stance"]["label"] == "Review"
     assert channel._browser_session_stance(CLIENT_A, SESSION_A)["stance"]["id"] == "review"
-    with pytest.raises(ValueError, match="Session was not found"):
-        channel._browser_session_stance(CLIENT_B, SESSION_A)
+    assert channel._browser_session_stance(CLIENT_B, SESSION_A)["stance"]["id"] == "review"
     with pytest.raises(ValueError, match="Session stance must be one of"):
         channel._set_browser_session_stance(CLIENT_A, SESSION_A, "execute")
 
@@ -302,7 +306,7 @@ def test_browser_session_stance_is_durable_and_owner_scoped(tmp_path: Path):
     assert reloaded.metadata["pico_session_stance"] == "review"
 
 
-def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Path):
+def test_browser_session_orientation_is_project_scoped_and_shared_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -337,8 +341,9 @@ def test_browser_session_orientation_is_project_scoped_and_durable(tmp_path: Pat
         channel._set_browser_session_orientation(
             CLIENT_A, SESSION_A, {"project_id": "not-this-owner"}
         )
-    with pytest.raises(ValueError, match="Session was not found"):
-        channel._browser_session_orientation(CLIENT_B, SESSION_A)
+    assert channel._browser_session_orientation(CLIENT_B, SESSION_A)["orientation"][
+        "project_id"
+    ] == project.id
 
     reloaded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
     assert reloaded.metadata["pico_session_orientation"]["project_id"] == project.id
@@ -384,7 +389,7 @@ def test_browser_project_brief_is_explicit_owner_scoped_and_saved_as_an_artifact
         asyncio.run(channel._browser_project_brief(CLIENT_A, owner_id, project.id, SESSION_B, source.id))
 
 
-def test_browser_session_project_brief_is_explicit_revision_pinned_and_owner_scoped(tmp_path: Path):
+def test_browser_session_project_brief_is_explicit_revision_pinned_and_shared_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     config = SimpleNamespace(workspace_path=workspace)
@@ -408,8 +413,8 @@ def test_browser_session_project_brief_is_explicit_revision_pinned_and_owner_sco
         content="No",
     )
     other_owner_brief = ArtifactStore(workspace).create(
-        owner_id=channel._memory_owner(CLIENT_B),
-        session_key=channel._session_key(CLIENT_B, SESSION_B),
+        owner_id="telegram:987654321",
+        session_key="telegram:chat-b",
         title="Other owner brief",
         kind="brief",
         content_type="text/markdown",
@@ -429,12 +434,12 @@ def test_browser_session_project_brief_is_explicit_revision_pinned_and_owner_sco
         channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, note.id)
     with pytest.raises(KeyError):
         channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, other_owner_brief.id)
+    shared = channel._browser_session_project_brief(CLIENT_B, SESSION_A)
+    assert shared["brief"]["artifact_id"] == brief.id
     assert channel._set_browser_session_project_brief(CLIENT_A, SESSION_A, None) == {"brief": None}
-    with pytest.raises(ValueError, match="Session was not found"):
-        channel._browser_session_project_brief(CLIENT_B, SESSION_A)
 
 
-def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path):
+def test_browser_workflow_compiler_is_shared_across_browsers_and_draft_only(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -459,7 +464,9 @@ def test_browser_workflow_compiler_is_owner_scoped_and_draft_only(tmp_path: Path
         if node.kind in {"agent", "approval", "browser_read"}
     )
     with pytest.raises(ValueError, match="Session was not found"):
-        channel._compile_browser_workflow(CLIENT_B, SESSION_A, {"brief": "A private workflow"})
+        channel._compile_browser_workflow(CLIENT_A, "session_identity_9999", {"brief": "A private workflow"})
+    shared = channel._compile_browser_workflow(CLIENT_B, SESSION_A, {"brief": "Shared browser workflow"})
+    assert shared["workflow"].state == "draft"
 
 
 def test_browser_maintenance_is_owner_scoped_and_redacts_action_payloads(tmp_path: Path):
@@ -489,8 +496,8 @@ def test_browser_maintenance_is_owner_scoped_and_redacts_action_payloads(tmp_pat
         payload_data={"private_token": "must-not-appear"},
     )
     actions.stage(
-        owner_id=channel._memory_owner(CLIENT_B),
-        session_key=channel._session_key(CLIENT_B, SESSION_B),
+        owner_id="telegram:987654321",
+        session_key="telegram:chat-b",
         profile_id="mission-work",
         capability_id="governed_action",
         tool_name="save_artifact",
@@ -550,7 +557,7 @@ def test_project_workspace_folder_picker_is_bounded_to_visible_workspace(tmp_pat
     ]
 
 
-def test_browser_session_search_matches_title_and_messages_without_crossing_identity(tmp_path: Path):
+def test_browser_session_search_matches_title_and_messages_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -564,18 +571,21 @@ def test_browser_session_search_matches_title_and_messages_without_crossing_iden
     second.metadata["pico_web_title"] = "Research notes"
     second.add_message("assistant", "The launch brief is ready for review")
     sessions.save(second)
-    other = sessions.get_or_create(channel._session_key(CLIENT_B, SESSION_A))
-    other.add_message("user", "Pico launch brief for another identity")
-    sessions.save(other)
+    sessions.save(sessions.get_or_create(channel._session_key(CLIENT_B, SESSION_A)))
 
     assert [item["id"] for item in channel._list_browser_sessions(CLIENT_A, search="launch brief")] == [
         SESSION_B,
         SESSION_A,
     ]
-    assert channel._list_browser_sessions(CLIENT_A, search="another identity") == []
+    assert {item["id"] for item in channel._list_browser_sessions(CLIENT_B, search="launch brief")} == {
+        SESSION_A,
+        SESSION_B,
+    }
+    assert channel._list_browser_sessions(CLIENT_B, search="Research notes")[0]["id"] == SESSION_B
+    assert channel._list_browser_sessions(CLIENT_A, search="no such phrase") == []
 
 
-def test_browser_session_archive_is_reversible_and_owner_scoped(tmp_path: Path):
+def test_browser_session_archive_is_reversible_and_shared_across_browsers(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -590,11 +600,10 @@ def test_browser_session_archive_is_reversible_and_owner_scoped(tmp_path: Path):
         "archived": True,
     }
     assert channel._list_browser_sessions(CLIENT_A) == []
+    assert channel._list_browser_sessions(CLIENT_B) == []
     assert channel._list_browser_sessions(CLIENT_A, include_archived=True)[0]["archived"] is True
-    with pytest.raises(ValueError, match="Session was not found"):
-        channel._set_browser_session_archive(CLIENT_B, SESSION_A, False)
 
-    channel._set_browser_session_archive(CLIENT_A, SESSION_A, False)
+    channel._set_browser_session_archive(CLIENT_B, SESSION_A, False)
     assert channel._list_browser_sessions(CLIENT_A)[0]["archived"] is False
 
 
@@ -650,17 +659,19 @@ def test_browser_session_summaries_expose_only_its_active_mission_and_task(tmp_p
     }
     operations = channel._browser_operations(CLIENT_A, SESSION_A)
     assert operations["active_task"]["id"] == task.id
-    assert channel._list_browser_sessions(CLIENT_B) == []
+    shared = channel._list_browser_sessions(CLIENT_B)
+    assert shared[0]["active_mission"] == listed[0]["active_mission"]
+    assert shared[0]["active_task"] == listed[0]["active_task"]
 
 
-def test_browser_context_exposes_only_recalled_memories_owned_by_the_browser(tmp_path: Path):
+def test_browser_context_exposes_only_workspace_recalled_memories(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
     channel._runtime_config = lambda: config
     store = PersonalMemoryStore(workspace)
     own_memory = store.remember(channel._memory_owner(CLIENT_A), "Use clear, short updates.")
-    other_memory = store.remember(channel._memory_owner(CLIENT_B), "Private preference")
+    other_memory = store.remember("telegram:987654321", "Private preference")
 
     sessions = SessionManager(workspace)
     session = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
@@ -677,7 +688,7 @@ def test_browser_context_exposes_only_recalled_memories_owned_by_the_browser(tmp
     assert [item["id"] for item in context["memory"]] == [own_memory.id]
 
 
-def test_browser_learning_requires_a_session_owned_by_the_browser(tmp_path: Path):
+def test_browser_learning_requires_a_session_on_the_workspace(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -687,8 +698,9 @@ def test_browser_learning_requires_a_session_owned_by_the_browser(tmp_path: Path
     sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
 
     channel._require_browser_session(CLIENT_A, SESSION_A)
+    channel._require_browser_session(CLIENT_B, SESSION_A)
     with pytest.raises(ValueError, match="Session was not found"):
-        channel._require_browser_session(CLIENT_B, SESSION_A)
+        channel._require_browser_session(CLIENT_A, "session_identity_9999")
 
 
 def test_browser_feedback_is_bound_to_the_owned_session_run(tmp_path: Path):

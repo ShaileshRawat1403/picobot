@@ -161,8 +161,8 @@ def test_blocked_requires_reason(tmp_workspace: Path, mission_store: MissionStor
 
 def test_human_only_transitions(tmp_workspace: Path, mission_store: MissionStore, session_manager: SessionManager):
     """Test 6: Only human store/API calls mutate steps; model turns do not auto-advance steps."""
-    owner = "web:browser:user1"
-    session_key = "web:web:user1:sess1"
+    owner = "local:owner"
+    session_key = "web:web:sess1"
 
     mission = mission_store.create(owner_id=owner, session_key=session_key, title="Mission Human Only", objective="Obj")
     mission = mission_store.transition(owner, mission.id, "active")
@@ -176,7 +176,7 @@ def test_human_only_transitions(tmp_workspace: Path, mission_store: MissionStore
     session.metadata["pico_active_mission_id"] = mission.id
 
     loop = AgentLoop(MessageBus(), create_mock_provider(), tmp_workspace, session_manager=session_manager)
-    msg = InboundMessage(channel="web", sender_id="browser:user1", chat_id="web:user1:sess1", content="Please complete step 1 now")
+    msg = InboundMessage(channel="web", sender_id="browser:user1", chat_id="web:sess1", content="Please complete step 1 now")
     loop._queue_run(msg)
 
     # Verify model turn queued run did NOT mutate step states
@@ -238,10 +238,9 @@ def test_linked_runs_retain_historical_blueprint_step_id(
     tmp_workspace: Path, mission_store: MissionStore, run_store: RunStore, session_manager: SessionManager
 ):
     """Test 8: Linked runs retain active blueprint_step_id permanently."""
-    owner = "web:browser:user1"
+    owner = "local:owner"
     client_id = "user1"
-    session_id = "sess1"
-    session_key = f"web:web:{client_id}:{session_id}"
+    session_key = "web:web:sess1"
 
     mission = mission_store.create(owner_id=owner, session_key=session_key, title="Mission Run Metadata", objective="Obj")
     mission = mission_store.transition(owner, mission.id, "active")
@@ -255,7 +254,7 @@ def test_linked_runs_retain_historical_blueprint_step_id(
     loop = AgentLoop(MessageBus(), create_mock_provider(), tmp_workspace, session_manager=session_manager)
 
     # Turn 1: queued during Step 1 (active)
-    msg1 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id=f"web:{client_id}:{session_id}", content="Turn 1")
+    msg1 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id="web:sess1", content="Turn 1")
     run1 = loop._queue_run(msg1)
     assert run1.blueprint_step_id == "s1"
 
@@ -263,7 +262,7 @@ def test_linked_runs_retain_historical_blueprint_step_id(
     mission_store.transition_blueprint_step(owner, mission.id, "s1", "completed")
 
     # Turn 2: queued during Step 2 (active)
-    msg2 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id=f"web:{client_id}:{session_id}", content="Turn 2")
+    msg2 = InboundMessage(channel="web", sender_id=f"browser:{client_id}", chat_id="web:sess1", content="Turn 2")
     run2 = loop._queue_run(msg2)
     assert run2.blueprint_step_id == "s2"
 
@@ -276,8 +275,8 @@ def test_queued_run_omits_blueprint_context_when_human_advances_step(
     tmp_workspace: Path, mission_store: MissionStore, session_manager: SessionManager
 ):
     """A queued run must never be prompted with a different active step."""
-    owner = "web:browser:user1"
-    session_key = "web:web:user1:sess1"
+    owner = "local:owner"
+    session_key = "web:web:sess1"
     mission = mission_store.create(owner_id=owner, session_key=session_key, title="Drift", objective="Obj")
     mission = mission_store.transition(owner, mission.id, "active")
     mission_store.save_draft_blueprint(owner, mission.id, [
@@ -288,7 +287,7 @@ def test_queued_run_omits_blueprint_context_when_human_advances_step(
     session = session_manager.get_or_create(session_key)
     session.metadata["pico_active_mission_id"] = mission.id
     loop = AgentLoop(MessageBus(), create_mock_provider(), tmp_workspace, session_manager=session_manager)
-    msg = InboundMessage(channel="web", sender_id="browser:user1", chat_id="web:user1:sess1", content="Queued")
+    msg = InboundMessage(channel="web", sender_id="browser:user1", chat_id="web:sess1", content="Queued")
     run = loop._queue_run(msg)
     assert run.blueprint_step_id == "s1"
 

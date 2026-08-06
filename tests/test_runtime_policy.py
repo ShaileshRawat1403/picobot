@@ -361,7 +361,7 @@ class TestLoopAttachesPolicy:
         )
 
         await agent._process_message(self._message("hello without policy"))
-        first = agent.runs.list("web:browser:owner-a", session_key="web:chat-a")[0]
+        first = agent.runs.list("local:owner", session_key="web:chat-a")[0]
         assert "~v" not in first.policy_revision
 
         service.set_global(
@@ -373,7 +373,7 @@ class TestLoopAttachesPolicy:
         )
 
         response = await agent._process_message(self._message("hello with policy"))
-        runs = agent.runs.list("web:browser:owner-a", session_key="web:chat-a")
+        runs = agent.runs.list("local:owner", session_key="web:chat-a")
         assert len(runs) == 2
         second = next(run for run in runs if "~v" in run.policy_revision)
         first = next(run for run in runs if "~v" not in run.policy_revision)
@@ -432,7 +432,7 @@ class TestLoopAttachesPolicy:
         service.set_session_override(session, {"response_mode": "detailed"})
         await agent._process_message(self._message("queued before the change"), queued_run_id=queued.id)
 
-        run = agent.runs.get("web:browser:owner-a", queued.id)
+        run = agent.runs.get("local:owner", queued.id)
         assert run.policy_revision.endswith("~v1:anthropic:anthropic/claude-sonnet-4:-:concise")
         assert "Be concise." in recorded[0]["system_prompt"]
         assert "Be thorough" not in recorded[0]["system_prompt"]

@@ -13,10 +13,11 @@ from picobot.channels.web import WebChannel
 from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from picobot.runs import RunStore
 
-OWNER_A = "web:browser:owner-a"
-OWNER_B = "web:browser:owner-b"
-SESSION_A = "web:web:owner-a:session-a"
-SESSION_B = "web:web:owner-b:session-b"
+LOCAL_OWNER = "local:owner"
+OWNER_A = LOCAL_OWNER
+OWNER_B = "telegram:987654321"
+SESSION_A = "web:web:session-a"
+SESSION_B = "telegram:chat-b"
 
 
 def _create(store: RunStore, **overrides):
@@ -294,7 +295,7 @@ async def test_agent_turn_records_completed_run_with_trusted_usage(tmp_path: Pat
     )
 
     assert response is not None and response.content == "Done."
-    run = agent.runs.list("web:browser:owner-a", session_key="web:chat-a")[0]
+    run = agent.runs.list(LOCAL_OWNER, session_key="web:chat-a")[0]
     assert run.state == "completed"
     assert run.usage == {"prompt_tokens": 7, "completion_tokens": 4, "total_tokens": 11}
     assert run.tool_activity_count == 1
@@ -313,7 +314,7 @@ async def test_status_and_recap_report_durable_session_state_without_private_con
     session.add_message("assistant", "Private answer that must not appear in status")
     agent.sessions.save(session)
     queued = agent.runs.create(
-        owner_id="web:browser:owner-a",
+        owner_id=LOCAL_OWNER,
         session_key="web:chat-a",
         capability_profile="personal-work",
         policy_revision="personal-work@test",
@@ -351,7 +352,7 @@ async def test_prequeued_run_is_reused_by_its_turn(tmp_path: Path):
     assert queued.state == "queued"
     response = await agent._process_message(message, queued_run_id=queued.id)
 
-    runs = agent.runs.list("web:browser:owner-a", session_key="web:chat-a")
+    runs = agent.runs.list(LOCAL_OWNER, session_key="web:chat-a")
     assert len(runs) == 1
     assert runs[0].id == queued.id
     assert runs[0].state == "completed"
@@ -368,7 +369,7 @@ async def test_agent_turn_records_failed_run_with_safe_summary(tmp_path: Path):
         )
     )
 
-    run = agent.runs.list("web:browser:owner-a", session_key="web:chat-a")[0]
+    run = agent.runs.list(LOCAL_OWNER, session_key="web:chat-a")[0]
     assert run.state == "failed"
     assert run.error_summary is not None
     assert "sk-secret-inline" not in run.error_summary
@@ -381,7 +382,7 @@ async def test_agent_turn_records_failed_run_with_safe_summary(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_agent_turn_cancellation_persists_cancelled_run(tmp_path: Path):
     agent = AgentLoop(bus=MessageBus(), provider=_SlowProvider(), workspace=tmp_path)
-    session = agent.sessions.get_or_create("web:web:owner-a:session-a")
+    session = agent.sessions.get_or_create(SESSION_A)
 
     task = asyncio.create_task(
         agent._run_turn(
@@ -439,13 +440,15 @@ async def test_agent_runs_are_session_isolated(tmp_path: Path):
         )
     )
 
-    assert len(agent.runs.list("web:browser:owner-a", session_key="web:chat-a")) == 1
-    assert len(agent.runs.list("web:browser:owner-b", session_key="web:chat-b")) == 1
-    assert [run.session_key for run in agent.runs.list("web:browser:owner-a")] == ["web:chat-a"]
-    assert [run.session_key for run in agent.runs.list("web:browser:owner-b")] == ["web:chat-b"]
+    assert len(agent.runs.list(LOCAL_OWNER, session_key="web:chat-a")) == 1
+    assert len(agent.runs.list(LOCAL_OWNER, session_key="web:chat-b")) == 1
+    assert sorted(run.session_key for run in agent.runs.list(LOCAL_OWNER)) == [
+        "web:chat-a",
+        "web:chat-b",
+    ]
 
 
-def test_browser_runs_endpoint_exposes_only_owner_receipts_and_active_state(tmp_path: Path):
+def test_browser_runs_endpoint_exposes_only_workspace_receipts_and_active_state(tmp_path: Path):
     workspace = tmp_path / "workspace"
     config = SimpleNamespace(workspace_path=workspace)
     channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
@@ -462,15 +465,19 @@ def test_browser_runs_endpoint_exposes_only_owner_receipts_and_active_state(tmp_
         policy_revision="personal-work@abc",
     )
     store.mark_running(channel._memory_owner(client_a), active.id)
-    other = store.create(
-        owner_id=channel._memory_owner(client_b),
-        session_key=channel._session_key(client_b, session_id),
+    queued = store.create(
+        owner_id=channel._memory_owner(client_a),
+        session_key=channel._session_key(client_a, session_id),
         capability_profile="personal-work",
     )
-    store.mark_running(channel._memory_owner(client_b), other.id)
+    remote = store.create(
+        owner_id="telegram:987654321",
+        session_key="telegram:chat-b",
+        capability_profile="personal-work",
+    )
 
     own = channel._browser_runs(client_a, session_id)
-    assert [run["run_id"] for run in own["runs"]] == [active.id]
+    assert {run["run_id"] for run in own["runs"]} == {active.id, queued.id}
     assert own["active"] is not None
     assert own["active"]["state"] == "running"
     assert own["active"]["run_id"] == active.id
@@ -500,13 +507,15 @@ def test_browser_runs_endpoint_exposes_only_owner_receipts_and_active_state(tmp_
     )
     assert "transcript" not in str(own).lower()
     assert "reasoning" not in str(own).lower()
-    assert channel._browser_runs(client_b, session_id)["runs"][0]["run_id"] == other.id
+    shared = channel._browser_runs(client_b, session_id)
+    assert {run["run_id"] for run in shared["runs"]} == {active.id, queued.id}
+    assert all(run["run_id"] != remote.id for run in shared["runs"])
 
 
 def test_stop_control_cancels_only_the_sessions_active_run(tmp_path: Path):
     async def scenario():
         agent = AgentLoop(bus=MessageBus(), provider=_SlowProvider(), workspace=tmp_path)
-        owner = "web:browser:owner-a"
+        owner = LOCAL_OWNER
         session_key = "web:web:owner-a:session-a"
         run = agent.runs.create(
             owner_id=owner, session_key=session_key, capability_profile="personal-work"
@@ -516,11 +525,11 @@ def test_stop_control_cancels_only_the_sessions_active_run(tmp_path: Path):
             owner_id=owner, session_key=session_key, capability_profile="personal-work"
         )
         other = agent.runs.create(
-            owner_id="web:browser:owner-b",
+            owner_id="telegram:987654321",
             session_key="web:web:owner-b:session-b",
             capability_profile="personal-work",
         )
-        agent.runs.mark_running("web:browser:owner-b", other.id)
+        agent.runs.mark_running("telegram:987654321", other.id)
 
         msg = InboundMessage(
             channel="web",
@@ -532,7 +541,7 @@ def test_stop_control_cancels_only_the_sessions_active_run(tmp_path: Path):
 
         assert agent.runs.get(owner, run.id).state == "cancelled"
         assert agent.runs.get(owner, queued.id).state == "queued"
-        assert agent.runs.get("web:browser:owner-b", other.id).state == "running"
+        assert agent.runs.get("telegram:987654321", other.id).state == "running"
         outbound = await asyncio.wait_for(agent.bus.consume_outbound(), timeout=1)
         assert "cancelled" in outbound.content
         assert run.id[:8] in outbound.content

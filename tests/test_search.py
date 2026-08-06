@@ -8,10 +8,10 @@ from picobot.search import PersonalSearch
 from picobot.session.manager import SessionManager
 
 
-OWNER_A = "web:browser:owner-a"
-OWNER_B = "web:browser:owner-b"
-SESSION_A = "web:web:owner-a:session-a"
-SESSION_B = "web:web:owner-b:session-b"
+OWNER_A = "local:owner"
+OWNER_B = "telegram:987654321"
+SESSION_A = "web:web:session-a"
+SESSION_B = "telegram:chat-b"
 
 
 def test_search_returns_owner_scoped_hits_with_inspectable_sources(tmp_path: Path):

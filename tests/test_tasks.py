@@ -34,10 +34,10 @@ from picobot.session.manager import SessionManager
 from picobot.tasks.store import TaskStore
 
 
-_OWNER_A = "web:browser:owner-a"
-_SESSION_A = "web:web:owner-a:session-1"
-_OWNER_B = "web:browser:owner-b"
-_SESSION_B = "web:web:owner-b:session-2"
+_OWNER_A = "local:owner"
+_SESSION_A = "web:web:session-1"
+_OWNER_B = "telegram:987654321"
+_SESSION_B = "telegram:chat-2"
 _PROFILE = "mission-work"
 
 

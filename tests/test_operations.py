@@ -227,7 +227,7 @@ async def test_agent_provider_surface_and_execution_follow_session_profile(tmp_p
     assert response is not None and response.content == "Done."
     visible_tools = {item["function"]["name"] for item in provider.calls[0]["tools"]}
     assert visible_tools == {"list_skills", "get_skill"}
-    activity = agent.tool_activity.list("web:browser:owner-a", "web:chat-a")
+    activity = agent.tool_activity.list("local:owner", "web:chat-a")
     assert [(item.tool_name, item.outcome, item.profile_id) for item in activity] == [
         ("list_skills", "success", "personal-work")
     ]
@@ -387,7 +387,7 @@ def test_browser_share_status_is_owner_session_scoped_and_never_exposes_snapshot
     assert token not in str(operations)
     browser_read = next(item for item in operations["capabilities"] if item["id"] == "browser.read_shared_tab")
     assert browser_read["state"] == "ready"
-    assert channel._browser_operations("browser_identity_0002", session_id)["shared_browser_tab"] is None
+    assert channel._browser_operations("browser_identity_0001", "session_identity_0002")["shared_browser_tab"] is None
 
 
 def test_browser_operations_exposes_only_actions_for_its_owner_and_session(tmp_path: Path):
@@ -412,7 +412,7 @@ def test_browser_operations_exposes_only_actions_for_its_owner_and_session(tmp_p
     )
     channel._action_store().stage(
         owner_id=channel._memory_owner("browser_identity_0002"),
-        session_key=channel._session_key("browser_identity_0002", session_id),
+        session_key=channel._session_key("browser_identity_0002", "session_identity_0002"),
         profile_id="browser-review",
         capability_id="browser.form_submit",
         tool_name="browser_submit",
