@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from picobot.artifacts.store import ArtifactStore
+from picobot.config.identity import LOCAL_OWNER_ID, WEB_SESSION_PREFIX
 from picobot.memory.store import PersonalMemoryStore
 from picobot.session.manager import SessionManager
 
@@ -123,10 +124,7 @@ class PersonalSearch:
     @staticmethod
     def _default_session_prefix(owner_id: str) -> str | None:
         """Derive the web session namespace without trusting a browser value."""
-        marker = "web:browser:"
-        if owner_id.startswith(marker) and owner_id.removeprefix(marker):
-            return f"web:web:{owner_id.removeprefix(marker)}:"
-        return None
+        return WEB_SESSION_PREFIX if owner_id == LOCAL_OWNER_ID else None
 
     def _memory_results(
         self, owner_id: str, query: str, terms: list[str], limit: int

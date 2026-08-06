@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from loguru import logger
 
 from picobot.agent.context import ContextBuilder
+from picobot.config.identity import migrate_workspace_identity, resolve_owner_id
 from picobot.agent.subagent import SubagentManager
 from picobot.artifacts.store import ArtifactStore
 from picobot.agent.tools.calendar import CalendarTool
@@ -115,6 +116,7 @@ class AgentLoop:
         self.channels_config = channels_config
         self.provider = provider
         self.workspace = workspace
+        self._unify_local_identity(workspace)
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
         self.context_window_tokens = context_window_tokens
@@ -1805,9 +1807,35 @@ class AgentLoop:
         )
 
     @staticmethod
+    def _unify_local_identity(workspace: Path) -> None:
+        """Adopt work saved before the web and CLI shared one identity.
+
+        The web workbench used to own rows under a random browser id, so
+        clearing site data hid earlier work.  This runs once per workspace and
+        is a no-op afterwards.  A failure must never stop Pico from starting:
+        the worst case is that those rows stay hidden, which is the situation
+        this repairs.
+        """
+        try:
+            changed = migrate_workspace_identity(workspace)
+        except Exception as exc:  # pragma: no cover - defensive startup guard
+            logger.warning("Could not unify local workspace identity: {}", exc)
+            return
+        if changed:
+            logger.info(
+                "Adopted {} rows saved under earlier browser identities: {}",
+                sum(changed.values()),
+                ", ".join(sorted(changed)),
+            )
+
+    @staticmethod
     def _owner_id(channel: str, sender_id: str) -> str:
-        """Scope personal memory to a channel identity, never the chat alone."""
-        return f"{channel}:{sender_id or 'anonymous'}"
+        """Scope personal memory to a channel identity, never the chat alone.
+
+        Local surfaces (web workbench and CLI) are the same person and collapse
+        to one durable owner; remote channels keep their per-sender identity.
+        """
+        return resolve_owner_id(channel, sender_id)
 
     def _session_status_lines(
         self, session: Session, owner_id: str, *, recap: bool = False

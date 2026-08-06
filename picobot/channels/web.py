@@ -25,6 +25,7 @@ from loguru import logger
 from picobot.bus.events import OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.channels.base import BaseChannel
+from picobot.config.identity import LOCAL_OWNER_ID, web_session_key
 
 
 class _MalformedRequest(Exception):
@@ -832,7 +833,7 @@ class WebChannel(BaseChannel):
                     limit_value = self._single_query_value(query, "limit")
                     limit = int(limit_value) if limit_value is not None else 20
                     service = self._search_service()
-                    prefix = f"web:web:{self._valid_browser_id(client_id)}:"
+                    prefix = "web:web:"
                     results = service.search(
                         self._memory_owner(client_id),
                         search,
@@ -1809,7 +1810,14 @@ class WebChannel(BaseChannel):
 
     @classmethod
     def _session_key(cls, client_id: str, session_id: str) -> str:
-        return f"web:web:{cls._valid_browser_id(client_id)}:{cls._valid_browser_id(session_id)}"
+        """Key a session by the session alone, never by the browser holding it.
+
+        ``client_id`` is still validated so malformed callers are rejected, but
+        it is deliberately absent from the result: a session must stay
+        reachable after site data is cleared or another browser is used.
+        """
+        cls._valid_browser_id(client_id)
+        return web_session_key(cls._valid_browser_id(session_id))
 
     @classmethod
     def _chat_id(cls, client_id: str, session_id: str) -> str:
@@ -1817,7 +1825,15 @@ class WebChannel(BaseChannel):
 
     @classmethod
     def _memory_owner(cls, client_id: str) -> str:
-        return f"web:browser:{cls._valid_browser_id(client_id)}"
+        """Resolve durable ownership for a web request.
+
+        Ownership is workspace-local rather than per browser.  ``client_id`` is
+        still validated to reject malformed callers, but it no longer decides
+        which rows the caller can see: clearing site data used to mint a new
+        owner that could not reach any earlier work.
+        """
+        cls._valid_browser_id(client_id)
+        return LOCAL_OWNER_ID
 
     @staticmethod
     def _single_query_value(query: dict[str, list[str]], key: str) -> str | None:
@@ -3486,7 +3502,8 @@ class WebChannel(BaseChannel):
         search: str = "",
         include_archived: bool = False,
     ) -> list[dict[str, Any]]:
-        prefix = f"web:web:{self._valid_browser_id(client_id)}:"
+        self._valid_browser_id(client_id)
+        prefix = "web:web:"
         manager = self._session_manager()
         result: list[dict[str, Any]] = []
         search_terms = search.casefold().split()
@@ -3799,6 +3816,7 @@ class WebChannel(BaseChannel):
                     chat_id=chat_id,
                     content=content.strip(),
                     metadata={"source": "browser"},
+                    session_key=web_session_key(session_id),
                 )
         except websockets.exceptions.ConnectionClosed:
             pass

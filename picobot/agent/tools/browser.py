@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from picobot.agent.tools.base import Tool
+from picobot.config.identity import LOCAL_OWNER_ID, web_session_key
 from picobot.operations.browser_bridge import BrowserBridgeStore
 
 
@@ -30,8 +31,8 @@ class BrowserReadSharedTabTool(Tool):
         if len(parts) != 3 or parts[0] != "web":
             self._owner_id = self._session_key = None
             return
-        self._owner_id = f"web:browser:{parts[1]}"
-        self._session_key = f"web:{chat_id}"
+        self._owner_id = LOCAL_OWNER_ID
+        self._session_key = web_session_key(parts[2])
 
     async def execute(self, max_characters: int | None = None, **_: Any) -> str:
         if not self._owner_id or not self._session_key:
