@@ -23,6 +23,7 @@ class ActiveRun:
     chat_id: str
     channel: str = "whatsapp"
     created_at: datetime = field(default_factory=datetime.now)
+    last_polled_at: datetime | None = None
     notified_waiting: bool = False
     notified_completed: bool = False
     notified_failed: bool = False
@@ -199,10 +200,24 @@ class DaxPollingService:
                 await self._circuit_breaker.record_failure()
                 await asyncio.sleep(5)
 
+    @staticmethod
+    def _due_for_poll(run: ActiveRun, poll_interval: float, now: datetime) -> bool:
+        """Whether `run` has waited at least `poll_interval` seconds since
+        its last poll. `POLL_INTERVALS`/`_get_poll_interval` back off polling
+        for older runs; this gate is what makes that backoff take effect."""
+        if run.last_polled_at is None:
+            return True
+        return (now - run.last_polled_at).total_seconds() >= poll_interval
+
     async def _poll_run(self, run: ActiveRun) -> None:
-        """Poll a single run for status updates."""
-        elapsed = (datetime.now() - run.created_at).total_seconds()
+        """Poll a single run for status updates, honoring its adaptive
+        backoff interval (frequent early on, less frequent for older runs)."""
+        now = datetime.now()
+        elapsed = (now - run.created_at).total_seconds()
         poll_interval = _get_poll_interval(elapsed)
+        if not self._due_for_poll(run, poll_interval, now):
+            return
+        run.last_polled_at = now
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
