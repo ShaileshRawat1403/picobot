@@ -27,6 +27,14 @@ from picobot.bus.queue import MessageBus
 from picobot.channels.base import BaseChannel
 
 
+class _MalformedRequest(Exception):
+    """The HTTP request head could not be parsed."""
+
+
+class _RequestTooLarge(Exception):
+    """The HTTP request body exceeds the accepted limit."""
+
+
 class WebChannel(BaseChannel):
     """Web channel that provides a WebSocket server for web-based chat interfaces."""
 
@@ -36,6 +44,7 @@ class WebChannel(BaseChannel):
     _LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
     _SESSION_TITLE_KEY = "pico_web_title"
     _MAX_SESSION_TITLE_LENGTH = 72
+    _MAX_BODY_BYTES = 1 << 20  # 1 MiB cap on JSON/webhook request bodies
     _OPERATIONS_TOOL_NAMES = {
         "list_skills",
         "get_skill",
@@ -102,8 +111,7 @@ class WebChannel(BaseChannel):
     async def _handle_http(self, reader, writer):
         """Handle HTTP requests for HTML and API."""
         try:
-            data = await reader.read(65536)
-            request_head, _, body = data.partition(b"\r\n\r\n")
+            request_head, body = await self._read_request(reader)
             request = request_head.decode("utf-8", errors="replace")
             lines = request.split("\n")
             headers = self._request_headers(lines[1:])
@@ -1715,10 +1723,52 @@ class WebChannel(BaseChannel):
                 return
             else:
                 writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+        except _MalformedRequest:
+            self._write_response(writer, 400, self._json_error("Malformed HTTP request"))
+        except _RequestTooLarge:
+            self._write_response(writer, 413, self._json_error("Request body too large"))
         except Exception as e:
             logger.error(f"HTTP error: {e}")
         finally:
             writer.close()
+
+    async def _read_request(self, reader) -> tuple[bytes, bytes]:
+        """Read an HTTP request head and its exact Content-Length body.
+
+        The head is capped at 16 KiB and the body at ``_MAX_BODY_BYTES``.
+        Raises ``_MalformedRequest`` for an oversized or unterminated head, and
+        ``_RequestTooLarge`` when the declared body exceeds the cap.
+        """
+        head = bytearray()
+        while b"\r\n\r\n" not in head:
+            chunk = await reader.read(16384)
+            if not chunk:
+                break
+            head.extend(chunk)
+            if len(head) > 16384:
+                raise _MalformedRequest("Request head is too large")
+        sep = head.find(b"\r\n\r\n")
+        if sep == -1:
+            raise _MalformedRequest("Unterminated request head")
+        head_bytes = bytes(head[:sep])
+        body = bytes(head[sep + 4 :])
+        content_length = 0
+        for raw in head_bytes.split(b"\r\n"):
+            name, _, value = raw.partition(b":")
+            if name.strip().lower() == b"content-length":
+                try:
+                    content_length = int(value.strip())
+                except ValueError:
+                    content_length = 0
+                break
+        if content_length > self._MAX_BODY_BYTES:
+            raise _RequestTooLarge("Declared body exceeds the 1 MiB cap")
+        while len(body) < content_length:
+            chunk = await reader.read(min(65536, content_length - len(body)))
+            if not chunk:
+                break
+            body += chunk
+        return head_bytes, body[:content_length]
 
     def _render_index_html(self, port: int) -> str:
         """Load the local UI and inject the ports for this channel instance."""
@@ -1812,7 +1862,7 @@ class WebChannel(BaseChannel):
 
     @staticmethod
     def _write_response(writer, status: int, response: bytes) -> None:
-        status_text = {200: "OK", 201: "Created", 400: "Bad Request", 403: "Forbidden", 404: "Not Found"}.get(
+        status_text = {200: "OK", 201: "Created", 400: "Bad Request", 403: "Forbidden", 404: "Not Found", 413: "Payload Too Large"}.get(
             status, "Error"
         )
         writer.write(

@@ -13,7 +13,7 @@ import pytest
 from picobot.bus.events import OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.artifacts.store import ArtifactStore
-from picobot.channels.web import WebChannel
+from picobot.channels.web import WebChannel, _MalformedRequest, _RequestTooLarge
 from picobot.cron.service import CronService
 from picobot.cron.types import CronSchedule
 from picobot.memory.store import PersonalMemoryStore
@@ -1009,3 +1009,83 @@ def test_browser_session_list_includes_safe_latest_run_state(tmp_path: Path):
     assert listed[0]["latest_run"]["state"] == "failed"
     assert listed[0]["latest_run"]["error_summary"] == "A bounded test failure"
     assert "owner_id" not in json.dumps(listed)
+
+
+def test_http_request_body_is_read_in_full_across_fragments():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        payload = json.dumps({"message": "x" * 5000}).encode()
+        request = (
+            b"POST /api/schedules HTTP/1.1\r\n"
+            + f"Content-Length: {len(payload)}\r\n".encode()
+            + b"Host: localhost\r\n\r\n"
+            + payload
+        )
+        reader = asyncio.StreamReader()
+        # Feed the request in tiny fragments. The previous implementation did a
+        # single reader.read(65536), which returned after the first fragment and
+        # silently dropped the remainder of the body.
+        for i in range(0, len(request), 7):
+            reader.feed_data(request[i : i + 7])
+        reader.feed_eof()
+
+        head, body = await channel._read_request(reader)
+
+        assert head.startswith(b"POST /api/schedules")
+        assert body == payload
+
+    asyncio.run(scenario())
+
+
+def test_http_request_body_read_stops_at_content_length():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        payload = json.dumps({"message": "hello"}).encode()
+        request = (
+            b"POST /api/schedules HTTP/1.1\r\n"
+            + f"Content-Length: {len(payload)}\r\n".encode()
+            + b"Host: localhost\r\n\r\n"
+            + payload
+            + b"EXTRA_TRAILING_BYTES"
+        )
+        reader = asyncio.StreamReader()
+        reader.feed_data(request)
+        reader.feed_eof()
+
+        head, body = await channel._read_request(reader)
+
+        assert body == payload
+
+    asyncio.run(scenario())
+
+
+def test_http_request_body_over_cap_is_rejected():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        oversized = WebChannel._MAX_BODY_BYTES + 1
+        request = (
+            b"POST /api/schedules HTTP/1.1\r\n"
+            + f"Content-Length: {oversized}\r\n".encode()
+            + b"Host: localhost\r\n\r\n"
+        )
+        reader = asyncio.StreamReader()
+        reader.feed_data(request)
+        reader.feed_eof()
+
+        with pytest.raises(_RequestTooLarge):
+            await channel._read_request(reader)
+
+    asyncio.run(scenario())
+
+
+def test_http_unterminated_head_is_rejected():
+    async def scenario():
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"POST /api/schedules HTTP/1.1\r\nContent-Length: 10\r\n")
+        reader.feed_eof()
+
+        with pytest.raises(_MalformedRequest):
+            await channel._read_request(reader)
+
+    asyncio.run(scenario())
