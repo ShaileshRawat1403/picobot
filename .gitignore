@@ -48,6 +48,8 @@ sessions/
 
 # WhatsApp Bridge
 whatsapp-auth/
+PyWhatKit_DB.txt
+bridge/qrcode.txt
 
 # Assets
 assets/*.svg
