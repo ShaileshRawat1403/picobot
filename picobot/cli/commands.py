@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from urllib.error import URLError
 from urllib.request import urlopen
 from pathlib import Path
@@ -1040,13 +1041,59 @@ def web(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Web server host"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    install_agent: bool = typer.Option(
+        False, "--install-agent", help="Install the login LaunchAgent (macOS) and exit"
+    ),
+    uninstall_agent: bool = typer.Option(
+        False, "--uninstall-agent", help="Unload and remove the login LaunchAgent (macOS) and exit"
+    ),
+    wait_for_free_port: bool = typer.Option(
+        False,
+        "--wait-for-free-port",
+        help="Keep waiting for the port pair to free instead of exiting when Pico is already running",
+    ),
 ):
     """Start picobot with the web interface enabled."""
 
+    if install_agent and uninstall_agent:
+        raise typer.BadParameter("Choose either --install-agent or --uninstall-agent, not both.")
+
     cfg = _load_runtime_config(config, workspace)
-    resolved_port = _resolve_web_port(host, port)
-    if resolved_port is None:
+    from picobot.config.loader import get_config_path
+    from picobot.launchagent import install_agent as _install_agent
+    from picobot.launchagent import uninstall_agent as _uninstall_agent
+
+    config_path = get_config_path()
+    workspace_path = Path(cfg.agents.defaults.workspace)
+
+    if install_agent:
+        plist_path, log_path = _install_agent(config_path, workspace_path, host, port)
+        console.print("[green]✓[/green] LaunchAgent installed and loaded.")
+        console.print(f"  Plist: {plist_path}")
+        console.print(f"  Log:   {log_path}")
+        console.print("  Pico now starts at login and self-heals on crash.")
         return
+
+    if uninstall_agent:
+        plist_path = _uninstall_agent()
+        console.print("[green]✓[/green] LaunchAgent unloaded and removed.")
+        console.print(f"  Plist: {plist_path}")
+        return
+
+    while True:
+        if _pico_web_running(host, port):
+            if not wait_for_free_port:
+                console.print(f"{__logo__} Pico is already running at http://{host}:{port + 1}.")
+                return
+            console.print(
+                f"{__logo__} Pico is already running at http://{host}:{port + 1}; "
+                "waiting for the port to free so the login service can take over..."
+            )
+            while _pico_web_running(host, port):
+                time.sleep(5)
+        resolved_port = _resolve_web_port(host, port)
+        if resolved_port is not None:
+            break
     port = resolved_port
     cfg.channels.web.enabled = True
     cfg.channels.web.port = port
@@ -1079,13 +1126,26 @@ def backup(
 
 
 @app.command()
-def status():
+def status(
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+):
     """Show picobot status."""
-    from picobot.config.loader import get_config_path, load_config
+    from picobot.config.loader import get_config_path, load_config, set_config_path
 
-    config_path = get_config_path()
-    config = load_config()
-    workspace = config.workspace_path
+    if config:
+        config_path = Path(config).expanduser().resolve()
+        if not config_path.exists():
+            console.print(f"[red]Error: Config file not found: {config_path}[/red]")
+            raise typer.Exit(1)
+        set_config_path(config_path)
+        config_path = get_config_path()
+    else:
+        config_path = get_config_path()
+    cfg = load_config()
+    if workspace:
+        cfg.agents.defaults.workspace = workspace
+    workspace_path = cfg.workspace_path
 
     console.print(f"{__logo__} picobot Status\n")
 
@@ -1093,17 +1153,35 @@ def status():
         f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}"
     )
     console.print(
-        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}"
+        f"Workspace: {workspace_path} "
+        f"{'[green]✓[/green]' if workspace_path.exists() else '[red]✗[/red]'}"
+    )
+
+    from picobot.launchagent import agent_is_installed, agent_is_loaded, web_port_listening
+
+    agent_installed = agent_is_installed()
+    agent_loaded = agent_is_loaded()
+    web_port = cfg.channels.web.port
+    web_host = cfg.channels.web.host or "127.0.0.1"
+    web_up = web_port_listening(web_host, web_port)
+    console.print(
+        f"Web: http://{web_host}:{web_port + 1} "
+        f"{'[green]listening ✓[/green]' if web_up else '[dim]not listening[/dim]'}"
+    )
+    console.print(
+        "LaunchAgent: "
+        f"{'[green]installed ✓[/green]' if agent_installed else '[dim]not installed[/dim]'} · "
+        f"{'[green]loaded ✓[/green]' if agent_loaded else '[dim]not loaded[/dim]'}"
     )
 
     if config_path.exists():
         from picobot.providers.registry import PROVIDERS
 
-        console.print(f"Model: {config.agents.defaults.model}")
+        console.print(f"Model: {cfg.agents.defaults.model}")
 
         # Check API keys from registry
         for spec in PROVIDERS:
-            p = getattr(config.providers, spec.name, None)
+            p = getattr(cfg.providers, spec.name, None)
             if p is None:
                 continue
             if spec.is_oauth:
@@ -1121,10 +1199,10 @@ def status():
                 )
 
         # DAX status
-        if config.dax and config.dax.enabled:
+        if cfg.dax and cfg.dax.enabled:
             console.print("DAX: [green]✓ Enabled[/green]")
-            console.print(f"  URL: {config.dax.url}")
-            admin_count = len(config.dax.admin_numbers)
+            console.print(f"  URL: {cfg.dax.url}")
+            admin_count = len(cfg.dax.admin_numbers)
             console.print(f"  Admin Numbers: {admin_count} configured")
         else:
             console.print("DAX: [dim]disabled[/dim]")

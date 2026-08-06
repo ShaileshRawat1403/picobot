@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Pico launcher: start the web workbench and open the browser — no terminal needed.
+#
+#   double-click (Pico.app)  start detached if needed, open browser, exit
+#   --serve                  run the server in the foreground
+#   --install-agent          install + load the login LaunchAgent (macOS)
+#   --uninstall-agent        unload + remove the login LaunchAgent (macOS)
+#   --agent-status           print agent/web status
+#
+# Lives in scripts/ (run directly) or Pico.app/Contents/MacOS/ (double-click).
+set -euo pipefail
+
+WEB_URL="http://127.0.0.1:18792/"
+
+find_repo_root() {
+  local d="$1"
+  while [[ "$d" != "/" ]]; do
+    if [[ -f "$d/pyproject.toml" && -d "$d/picobot" ]]; then
+      printf '%s' "$d"
+      return 0
+    fi
+    d="$(dirname "$d")"
+  done
+  return 1
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(find_repo_root "$SCRIPT_DIR")" || {
+  echo "Pico repo not found from $SCRIPT_DIR" >&2
+  exit 1
+}
+
+PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
+[[ -x "$PYTHON_BIN" ]] || PYTHON_BIN="python3"
+CONFIG="$REPO_ROOT/.picobot/config.json"
+LOG_DIR="$REPO_ROOT/.picobot/workspace/logs"
+LOG_FILE="$LOG_DIR/pico-web.log"
+AGENT_LABEL="com.picobot.web"
+
+health_ok() {
+  curl -sf -o /dev/null "http://127.0.0.1:18792/api/health" 2>/dev/null
+}
+
+wait_ready() {
+  local i
+  for (( i = 0; i < 40; i++ )); do
+    if health_ok; then return 0; fi
+    sleep 0.5
+  done
+  return 1
+}
+
+start_detached() {
+  mkdir -p "$LOG_DIR"
+  nohup "$PYTHON_BIN" -m picobot web --host 127.0.0.1 --config "$CONFIG" >>"$LOG_FILE" 2>&1 &
+  disown 2>/dev/null || true
+}
+
+case "${1:-}" in
+  --serve)
+    exec "$PYTHON_BIN" -m picobot web --host 127.0.0.1 --config "$CONFIG"
+    ;;
+  --install-agent)
+    exec "$PYTHON_BIN" -m picobot web --install-agent --config "$CONFIG"
+    ;;
+  --uninstall-agent)
+    exec "$PYTHON_BIN" -m picobot web --uninstall-agent --config "$CONFIG"
+    ;;
+  --agent-status)
+    exec "$PYTHON_BIN" -m picobot status --config "$CONFIG"
+    ;;
+esac
+
+if health_ok; then
+  open "$WEB_URL"
+  exit 0
+fi
+
+launchctl kickstart "gui/$(id -u)/$AGENT_LABEL" >/dev/null 2>&1 || true
+if wait_ready; then
+  open "$WEB_URL"
+  exit 0
+fi
+
+start_detached
+if wait_ready; then
+  open "$WEB_URL"
+  exit 0
+fi
+
+echo "Pico failed to start. See $LOG_FILE" >&2
+osascript -e 'display alert "Pico failed to start" message "See the log for details: '"$LOG_FILE"'"' >/dev/null 2>&1 || true
+exit 1

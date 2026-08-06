@@ -64,3 +64,6 @@ dax
 *.tmp
 *.bak
 current_index.html
+
+# Build artifacts
+Pico.app/
