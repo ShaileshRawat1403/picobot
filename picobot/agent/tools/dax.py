@@ -4,9 +4,7 @@ This tool allows Picobot to interact with DAX workflows through the Soothsayer A
 Picobot is thin ingress only - all business logic remains in DAX.
 """
 
-import asyncio
 import json
-from pathlib import Path
 from typing import Any
 
 import httpx
@@ -14,7 +12,7 @@ from loguru import logger
 
 from picobot.agent.tools.base import Tool
 from picobot.bus.dax_auth import get_admin_numbers, get_default_url, is_authorized
-from picobot.bus.dax_queue import DAXMessageQueue, get_dax_queue
+from picobot.bus.dax_queue import DAXMessageQueue
 from picobot.bus.dax_service import DaxPollingService, get_dax_service
 
 DRAFT_PATTERNS = [
@@ -159,7 +157,6 @@ def format_run_status(status: dict) -> str:
 
     workflow = status.get("workflow", {})
     progress = status.get("progress", {})
-    trust = status.get("trust", {})
 
     if workflow:
         lines.append(f"🤖 *{workflow.get('classLabel', workflow.get('class', 'Workflow'))}*")

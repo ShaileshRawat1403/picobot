@@ -9,7 +9,7 @@ from picobot.agent.context import ContextBuilder
 from picobot.agent.loop import AgentLoop
 from picobot.bus.queue import MessageBus, InboundMessage
 from picobot.channels.web import WebChannel
-from picobot.missions.store import MissionStore, BlueprintStep, MissionBlueprint
+from picobot.missions.store import MissionStore, MissionBlueprint
 from picobot.runs.store import RunStore
 from picobot.session.manager import SessionManager
 

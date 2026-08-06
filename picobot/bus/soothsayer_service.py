@@ -7,7 +7,6 @@ so that Picobot's activity is visible in the Soothsayer dashboard.
 from __future__ import annotations
 
 import asyncio
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING

@@ -26,7 +26,7 @@ from picobot.providers.connections import (
     subscription_login_hint,
     subscription_status,
 )
-from picobot.providers.registry import PROVIDERS, find_by_name
+from picobot.providers.registry import find_by_name
 
 
 class ProviderSetupService:

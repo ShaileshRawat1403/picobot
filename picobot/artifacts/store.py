@@ -11,7 +11,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import re
 import sqlite3
 import uuid
 from dataclasses import dataclass

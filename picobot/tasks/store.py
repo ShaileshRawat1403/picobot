@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from picobot.missions.store import MissionStore
 from picobot.runs.store import RunStore
 
 

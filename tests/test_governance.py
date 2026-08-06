@@ -9,7 +9,7 @@ from picobot.agent.tools.base import Tool
 from picobot.agent.tools.registry import ToolRegistry
 from picobot.bus.queue import MessageBus
 from picobot.config.schema import MCPServerConfig
-from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
+from picobot.operations import CapabilityRegistry, GovernedRegistryStore
 from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 
@@ -83,7 +83,6 @@ def test_untested_and_failed_mcp_entries_never_enter_tool_definitions(tmp_path: 
     store.update_entry("mcp:untested_server", readiness="untested", discovered_tools=["mcp_untested_server_tool"])
     store.update_entry("mcp:failed_server", readiness="failed", safe_diagnostic="Connection refused", discovered_tools=["mcp_failed_server_tool"])
 
-    tools = ToolRegistry()
     capabilities = CapabilityRegistry()
 
     # Neither should enter tool definitions

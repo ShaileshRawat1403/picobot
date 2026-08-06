@@ -76,6 +76,7 @@ def test_mission_state_machine_idempotency_and_terminal_behavior(tmp_path: Path)
 
     assert store.transition(OWNER_A, mission.id, "draft") == mission
     active = store.transition(OWNER_A, mission.id, "active")
+    assert active.state == "active"
     with pytest.raises(ValueError, match="blocked reason is required"):
         store.transition(OWNER_A, mission.id, "blocked")
     blocked = store.transition(OWNER_A, mission.id, "blocked", "Waiting for source access")

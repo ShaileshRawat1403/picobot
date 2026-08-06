@@ -31,7 +31,7 @@ from picobot.operations.executor import MissionExecutor
 from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from picobot.runs.store import RunStore
 from picobot.session.manager import SessionManager
-from picobot.tasks.store import TaskRecord, TaskStore
+from picobot.tasks.store import TaskStore
 
 
 _OWNER_A = "web:browser:owner-a"

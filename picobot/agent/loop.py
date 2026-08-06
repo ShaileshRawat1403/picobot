@@ -109,7 +109,7 @@ class AgentLoop:
         provider_factory=None,
         compaction: CompactionService | None = None,
     ):
-        from picobot.config.schema import ExecToolConfig, SkillConfig, WebSearchConfig
+        from picobot.config.schema import ExecToolConfig, WebSearchConfig
 
         self.bus = bus
         self.channels_config = channels_config

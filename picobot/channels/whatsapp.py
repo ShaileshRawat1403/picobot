@@ -83,8 +83,8 @@ class WhatsAppChannel(BaseChannel):
         if self._ws:
             try:
                 await self._ws.close()
-            except:
-                pass
+            except Exception as exc:
+                logger.debug("Error closing WhatsApp websocket: {}", exc)
             self._ws = None
 
     async def send(self, msg: OutboundMessage) -> None:

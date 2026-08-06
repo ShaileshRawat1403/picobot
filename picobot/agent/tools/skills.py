@@ -1,8 +1,6 @@
 """Skill management tools."""
 
-from typing import Any
 
-from loguru import logger
 
 from picobot.agent.skills import SkillsLoader
 from picobot.agent.tools.base import Tool

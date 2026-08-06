@@ -8,7 +8,6 @@ from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.providers.base import LLMProvider, LLMResponse
 from picobot.projects import ProjectStore
-from picobot.session.manager import Session
 from picobot.session.orientation import (
     ORIENTATION_METADATA_KEY,
     get_orientation,
