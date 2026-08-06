@@ -74,13 +74,17 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
-target-version = "py38"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F"]
-ignore = ["E501", "E701", "E722", "E741", "F401", "F841"]
+# E501 (line-too-long) is intentionally ignored: this codebase does not hard-wrap,
+# and the ~950 existing long lines are a separate formatting pass, not a
+# correctness gate. E722/E701/E741/F401/F841 used to be ignored here too; they
+# are now enforced since the codebase is actually clean against them.
+ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true

@@ -22,7 +22,7 @@ jobs:
       run: pip install ruff
 
     - name: Run ruff
-      run: ruff check . --fix || true
+      run: ruff check .
 
   test:
     runs-on: ubuntu-latest
@@ -61,3 +61,31 @@ jobs:
     - name: Run tests
       run: |
         python -m pytest tests/ -v --tb=short
+
+  bare-install:
+    # Guards the README Quick Start path (`pip install picobot`, no extras):
+    # a base install must be able to import every channel it registers by
+    # default. This is what would have caught the missing `websockets`
+    # dependency before it shipped.
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install picobot with no extras
+      run: |
+        python -m pip install --upgrade pip
+        pip install .
+
+    - name: Import every default-registered channel
+      run: |
+        python -c "
+        import picobot
+        from picobot.channels.web import WebChannel
+        from picobot.channels.discord import DiscordChannel
+        print('bare install OK:', picobot.__version__)
+        "
