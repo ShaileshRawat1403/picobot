@@ -955,6 +955,8 @@
     html[data-theme="dark"] .nav-button { color:var(--muted); }
     html[data-theme="dark"] .nav-button:hover, html[data-theme="dark"] .nav-button.active { color:var(--pico); background:var(--pico-pale); }
     html[data-theme="dark"] .brand, html[data-theme="dark"] .topbar h1, html[data-theme="dark"] .workspace-head h2, html[data-theme="dark"] .memory-value, html[data-theme="dark"] .artifact-title, html[data-theme="dark"] .mission-title, html[data-theme="dark"] .skill-title { color:var(--ink); }
+    html[data-theme="dark"] .mark { background:linear-gradient(135deg,#8a84ff,var(--pico-dark)); }
+    html[data-theme="dark"] .topbar::before { color:var(--pico); }
     html[data-theme="dark"] .card, html[data-theme="dark"] .artifact-preview, html[data-theme="dark"] .search-result, html[data-theme="dark"] .mission-detail, html[data-theme="dark"] .run-detail-panel, html[data-theme="dark"] .workflow-inspector, html[data-theme="dark"] .workflow-library, html[data-theme="dark"] .workflow-toolbar, html[data-theme="dark"] .workflow-evidence-drawer, html[data-theme="dark"] .session-cockpit, html[data-theme="dark"] .composer, html[data-theme="dark"] .bubble, html[data-theme="dark"] .workflow-node { background:var(--panel); border-color:var(--line); color:var(--ink); box-shadow:none; }
     html[data-theme="dark"] .bubble.user, html[data-theme="dark"] .nav-button.active { background:var(--pico-pale); }
     html[data-theme="dark"] .workflow-canvas { background-color:#151b26; background-image:radial-gradient(#34425d 1px, transparent 1px); }
@@ -1086,7 +1088,7 @@
     html[data-theme="dark"] .workflow-validation { border-color:var(--line); background:var(--panel-raised); color:var(--muted); }
     html[data-theme="dark"] .workflow-validation[data-state="ready"] { border-color:rgba(101,198,167,.4); background:rgba(101,198,167,.1); color:var(--good); }
     html[data-theme="dark"] .workflow-validation[data-state="blocked"] { border-color:rgba(239,140,148,.4); background:rgba(239,140,148,.1); color:var(--bad); }
-    html[data-theme="dark"] .workflow-node-status { box-shadow:0 0 0 2px var(--panel); }
+    html[data-theme="dark"] .workflow-node-status { background:var(--soft); box-shadow:0 0 0 2px var(--panel); }
     html[data-theme="dark"] .rail::before { background:radial-gradient(circle at 10% 0%,rgba(142,167,255,.07),transparent 55%),radial-gradient(circle at 100% 30%,rgba(142,167,255,.05),transparent 47%); }
     @media (max-width:720px) { .workspace-view { padding:20px 16px 30px; } .transcript, .composer { width:calc(100% - 20px); } .topbar { padding:7px 12px; } .theme-toggle span:last-child { display:none; } .topbar-actions { gap:5px; } }
    </style>
