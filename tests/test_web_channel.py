@@ -1147,3 +1147,122 @@ def test_http_genuinely_oversized_head_is_rejected():
             await channel._read_request(reader)
 
     asyncio.run(scenario())
+
+
+class _CapturingWriter:
+    """Minimal writer that buffers response bytes and looks like localhost."""
+
+    def __init__(self):
+        self.chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self.chunks.append(data)
+
+    def close(self) -> None:
+        return None
+
+    def get_extra_info(self, name):
+        if name == "peername":
+            return None
+        return None
+
+
+async def _http_api_request(channel, method: str, target: str, body: dict | None = None) -> dict:
+    """Drive the raw HTTP handler once and return status plus parsed JSON."""
+    head = f"{method} {target} HTTP/1.1\r\nHost: localhost\r\n".encode()
+    if body is not None:
+        payload = json.dumps(body, ensure_ascii=False).encode()
+        head += f"Content-Length: {len(payload)}\r\n\r\n".encode()
+        request = head + payload
+    else:
+        head += b"\r\n"
+        request = head
+    reader = _ScriptedReader([request])
+    writer = _CapturingWriter()
+    await channel._handle_http(reader, writer)
+    response = b"".join(writer.chunks)
+    status_line, _, rest = response.partition(b"\r\n")
+    _, status, _ = status_line.split(b" ", 2)
+    _, _, payload_bytes = rest.partition(b"\r\n\r\n")
+    parsed = json.loads(payload_bytes.decode("utf-8")) if payload_bytes else None
+    return {"status": int(status), "body": parsed}
+
+
+def test_http_api_work_stays_visible_after_client_identity_changes(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+
+        # A WebSocket hello would have saved this session before any HTTP write.
+        SessionManager(workspace).save(
+            SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        )
+
+        created_project = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/projects?client_id={CLIENT_A}",
+            {
+                "title": "Shared launch project",
+                "kind": "research",
+                "purpose": "Keep one local record.",
+                "capabilities": ["create_artifacts", "read_workspace"],
+            },
+        )
+        assert created_project["status"] == 201
+        project_id = created_project["body"]["project"]["id"]
+
+        created_artifact = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/artifacts?client_id={CLIENT_A}",
+            {
+                "session_id": SESSION_A,
+                "title": "Launch brief",
+                "content": "Decision log and launch risks.",
+                "kind": "brief",
+            },
+        )
+        assert created_artifact["status"] == 201
+        artifact_id = created_artifact["body"]["artifact"]["id"]
+
+        PersonalMemoryStore(workspace).remember(
+            channel._memory_owner(CLIENT_A), "The launch review is Friday"
+        )
+
+        listed = await _http_api_request(channel, "GET", f"/api/projects?client_id={CLIENT_B}")
+        assert listed["status"] == 200
+        assert {p["id"] for p in listed["body"]["projects"]} == {project_id}
+
+        artifacts = await _http_api_request(
+            channel, "GET", f"/api/artifacts?client_id={CLIENT_B}&session_id={SESSION_A}"
+        )
+        assert artifacts["status"] == 200
+        assert {a["id"] for a in artifacts["body"]["artifacts"]} == {artifact_id}
+
+        sessions = await _http_api_request(channel, "GET", f"/api/sessions?client_id={CLIENT_B}")
+        assert sessions["status"] == 200
+        assert any(s["id"] == SESSION_A for s in sessions["body"]["sessions"])
+
+        search = await _http_api_request(
+            channel, "GET", f"/api/search?client_id={CLIENT_B}&q=launch"
+        )
+        assert search["status"] == 200
+        memory_hits = [r for r in search["body"]["results"] if r["kind"] == "memory"]
+        assert any("Friday" in r["snippet"] for r in memory_hits)
+
+        project_detail = await _http_api_request(
+            channel, "GET", f"/api/projects/{project_id}?client_id={CLIENT_B}"
+        )
+        assert project_detail["status"] == 200
+        assert project_detail["body"]["project"]["id"] == project_id
+
+        artifact_detail = await _http_api_request(
+            channel, "GET", f"/api/artifacts/{artifact_id}?client_id={CLIENT_B}"
+        )
+        assert artifact_detail["status"] == 200
+        assert artifact_detail["body"]["artifact"]["id"] == artifact_id
+
+    asyncio.run(scenario())
