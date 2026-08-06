@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
 
 
 class Analytics:
@@ -135,6 +134,14 @@ class Analytics:
 
         cutoff = datetime.now() - timedelta(days=days)
         for date_key, daily in self.data.get("daily", {}).items():
+            try:
+                in_window = datetime.strptime(date_key, "%Y-%m-%d") >= cutoff
+            except ValueError:
+                # Malformed/legacy key: exclude it from a bounded window
+                # rather than guessing its date.
+                in_window = False
+            if not in_window:
+                continue
             stats["total_messages"] += daily.get("messages", 0)
             stats["total_tool_calls"] += daily.get("tool_calls", 0)
             stats["total_errors"] += daily.get("errors", 0)
