@@ -127,6 +127,7 @@ class ContextPlan:
     tail_count: int = 0
     estimated_tokens_before: int = 0
     estimated_tokens_after: int = 0
+    request_exceeds_budget: bool = False  # the active request alone consumes the budget
 
     @property
     def compactable_count(self) -> int:
@@ -152,6 +153,7 @@ def plan_context_window(
     the tail begins.
     """
     total = estimate_messages_tokens(history) + current_request_tokens
+    request_exceeds_budget = current_request_tokens >= budget_tokens
     if total <= budget_tokens:
         return ContextPlan(
             action="none",
@@ -194,10 +196,11 @@ def plan_context_window(
     tail = history[tail_start:]
     return ContextPlan(
         action="trim",
-        reason="not_compactable",
+        reason="request_exceeds_budget" if request_exceeds_budget else "not_compactable",
         protected_start=protected_start,
         tail_start=tail_start,
         tail_count=len(tail),
         estimated_tokens_before=total,
         estimated_tokens_after=estimate_messages_tokens(tail) + current_request_tokens,
+        request_exceeds_budget=request_exceeds_budget,
     )

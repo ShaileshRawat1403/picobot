@@ -1577,11 +1577,16 @@ class AgentLoop:
             )
             self._save_turn(session, all_msgs, 1 + len(history), run_id=run.id)
             self.sessions.save(session)
+            meta = dict(msg.metadata or {})
+            meta["run_id"] = run.id
+            meta["run_receipt"] = run.turn_receipt()
+            if (warning := self._pending_context_warning(session)) is not None:
+                meta["context_warning"] = warning
             return OutboundMessage(
                 channel=channel,
                 chat_id=chat_id,
                 content=final_content or "Background task completed.",
-                metadata={"run_id": run.id, "run_receipt": run.turn_receipt()},
+                metadata=meta,
             )
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
@@ -1799,6 +1804,8 @@ class AgentLoop:
         meta.update(response_meta)
         meta["run_id"] = run.id
         meta["run_receipt"] = run.turn_receipt()
+        if (warning := self._pending_context_warning(session)) is not None:
+            meta["context_warning"] = warning
         return OutboundMessage(
             channel=msg.channel,
             chat_id=msg.chat_id,
@@ -2026,14 +2033,37 @@ class AgentLoop:
         compaction_ids = [record.id for record in window.records_created]
         if window.handoff is not None and window.handoff.id not in compaction_ids:
             compaction_ids.append(window.handoff.id)
+        context_warning = None
+        if plan.tail_count == 0 and plan.action == "trim":
+            if plan.request_exceeds_budget:
+                context_warning = (
+                    "Your latest message alone exceeds the context window, so no earlier "
+                    "conversation fit into this turn's model input."
+                )
+            else:
+                context_warning = (
+                    "This conversation exceeds the context window, so only the current "
+                    "message reached the model this turn."
+                )
         session.metadata["pico_pending_context_plan"] = {
             "action": plan.action,
             "reason": plan.reason,
             "estimated_tokens_before": plan.estimated_tokens_before,
             "estimated_tokens_after": plan.estimated_tokens_after,
             "compaction_record_ids": compaction_ids,
+            "context_warning": context_warning,
         }
         return window.messages
+
+    def _pending_context_warning(self, session: Session) -> str | None:
+        """Return the owner-facing context warning for this turn, if any."""
+        plan = session.metadata.get("pico_pending_context_plan")
+        if not isinstance(plan, dict):
+            return None
+        warning = plan.get("context_warning")
+        if not isinstance(warning, str):
+            return None
+        return warning
 
     def _record_turn_context(
         self,
