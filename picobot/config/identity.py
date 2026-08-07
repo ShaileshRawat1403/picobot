@@ -22,6 +22,7 @@ to a different workspace path, and therefore to a different set of SQLite files.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from pathlib import Path
@@ -39,8 +40,25 @@ _LEGACY_LOCAL_PREFIXES = ("web:", "cli:")
 #: These are implementation details and must never be written to directly.
 _FTS_SHADOW_SUFFIXES = ("_data", "_idx", "_content", "_docsize", "_config")
 
-#: Marker file recording that a workspace has been migrated already.
+#: Marker file recording how far a workspace has been migrated.
 _MIGRATION_MARKER = ".owner-identity-migrated"
+
+#: Bump when a new migration step is added.  A workspace records the version it
+#: reached, so a step introduced later still runs on a workspace that already
+#: completed the earlier ones.  Version 1 rewrote database rows only and left
+#: session transcripts, which are files, behind.
+_MIGRATION_VERSION = 2
+
+
+def _completed_version(marker: Path) -> int:
+    """Return how far this workspace has been migrated, 0 if not at all."""
+    try:
+        content = marker.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    found = re.search(r"version\s*=\s*(\d+)", content)
+    # A marker written before versioning existed recorded only step 1.
+    return int(found.group(1)) if found else 1
 
 #: Session keys the web workbench wrote while its identity was per browser:
 #: ``web:web:<browser id>:<session id>``.  The browser segment is dropped so a
@@ -106,6 +124,61 @@ def _identity_tables(connection: sqlite3.Connection) -> list[tuple[str, set[str]
     return tables
 
 
+def migrate_session_transcripts(sessions_dir: Path) -> dict[str, int]:
+    """Rekey stored session transcripts that predate the unified identity.
+
+    Sessions live as JSONL files, not as SQLite rows, so the database sweep
+    misses them entirely.  A transcript saved under the old four-part key stays
+    on disk but becomes unreachable: the server computes the new key, finds no
+    matching session, and every session-scoped route answers "Session was not
+    found for this browser identity" -- which the workbench renders as "Sync
+    unavailable" across the whole cockpit.
+
+    Both the filename and the ``key`` recorded inside the file are rewritten.
+    A transcript whose new name is already taken is left alone rather than
+    overwriting a live session.
+    """
+    directory = Path(sessions_dir)
+    if not directory.is_dir():
+        return {}
+
+    changed: dict[str, int] = {}
+    for path in sorted(directory.glob("*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+        except OSError:
+            continue
+        if not lines:
+            continue
+        try:
+            header = json.loads(lines[0])
+        except (json.JSONDecodeError, ValueError):
+            continue
+        old_key = header.get("key")
+        if not isinstance(old_key, str):
+            continue
+        match = _LEGACY_WEB_SESSION_KEY_RE.match(old_key)
+        if match is None:
+            continue
+
+        new_key = web_session_key(match.group("session"))
+        target = directory / f"{new_key.replace(':', '_')}.jsonl"
+        if target.exists() and target != path:
+            # A session already occupies the unified name; do not clobber it.
+            continue
+
+        header["key"] = new_key
+        lines[0] = json.dumps(header, ensure_ascii=False) + "\n"
+        try:
+            path.write_text("".join(lines), encoding="utf-8")
+            if target != path:
+                path.rename(target)
+        except OSError:
+            continue
+        changed[path.name] = 1
+    return changed
+
+
 def _rewrite_owner_ids(connection: sqlite3.Connection, table: str) -> int:
     """Point legacy local owner rows at :data:`LOCAL_OWNER_ID`."""
     predicate = " OR ".join("owner_id LIKE ?" for _ in _LEGACY_LOCAL_PREFIXES)
@@ -167,7 +240,7 @@ def migrate_workspace_identity(workspace_path: Path, *, force: bool = False) -> 
     """
     workspace = Path(workspace_path)
     marker = workspace / _MIGRATION_MARKER
-    if marker.exists() and not force:
+    if not force and _completed_version(marker) >= _MIGRATION_VERSION:
         return {}
 
     changed: dict[str, int] = {}
@@ -192,9 +265,18 @@ def migrate_workspace_identity(workspace_path: Path, *, force: bool = False) -> 
         finally:
             connection.close()
 
+    # Sessions are JSONL files rather than rows, so the database sweep above
+    # cannot reach them.  Missing this left every session-scoped route failing
+    # with "Session was not found for this browser identity".
+    for name, count in migrate_session_transcripts(workspace / "sessions").items():
+        changed[f"sessions/{name}"] = count
+
     try:
         workspace.mkdir(parents=True, exist_ok=True)
-        marker.write_text("Local web and CLI identities unified.\n", encoding="utf-8")
+        marker.write_text(
+            f"Local web and CLI identities unified.\nversion = {_MIGRATION_VERSION}\n",
+            encoding="utf-8",
+        )
     except OSError:
         # A read-only workspace still gets a correct in-memory result; the
         # migration simply runs again next time.
