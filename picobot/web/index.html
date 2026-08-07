@@ -611,6 +611,7 @@
     .command-item-icon { width:22px; height:22px; display:grid; place-items:center; border:1px solid #dbe3f1; border-radius:5px; background:#f7f9fd; color:#7890d0; font:11px ui-monospace,SFMono-Regular,Menlo,monospace; }
     .command-item-copy { min-width:0; flex:1; }
     .command-item-label { font-size:12px; font-weight:650; }
+    .command-item mark { background:transparent; color:var(--pico-dark); font-weight:750; }
     .command-item-detail { overflow:hidden; margin-top:1px; color:#929aaa; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
     .command-empty { padding:22px 12px; color:#929aaa; font-size:12px; text-align:center; }
     .command-foot { display:flex; gap:14px; padding:8px 13px; border-top:1px solid #e6ebf3; color:#9aa3b1; font:9px ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -1101,6 +1102,13 @@
     html[data-theme="dark"] .utility-local { color:var(--muted); }
     html[data-theme="dark"] .command-palette { background:rgba(0,0,0,.6); }
     html[data-theme="dark"] .command-dialog { border-color:var(--line); background:var(--panel); box-shadow:0 24px 70px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.3); color:var(--ink); }
+    html[data-theme="dark"] .command-item { color:var(--ink); }
+    html[data-theme="dark"] .command-item:hover, html[data-theme="dark"] .command-item.active { background:var(--pico-pale); color:var(--pico); }
+    html[data-theme="dark"] .command-input { color:var(--ink); }
+    html[data-theme="dark"] .command-input::placeholder { color:var(--soft); }
+    html[data-theme="dark"] .command-item-icon { border-color:var(--line); background:var(--panel-raised); color:var(--pico); }
+    html[data-theme="dark"] .command-item-detail, html[data-theme="dark"] .command-empty { color:var(--muted); }
+    html[data-theme="dark"] .command-item mark { color:var(--pico); }
     html[data-theme="dark"] .command-head { border-bottom-color:var(--line); }
     html[data-theme="dark"] .command-close { color:var(--muted); }
     html[data-theme="dark"] .command-foot { border-top-color:var(--line); color:var(--muted); }
@@ -1930,7 +1938,9 @@
       {label:'Learning', detail:'Review feedback and retention choices', icon:'L', view:'learning'},
       {label:'Skills', detail:'Inspect installed and proposed skills', icon:'T', view:'skills'},
     ];
-    let commandMatches = COMMANDS, commandIndex = 0, commandFocusReturn = null;
+    let commandMatches = COMMANDS, commandMatchIndices = null, commandIndex = 0, commandFocusReturn = null;
+    function fuzzyMatch(text, query) { const lower = text.toLowerCase(); let index = 0, score = 0, indices = []; for (let i = 0; i < query.length; i++) { const pos = lower.indexOf(query[i], index); if (pos < 0) return null; score += pos === index ? 3 : 1; indices.push(pos); index = pos + 1; } return { score, indices }; }
+    function highlightMatches(text, indices) { if (!indices || !indices.length) return escapeHtml(text); let output = '', pos = 0; indices.forEach((matchIndex) => { if (matchIndex > pos) output += escapeHtml(text.slice(pos, matchIndex)); output += `<mark>${escapeHtml(text[matchIndex])}</mark>`; pos = matchIndex + 1; }); return output + escapeHtml(text.slice(pos)); }
     function renderCommandItems() {
       const list = $('command-list');
       list.innerHTML = '';
@@ -1938,22 +1948,24 @@
       commandMatches.forEach((command, index) => {
         const item = document.createElement('button');
         item.type = 'button'; item.className = `command-item ${index === commandIndex ? 'active' : ''}`; item.setAttribute('role', 'option'); item.setAttribute('aria-selected', index === commandIndex ? 'true' : 'false');
-        item.innerHTML = `<span class="command-item-icon" aria-hidden="true">${escapeHtml(command.icon)}</span><span class="command-item-copy"><span class="command-item-label">${escapeHtml(command.label)}</span><span class="command-item-detail">${escapeHtml(command.detail)}</span></span>`;
+        item.innerHTML = `<span class="command-item-icon" aria-hidden="true">${escapeHtml(command.icon)}</span><span class="command-item-copy"><span class="command-item-label">${highlightMatches(command.label, commandMatchIndices ? commandMatchIndices[index] : null)}</span><span class="command-item-detail">${escapeHtml(command.detail)}</span></span>`;
         item.onclick = () => { closeCommandPalette(); if (command.view) showView(command.view); else command.run(); };
         list.appendChild(item);
       });
     }
-    function openCommandPalette() { commandFocusReturn = document.activeElement; $('command-palette').hidden = false; $('command-input').value = ''; commandMatches = COMMANDS; commandIndex = 0; renderCommandItems(); $('command-input').focus(); }
+    function openCommandPalette() { commandFocusReturn = document.activeElement; $('command-palette').hidden = false; $('command-input').value = ''; commandMatches = COMMANDS; commandMatchIndices = null; commandIndex = 0; renderCommandItems(); $('command-input').focus(); }
     function closeCommandPalette() { $('command-palette').hidden = true; if (commandFocusReturn && typeof commandFocusReturn.focus === 'function') commandFocusReturn.focus(); }
+    function commandFocusables() { return Array.from($('command-palette').querySelectorAll('button, input')).filter((el) => !el.hidden); }
     function moveCommandSelection(delta) { if (!commandMatches.length) return; commandIndex = (commandIndex + delta + commandMatches.length) % commandMatches.length; renderCommandItems(); }
     function runSelectedCommand() { const command = commandMatches[commandIndex]; if (!command) return; closeCommandPalette(); if (command.view) showView(command.view); else command.run(); }
-    function filterCommands(value) { const query = value.trim().toLowerCase(); commandMatches = query ? COMMANDS.filter((command) => `${command.label} ${command.detail}`.toLowerCase().includes(query)) : COMMANDS; commandIndex = 0; renderCommandItems(); }
+    function filterCommands(value) { const query = value.trim().toLowerCase(); if (!query) { commandMatches = COMMANDS; commandMatchIndices = null; commandIndex = 0; renderCommandItems(); return; } const matched = []; COMMANDS.forEach((command) => { const labelMatch = fuzzyMatch(command.label, query), detailMatch = fuzzyMatch(command.detail, query); if (labelMatch || detailMatch) matched.push({ command, score: (labelMatch ? labelMatch.score + 5 : 0) + (detailMatch ? detailMatch.score : 0), indices: labelMatch ? labelMatch.indices : null }); }); matched.sort((a, b) => b.score - a.score); commandMatches = matched.map((item) => item.command); commandMatchIndices = matched.map((item) => item.indices); commandIndex = 0; renderCommandItems(); }
     function showView(name) { currentView = name; document.querySelector('.app').classList.toggle('workflow-mode', name === 'workflows'); document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'maintenance' ? 'Daily and weekly review' : name === 'projects' ? 'Pico Home' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'workflows' ? 'Bounded orchestration' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'maintenance' ? 'Maintenance' : name === 'projects' ? 'Projects' : name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'workflows' ? 'Workflows' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'maintenance') loadMaintenance(); if (name === 'projects') { loadProjects(); loadOrientation(); } if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
     $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
     $('command-trigger').onclick = openCommandPalette;
     $('theme-toggle').onclick = toggleTheme;
     $('command-close').onclick = closeCommandPalette;
     $('command-palette').onclick = (event) => { if (event.target === $('command-palette')) closeCommandPalette(); };
+    $('command-palette').onkeydown = (event) => { if (event.key !== 'Tab') return; const focusables = commandFocusables(); if (!focusables.length) return; const first = focusables[0], last = focusables[focusables.length - 1], active = document.activeElement; if (event.shiftKey) { if (active === first || !focusables.includes(active)) { event.preventDefault(); last.focus(); } } else { if (active === last || !focusables.includes(active)) { event.preventDefault(); first.focus(); } } };
     $('command-input').oninput = (event) => filterCommands(event.target.value);
     $('command-input').onkeydown = (event) => { if (event.key === 'ArrowDown') { event.preventDefault(); moveCommandSelection(1); } else if (event.key === 'ArrowUp') { event.preventDefault(); moveCommandSelection(-1); } else if (event.key === 'Enter') { event.preventDefault(); runSelectedCommand(); } else if (event.key === 'Escape') { event.preventDefault(); closeCommandPalette(); } };
     function isEditingTarget(target) { return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable); }
