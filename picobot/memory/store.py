@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Literal
 
 
@@ -671,7 +672,15 @@ class PersonalMemoryStore:
         *,
         status: str | None = None,
         limit: int = 20,
+        project_id: str | None = None,
+        kinds: Sequence[str] | None = None,
     ) -> list[MemoryItem]:
+        """List memories for an owner, newest first.
+
+        ``project_id`` narrows to one project's memories; ``kinds`` narrows to
+        particular kinds.  Both are used to reassemble what was captured about
+        a project when returning to it after time away.
+        """
         if status is not None:
             self._validate_status(status)
         limit = max(1, min(limit, 100))
@@ -680,6 +689,15 @@ class PersonalMemoryStore:
         if status is not None:
             query += " AND m.status = ?"
             params.append(status)
+        if project_id is not None:
+            query += " AND m.project_id = ?"
+            params.append(project_id)
+        if kinds:
+            unknown = sorted(set(kinds) - self._VALID_KINDS)
+            if unknown:
+                raise ValueError(f"Unsupported memory kind: {', '.join(unknown)}")
+            query += f" AND m.kind IN ({', '.join('?' for _ in kinds)})"
+            params.extend(kinds)
         query += " ORDER BY m.updated_at DESC LIMIT ?"
         params.append(limit)
         with self._connect() as connection:

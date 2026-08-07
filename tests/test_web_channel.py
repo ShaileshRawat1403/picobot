@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import io
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -28,6 +29,10 @@ CLIENT_A = "browser_identity_0001"
 CLIENT_B = "browser_identity_0002"
 SESSION_A = "session_identity_0001"
 SESSION_B = "session_identity_0002"
+
+
+def _git(root: Path, *arguments: str) -> None:
+    subprocess.run(["git", "-C", str(root), *arguments], check=True, capture_output=True, text=True)
 
 
 class FakeWebSocket:
@@ -1484,5 +1489,107 @@ def test_browser_archive_nudge_is_suppressed_once_something_was_captured(tmp_pat
         )
         assert archived["status"] == 200
         assert archived["body"]["capture_nudge"] is False
+
+    asyncio.run(scenario())
+
+
+def test_project_resume_reports_unreadable_source_without_failing(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        owner_id = channel._memory_owner(CLIENT_A)
+        project = channel._project_store().create(
+            owner_id, title="Launched", kind="software", purpose="Ship it"
+        )
+        channel._project_store().add_source(
+            owner_id,
+            project.id,
+            kind="local_folder",
+            label="Missing",
+            locator=str(tmp_path / "does-not-exist"),
+        )
+
+        resume = await _http_api_request(
+            channel, "GET", f"/api/projects/{project.id}/resume?client_id={CLIENT_A}"
+        )
+
+        assert resume["status"] == 200
+        body = resume["body"]
+        assert body["project_id"] == project.id
+        assert body["has_captured"] is False
+        assert len(body["observed"]) == 1
+        assert body["observed"][0]["kind"] == "local_folder"
+        assert body["observed"][0]["state"] == "unavailable"
+
+    asyncio.run(scenario())
+
+
+def test_project_resume_carries_captures_live_observation_and_writes_no_memory(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        checkout = tmp_path / "checkout"
+        workspace.mkdir()
+        checkout.mkdir()
+        _git(checkout, "init")
+        _git(checkout, "config", "user.email", "pico@example.test")
+        _git(checkout, "config", "user.name", "Pico Test")
+        (checkout / "README.md").write_text("# Project\n", encoding="utf-8")
+        _git(checkout, "add", "README.md")
+        _git(checkout, "commit", "-m", "Establish project direction")
+        (checkout / "notes.md").write_text("current work\n", encoding="utf-8")
+
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        sessions = SessionManager(workspace)
+        sessions.save(sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A)))
+        owner_id = channel._memory_owner(CLIENT_A)
+        project = channel._project_store().create(
+            owner_id, title="Pico", kind="software", purpose="A brain for work"
+        )
+        channel._project_store().add_source(
+            owner_id,
+            project.id,
+            kind="local_folder",
+            label="Checkout",
+            locator=str(checkout),
+        )
+        channel._set_browser_session_orientation(CLIENT_A, SESSION_A, {"project_id": project.id})
+
+        captured = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {
+                "session_id": SESSION_A,
+                "next_step": {"value": "Draft the onboarding flow"},
+                "decision": {"value": "Keep the CLI default", "why": "Owners use it"},
+            },
+        )
+        assert captured["status"] == 201
+
+        memory = PersonalMemoryStore(workspace)
+        before = len(memory.list(owner_id, limit=100))
+
+        resume = await _http_api_request(
+            channel, "GET", f"/api/projects/{project.id}/resume?client_id={CLIENT_A}"
+        )
+
+        assert resume["status"] == 200
+        body = resume["body"]
+        assert [entry["value"] for entry in body["captured"]["next_step"]] == [
+            "Draft the onboarding flow"
+        ]
+        assert [entry["why"] for entry in body["captured"]["decision"]] == ["Owners use it"]
+        assert body["last_captured_at"] is not None
+        assert len(body["observed"]) == 1
+        observed = body["observed"][0]
+        assert observed["state"] == "ready"
+        assert observed["branch"]
+        assert any("notes.md" in value for value in observed["changed_files"])
+        assert len(memory.list(owner_id, limit=100)) == before
 
     asyncio.run(scenario())

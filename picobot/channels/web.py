@@ -356,6 +356,11 @@ class WebChannel(BaseChannel):
                     elif method == "POST" and operation == "inspect":
                         project = store.mark_inspected(owner_id, project_id)
                         self._write_response(writer, 200, json.dumps({"project": project.to_dict()}).encode())
+                    elif method == "GET" and operation == "resume":
+                        resume = self._build_project_resume(owner_id, project_id)
+                        self._write_response(
+                            writer, 200, json.dumps(resume, ensure_ascii=False).encode()
+                        )
                     else:
                         raise ValueError("Project route was not found")
                 except (ValueError, KeyError, json.JSONDecodeError) as exc:
@@ -3596,6 +3601,43 @@ class WebChannel(BaseChannel):
                 }
             )
         return result
+
+    def _build_project_resume(self, owner_id: str, project_id: str) -> dict[str, Any]:
+        """Assemble what this project was, for an owner returning to it cold.
+
+        Repository state is read live on every request rather than cached: a
+        stored summary drifts from the moment it is written, while re-reading
+        costs one subprocess call and is always true.  A source that cannot be
+        read reports that inline instead of failing the whole resume, since
+        captured reasoning is useful even when a folder has moved.
+        """
+        from picobot.projects.awareness import ProjectAwarenessInspector
+        from picobot.projects.resume import build_project_resume
+
+        store = self._project_store()
+        project = store.get(owner_id, project_id)
+        inspector = ProjectAwarenessInspector(self._runtime_config().workspace_path)
+        observed: list[dict[str, Any]] = []
+        for source in store.sources(owner_id, project_id):
+            entry: dict[str, Any] = {"kind": source.kind, "label": source.label}
+            try:
+                awareness = inspector.inspect(project, source)
+            except Exception as exc:  # pragma: no cover - defensive per-source guard
+                entry.update({"state": "unavailable", "message": str(exc)})
+            else:
+                summary = getattr(awareness, "summary", awareness)
+                entry.update(summary if isinstance(summary, dict) else {"state": "unavailable"})
+            observed.append(entry)
+
+        resume = build_project_resume(
+            project_id=project_id,
+            owner_id=owner_id,
+            memory_store=self._memory_store(),
+            observed=observed,
+        )
+        payload = resume.to_dict()
+        payload["project"] = project.to_dict()
+        return payload
 
     def _browser_session_leave(self, client_id: str, session_id: str) -> dict[str, Any]:
         """Report whether leaving this session is worth a capture reminder.
