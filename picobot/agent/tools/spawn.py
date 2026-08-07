@@ -17,11 +17,19 @@ class SpawnTool(Tool):
         self._origin_chat_id = "direct"
         self._session_key = "cli:direct"
 
-    def set_context(self, channel: str, chat_id: str) -> None:
-        """Set the origin context for subagent announcements."""
+    def set_context(self, channel: str, chat_id: str, session_key: str | None = None) -> None:
+        """Set the origin context for subagent announcements.
+
+        ``session_key`` must be the session's real key.  Deriving one here from
+        the channel and chat id produced a different string from the one the
+        inbound message carries, so ``cancel_by_session`` never matched and a
+        cancelled turn left its subagents running -- and billing -- in the
+        background.  The caller owns the key; this tool only records it.
+        """
         self._origin_channel = channel
         self._origin_chat_id = chat_id
-        self._session_key = f"{channel}:{chat_id}"
+        if session_key:
+            self._session_key = session_key
 
     @property
     def name(self) -> str:

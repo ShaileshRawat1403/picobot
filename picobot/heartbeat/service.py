@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
@@ -82,6 +83,43 @@ class HeartbeatService:
                 return None
         return None
 
+    @staticmethod
+    def _has_actionable_tasks(content: str) -> bool:
+        """Report whether the file holds anything beyond its own scaffolding.
+
+        The default HEARTBEAT.md states: "If this file has no tasks (only
+        headers and comments), the agent will skip the heartbeat."  Nothing
+        implemented that, so an untouched template counted as content and every
+        tick spent a provider call asking whether a file of comments contained
+        work.  At the default half-hour interval that is roughly 1,400 calls a
+        month for a file the owner never edited.
+
+        Only an unchecked list item counts.  Prose does not, because the
+        shipped template explains itself in prose ("This file is checked every
+        30 minutes...") and any rule that treats a sentence as a task marks the
+        untouched template as work.  The template also teaches the list form
+        directly: "Add your periodic tasks below this line".
+
+        The asymmetry is deliberate.  Missing a task costs one skipped cycle,
+        30 minutes late.  Treating scaffolding as a task costs a provider call
+        every interval, indefinitely, for nothing.
+        """
+        without_comments = re.sub(r"<!--.*?-->", "", content, flags=re.DOTALL)
+        for line in without_comments.splitlines():
+            stripped = line.strip()
+            item = re.match(r"^[-*+]\s+(?P<body>.*)$", stripped)
+            if item is None:
+                continue
+            body = item.group("body").strip()
+            checkbox = re.match(r"^\[(?P<mark>[ xX]?)\]\s*(?P<rest>.*)$", body)
+            if checkbox is not None:
+                if checkbox.group("mark").lower() == "x":
+                    continue  # already done
+                body = checkbox.group("rest").strip()
+            if body:
+                return True
+        return False
+
     async def _decide(self, content: str) -> tuple[str, str]:
         """Phase 1: ask LLM to decide skip/run via virtual tool call.
 
@@ -142,6 +180,10 @@ class HeartbeatService:
         content = self._read_heartbeat_file()
         if not content:
             logger.debug("Heartbeat: HEARTBEAT.md missing or empty")
+            return
+        if not self._has_actionable_tasks(content):
+            # Cheaper than asking a model to tell us the file is empty.
+            logger.debug("Heartbeat: HEARTBEAT.md holds no tasks, skipping the model call")
             return
 
         logger.info("Heartbeat: checking for tasks...")

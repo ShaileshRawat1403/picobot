@@ -313,7 +313,14 @@ class AgentLoop:
         ):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
+                    if name == "spawn":
+                        # The spawn tool needs the session's real key so a
+                        # cancelled turn can actually stop the children it
+                        # started; deriving one from the chat id produced a
+                        # different string and left them running.
+                        tool.set_context(channel, chat_id, session_key)
+                    else:
+                        tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
                 if hasattr(tool, "set_turn_context") and owner_id and session_key:
                     tool.set_turn_context(
                         owner_id=owner_id,

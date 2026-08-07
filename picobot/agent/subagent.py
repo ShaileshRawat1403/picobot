@@ -21,6 +21,17 @@ from picobot.utils.helpers import build_assistant_message
 class SubagentManager:
     """Manages background subagent execution."""
 
+    #: Most background children allowed at once.  Each one runs its own model
+    #: loop, so this is the ceiling on parallel spend, not just on processes.
+    MAX_CONCURRENT_SUBAGENTS = 3
+
+    #: Provider round-trips a single child may take before it is stopped.
+    _MAX_ITERATIONS = 15
+
+    #: Wall-clock ceiling for one child.  Without it a hung provider call keeps
+    #: a task alive for the life of the process.
+    _TIMEOUT_SECONDS = 600
+
     def __init__(
         self,
         provider: LLMProvider,
@@ -51,7 +62,28 @@ class SubagentManager:
         origin_chat_id: str = "direct",
         session_key: str | None = None,
     ) -> str:
-        """Spawn a subagent to execute a task in the background."""
+        """Spawn a subagent to execute a task in the background.
+
+        Refuses once ``MAX_CONCURRENT_SUBAGENTS`` are already running.  Each
+        child costs up to ``_MAX_ITERATIONS`` provider round-trips, so an
+        unbounded spawn is an unbounded bill: a model that decides to delegate
+        enthusiastically could previously open any number of parallel
+        conversations.  Refusing is a normal tool result, not an error, so the
+        model can simply choose to do the work itself.
+        """
+        running = self.get_running_count()
+        if running >= self.MAX_CONCURRENT_SUBAGENTS:
+            logger.warning(
+                "Refused to spawn a subagent: {} already running (limit {})",
+                running,
+                self.MAX_CONCURRENT_SUBAGENTS,
+            )
+            return (
+                f"Not started: {running} background tasks are already running "
+                f"(limit {self.MAX_CONCURRENT_SUBAGENTS}). Wait for one to finish, "
+                "or carry out this task directly instead of delegating it."
+            )
+
         task_id = str(uuid.uuid4())[:8]
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
         origin = {"channel": origin_channel, "chat_id": origin_chat_id}
@@ -104,11 +136,19 @@ class SubagentManager:
             ]
 
             # Run agent loop (limited iterations)
-            max_iterations = 15
+            max_iterations = self._MAX_ITERATIONS
             iteration = 0
             final_result: str | None = None
 
+            deadline = asyncio.get_running_loop().time() + self._TIMEOUT_SECONDS
             while iteration < max_iterations:
+                if asyncio.get_running_loop().time() >= deadline:
+                    logger.warning("Subagent [{}] hit its time limit", task_id)
+                    final_result = (
+                        "Stopped: this background task reached its time limit before "
+                        "finishing. Nothing was written."
+                    )
+                    break
                 iteration += 1
 
                 response = await self.provider.chat_with_retry(
