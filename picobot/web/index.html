@@ -8,6 +8,7 @@
     :root { --ink:#16182b; --muted:#6f728a; --line:#e3e4ef; --paper:#f8f8fc; --panel:#fff; --pico:#645cf6; --pico-dark:#4039bf; --pico-pale:#eeedff; --good:#168266; --bad:#c94b5b; --rail:272px; }
     * { box-sizing:border-box; }
     :focus-visible { outline:2px solid var(--pico); outline-offset:2px; }
+    html { scroll-behavior:smooth; }
     body { margin:0; min-height:100vh; background:var(--paper); color:var(--ink); font:14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     button, input, textarea { font:inherit; }
     button { cursor:pointer; }
@@ -953,7 +954,7 @@
     .topbar { min-height:48px; padding:7px 22px; background:var(--chrome); border-color:var(--line); }
     .topbar-actions { display:flex; align-items:center; gap:8px; margin-left:auto; }
     .topbar-actions .command-trigger { margin-left:0; }
-    .theme-toggle { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 8px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:var(--panel-raised); font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; }
+    .theme-toggle { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 8px; border:1px solid var(--line); border-radius:7px; color:var(--muted); background:var(--panel-raised); font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; cursor:pointer; transition:background-color .18s ease,border-color .18s ease,color .18s ease; }
     .theme-toggle:hover { border-color:#aabceb; color:var(--pico-dark); background:var(--pico-pale); }
     .theme-toggle span:first-child { font-size:13px; line-height:1; }
     .rail { background:var(--rail-surface); border-color:var(--line); }
@@ -1062,6 +1063,10 @@
     html[data-theme="dark"] .memory-card, html[data-theme="dark"] .skill-card, html[data-theme="dark"] .artifact-card, html[data-theme="dark"] .mission-card, html[data-theme="dark"] .operation-card, html[data-theme="dark"] .provider-card, html[data-theme="dark"] .learning-card, html[data-theme="dark"] .skill-proposal-card { border-color:var(--line); background:var(--panel); }
     html[data-theme="dark"] .memory-card:hover, html[data-theme="dark"] .skill-card:hover, html[data-theme="dark"] .artifact-card:hover, html[data-theme="dark"] .mission-card:hover, html[data-theme="dark"] .mission-card.active, html[data-theme="dark"] .skill-proposal-card:hover, html[data-theme="dark"] .skill-proposal-card.active { border-color:var(--pico); background:var(--panel-raised); }
     html[data-theme="dark"] .memory-action.reject, html[data-theme="dark"] .memory-action.forget { background:rgba(239,140,148,.12); color:var(--bad); }
+    html[data-theme="dark"] .forget { background:rgba(239,140,148,.12); color:var(--bad); }
+    html[data-theme="dark"] .mission-resume { border-left-color:var(--pico); background:rgba(100,92,246,.08); }
+    html[data-theme="dark"] .artifact-revision { background:var(--panel-raised); border-color:var(--line); }
+    html[data-theme="dark"] .artifact-revision:hover, html[data-theme="dark"] .artifact-revision.active { border-color:var(--pico); background:var(--pico-pale); }
     html[data-theme="dark"] .memory-history-item { border-left-color:var(--line); background:var(--panel-raised); }
     html[data-theme="dark"] .context-stat { border-color:var(--line); background:var(--panel-raised); }
     html[data-theme="dark"] .context-stat-value { color:var(--pico); }
@@ -1119,6 +1124,7 @@
     html[data-theme="dark"] .workflow-node-status { background:var(--soft); box-shadow:0 0 0 2px var(--panel); }
     html[data-theme="dark"] .rail::before { background:radial-gradient(circle at 10% 0%,rgba(142,167,255,.07),transparent 55%),radial-gradient(circle at 100% 30%,rgba(142,167,255,.05),transparent 47%); }
     @media (max-width:720px) { .workspace-view { padding:20px 16px 30px; } .transcript, .composer { width:calc(100% - 20px); } .topbar { padding:7px 12px; } .theme-toggle span:last-child { display:none; } .topbar-actions { gap:5px; } }
+    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
    </style>
 </head>
 <body>
