@@ -26,6 +26,7 @@ from picobot.bus.events import OutboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.channels.base import BaseChannel
 from picobot.config.identity import LOCAL_OWNER_ID, web_session_key
+from picobot.memory.store import MemoryKind
 
 
 class _MalformedRequest(Exception):
@@ -46,6 +47,7 @@ class WebChannel(BaseChannel):
     _SESSION_TITLE_KEY = "pico_web_title"
     _MAX_SESSION_TITLE_LENGTH = 72
     _MAX_BODY_BYTES = 1 << 20  # 1 MiB cap on JSON/webhook request bodies
+    _CAPTURE_HOOK_LENGTH = 160
     _OPERATIONS_TOOL_NAMES = {
         "list_skills",
         "get_skill",
@@ -1491,6 +1493,17 @@ class WebChannel(BaseChannel):
                         ).encode()
                         self._write_response(writer, 200, response)
                 except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path == "/api/memory/capture":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    payload = self._json_body(body) if body else {}
+                    captured = self._capture_browser_session_memories(client_id, payload)
+                    response = json.dumps(
+                        {"captured": [asdict(item) for item in captured]}, ensure_ascii=False
+                    ).encode()
+                    self._write_response(writer, 201, response)
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/memory/") and path.endswith("/transition"):
                 try:
@@ -3581,13 +3594,97 @@ class WebChannel(BaseChannel):
         self._require_browser_session(client_id, session_id)
         manager = self._session_manager()
         session = manager.get_or_create(self._session_key(client_id, session_id))
+        capture_nudge = False
         if archived:
             session.metadata["pico_archived"] = True
+            capture_nudge = self._browser_session_capture_nudge(session)
         else:
             session.metadata.pop("pico_archived", None)
         session.updated_at = datetime.now()
         manager.save(session)
-        return {"id": session_id, "archived": archived}
+        return {"id": session_id, "archived": archived, "capture_nudge": capture_nudge}
+
+    def _browser_session_capture_nudge(self, session) -> bool:
+        """Return whether to remind the owner, once, that this session captured nothing.
+
+        The nudge is informational only: it never captures, pre-fills answers,
+        or blocks the archive. It is remembered so it is offered at most once
+        per session, and it is skipped entirely once the owner has captured.
+        """
+        if session.metadata.get("pico_captured") is True:
+            return False
+        if session.metadata.get("pico_capture_nudge_shown") is True:
+            return False
+        roles: set[str] = set()
+        for message in session.messages:
+            if message.get("role") not in {"user", "assistant"}:
+                continue
+            content = message.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            roles.add(message["role"])
+        if not ({"user", "assistant"} <= roles):
+            return False
+        session.metadata["pico_capture_nudge_shown"] = True
+        return True
+
+    def _capture_browser_session_memories(self, client_id: str, payload: object) -> list[Any]:
+        """Write only the explicitly filled capture fields for one session.
+
+        ``session_id`` is required so each capture inherits the session's
+        attached project and stays attributable to the session that produced
+        it. Nothing is written when every field is empty.
+        """
+        if not isinstance(payload, dict):
+            raise ValueError("Capture payload must be an object")
+        session_id = self._valid_browser_id(payload.get("session_id"))
+        self._require_browser_session(client_id, session_id)
+        session_key = self._session_key(client_id, session_id)
+        session = self._session_manager().get_or_create(session_key)
+        from picobot.session.orientation import get_orientation
+
+        project_id = get_orientation(session.metadata).project_id
+        owner_id = self._memory_owner(client_id)
+        store = self._memory_store()
+        written: list[Any] = []
+        capture_fields: tuple[tuple[str, MemoryKind], ...] = (
+            ("decision", "decision"),
+            ("next_step", "next_step"),
+            ("open_question", "open_question"),
+        )
+        for field, kind in capture_fields:
+            entry = payload.get(field)
+            if not isinstance(entry, dict):
+                continue
+            value = self._clean_capture_value(entry.get("value"))
+            if value is None:
+                continue
+            hook = self._clean_capture_value(entry.get("hook")) or value[: self._CAPTURE_HOOK_LENGTH]
+            item = store.create(
+                owner_id=owner_id,
+                value=value,
+                kind=kind,
+                scope="project" if project_id else "personal",
+                status="confirmed",
+                source_type="explicit_capture",
+                source_ref=session_key,
+                project_id=project_id,
+                hook=hook,
+                why=self._clean_capture_value(entry.get("why")),
+            )
+            written.append(item)
+        if written:
+            session.metadata["pico_captured"] = True
+            session.updated_at = datetime.now()
+            self._session_manager().save(session)
+        return written
+
+    @classmethod
+    def _clean_capture_value(cls, value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        clean = " ".join(value.split())
+        return clean or None
 
     @classmethod
     def _clean_session_title(cls, value: object) -> str:

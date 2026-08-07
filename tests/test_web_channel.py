@@ -598,6 +598,7 @@ def test_browser_session_archive_is_reversible_and_shared_across_browsers(tmp_pa
     assert channel._set_browser_session_archive(CLIENT_A, SESSION_A, True) == {
         "id": SESSION_A,
         "archived": True,
+        "capture_nudge": False,
     }
     assert channel._list_browser_sessions(CLIENT_A) == []
     assert channel._list_browser_sessions(CLIENT_B) == []
@@ -1264,5 +1265,224 @@ def test_http_api_work_stays_visible_after_client_identity_changes(tmp_path: Pat
         )
         assert artifact_detail["status"] == 200
         assert artifact_detail["body"]["artifact"]["id"] == artifact_id
+
+    asyncio.run(scenario())
+
+
+def test_browser_memory_capture_writes_only_filled_fields(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        SessionManager(workspace).save(
+            SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        )
+
+        captured = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {
+                "session_id": SESSION_A,
+                "decision": {"value": "Adopt SQLite-backed memory", "why": "Single local file"},
+                "next_step": {"value": "   Write the capture web control   "},
+                "open_question": {"value": ""},
+            },
+        )
+        assert captured["status"] == 201
+        items = captured["body"]["captured"]
+        assert [item["kind"] for item in items] == ["decision", "next_step"]
+        decision = items[0]
+        assert decision["value"] == "Adopt SQLite-backed memory"
+        assert decision["why"] == "Single local file"
+        assert decision["status"] == "confirmed"
+        assert decision["source_type"] == "explicit_capture"
+        assert decision["source_ref"] == channel._session_key(CLIENT_A, SESSION_A)
+        assert decision["scope"] == "personal"
+        assert decision["project_id"] is None
+        assert decision["hook"] == "Adopt SQLite-backed memory"
+        assert items[1]["value"] == "Write the capture web control"
+        assert items[1]["why"] is None
+
+        stored = PersonalMemoryStore(workspace).list(
+            channel._memory_owner(CLIENT_A), status="confirmed"
+        )
+        assert {item.kind for item in stored} == {"decision", "next_step"}
+
+    asyncio.run(scenario())
+
+
+def test_browser_memory_capture_inherits_session_project(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        SessionManager(workspace).save(
+            SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        )
+        project = channel._project_store().create(
+            channel._memory_owner(CLIENT_A),
+            title="Pico",
+            kind="software",
+            purpose="Local workbench",
+        )
+        channel._set_browser_session_orientation(CLIENT_A, SESSION_A, {"project_id": project.id})
+
+        captured = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {"session_id": SESSION_A, "decision": {"value": "Ship the capture control"}},
+        )
+        assert captured["status"] == 201
+        item = captured["body"]["captured"][0]
+        assert item["scope"] == "project"
+        assert item["project_id"] == project.id
+
+    asyncio.run(scenario())
+
+
+def test_browser_memory_capture_writes_nothing_when_every_field_is_empty(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        SessionManager(workspace).save(
+            SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        )
+
+        captured = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {
+                "session_id": SESSION_A,
+                "decision": {"value": "   "},
+                "next_step": {},
+                "open_question": {"value": ""},
+            },
+        )
+        assert captured["status"] == 201
+        assert captured["body"]["captured"] == []
+        assert PersonalMemoryStore(workspace).list(channel._memory_owner(CLIENT_A)) == []
+
+    asyncio.run(scenario())
+
+
+def test_browser_memory_capture_requires_a_real_session(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+
+        rejected = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {"session_id": SESSION_A, "decision": {"value": "Orphaned capture"}},
+        )
+        assert rejected["status"] == 400
+        assert "Session was not found" in rejected["body"]["error"]
+
+    asyncio.run(scenario())
+
+
+def test_browser_archive_nudges_once_for_active_uncaptured_session(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        sessions = SessionManager(workspace)
+        session = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        session.add_message("user", "Plan the capture control")
+        session.add_message("assistant", "Here is a small plan.", run_id="run-1")
+        sessions.save(session)
+
+        archived = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/sessions/{SESSION_A}/archive?client_id={CLIENT_A}",
+            {"archived": True},
+        )
+        assert archived["status"] == 200
+        assert archived["body"]["capture_nudge"] is True
+
+        await _http_api_request(
+            channel,
+            "POST",
+            f"/api/sessions/{SESSION_A}/archive?client_id={CLIENT_A}",
+            {"archived": False},
+        )
+        rearchived = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/sessions/{SESSION_A}/archive?client_id={CLIENT_A}",
+            {"archived": True},
+        )
+        assert rearchived["body"]["capture_nudge"] is False
+
+        reloaded = SessionManager(workspace).get_or_create(
+            channel._session_key(CLIENT_A, SESSION_A)
+        )
+        assert reloaded.metadata.get("pico_capture_nudge_shown") is True
+
+    asyncio.run(scenario())
+
+
+def test_browser_archive_does_not_nudge_without_a_real_exchange(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        sessions = SessionManager(workspace)
+        session = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        session.add_message("user", "Only a note, no reply")
+        sessions.save(session)
+
+        archived = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/sessions/{SESSION_A}/archive?client_id={CLIENT_A}",
+            {"archived": True},
+        )
+        assert archived["body"]["capture_nudge"] is False
+
+    asyncio.run(scenario())
+
+
+def test_browser_archive_nudge_is_suppressed_once_something_was_captured(tmp_path: Path):
+    async def scenario():
+        workspace = tmp_path / "workspace"
+        config = SimpleNamespace(workspace_path=workspace)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+        sessions = SessionManager(workspace)
+        session = sessions.get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        session.add_message("user", "Keep the decision")
+        session.add_message("assistant", "Done.", run_id="run-1")
+        sessions.save(session)
+
+        captured = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/memory/capture?client_id={CLIENT_A}",
+            {"session_id": SESSION_A, "decision": {"value": "Use FTS dedup on write"}},
+        )
+        assert captured["status"] == 201
+
+        archived = await _http_api_request(
+            channel,
+            "POST",
+            f"/api/sessions/{SESSION_A}/archive?client_id={CLIENT_A}",
+            {"archived": True},
+        )
+        assert archived["status"] == 200
+        assert archived["body"]["capture_nudge"] is False
 
     asyncio.run(scenario())
