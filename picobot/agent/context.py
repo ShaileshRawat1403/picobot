@@ -19,6 +19,12 @@ class ContextBuilder:
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
     _USER_MESSAGE_TAG = "[User Message]"
+    _BOOTSTRAP_PER_FILE_LIMIT = 8_000
+    _BOOTSTRAP_HEAD_CHARS = 5_000
+    _BOOTSTRAP_TAIL_CHARS = 2_960
+    _BOOTSTRAP_TOTAL_LIMIT = 24_000
+    _BOOTSTRAP_TOTAL_HEAD = 16_000
+    _BOOTSTRAP_TOTAL_TAIL = 7_900
 
     def __init__(self, workspace: Path, skill_config: dict | None = None):
         self.workspace = workspace
@@ -112,16 +118,54 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
 
     def _load_bootstrap_files(self) -> str:
-        """Load all bootstrap files from workspace."""
+        """Load all bootstrap files from workspace, bounded per file and in total."""
         parts = []
 
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
                 content = file_path.read_text(encoding="utf-8")
-                parts.append(f"## {filename}\n\n{content}")
+                parts.append(self._bounded_file_section(filename, content))
 
-        return "\n\n".join(parts) if parts else ""
+        joined = "\n\n".join(parts)
+        return self._bounded_total(joined) if parts else ""
+
+    def _bounded_file_section(self, filename: str, content: str) -> str:
+        """Keep one standing-instruction file scannable.
+
+        Bootstrap files are the one unbounded input into every system prompt.
+        When a file outgrows the per-file budget we keep its head and its tail,
+        with a visible cut marker between them: standing instructions are most
+        often edited by appending, so the newest guidance must survive. This is
+        a size bound only; whatever survives is passed through unchanged.
+        """
+        if len(content) <= self._BOOTSTRAP_PER_FILE_LIMIT:
+            return f"## {filename}\n\n{content}"
+        head = content[: self._BOOTSTRAP_HEAD_CHARS].rstrip()
+        tail = content[-self._BOOTSTRAP_TAIL_CHARS:].lstrip()
+        elided = len(content) - len(head) - len(tail)
+        marker = (
+            f"\n\n... [cut: {filename} is {len(content):,} chars; "
+            f"{elided:,} chars elided] ...\n\n"
+        )
+        return f"## {filename}\n\n{head}{marker}{tail}"
+
+    def _bounded_total(self, joined: str) -> str:
+        """Cap the combined bootstrap sections.
+
+        A workspace must not be able to silently push the whole system prompt
+        past the provider window by piling up many bootstrap files.
+        """
+        if len(joined) <= self._BOOTSTRAP_TOTAL_LIMIT:
+            return joined
+        head = joined[: self._BOOTSTRAP_TOTAL_HEAD].rstrip()
+        tail = joined[-self._BOOTSTRAP_TOTAL_TAIL:].lstrip()
+        elided = len(joined) - len(head) - len(tail)
+        marker = (
+            f"\n\n... [cut: bootstrap files exceed {self._BOOTSTRAP_TOTAL_LIMIT:,} chars; "
+            f"{elided:,} chars elided] ...\n\n"
+        )
+        return f"{head}{marker}{tail}"
 
     def bootstrap_fingerprint(self) -> str:
         """Return a marker that changes whenever standing instructions change.

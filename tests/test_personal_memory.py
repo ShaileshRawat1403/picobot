@@ -388,3 +388,107 @@ def test_opening_pre_migration_database_adds_columns_and_preserves_rows(tmp_path
 
     reopened = PersonalMemoryStore(workspace)
     assert reopened.get("telegram:alice", "legacy-id-1").value == "Legacy preference survives."
+
+
+def test_exact_duplicate_merges_in_place_without_a_second_row(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    first = store.create(owner_id="telegram:alice", value="Works evenings.", why="First reason.")
+    merged = store.create(
+        owner_id="telegram:alice",
+        value="Works evenings.",
+        why="Second reason.",
+        source_type="explicit_capture",
+        source_ref="web:session",
+        hook="evenings",
+    )
+
+    assert merged.id == first.id
+    assert merged.supersedes_id is None
+    assert merged.created_at == first.created_at
+    assert merged.updated_at >= first.updated_at
+    assert merged.why == "Second reason."
+    assert merged.hook == "evenings"
+    assert merged.source_type == "explicit_capture"
+    assert merged.source_ref == "web:session"
+    assert [item.value for item in store.list("telegram:alice")] == ["Works evenings."]
+
+
+def test_exact_duplicate_promotes_a_proposed_candidate_to_confirmed(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    candidate = store.propose("telegram:alice", "Usually works evenings.")
+    confirmed = store.remember("telegram:alice", "Usually works evenings.")
+
+    assert confirmed.id == candidate.id
+    assert confirmed.status == "confirmed"
+    assert confirmed.confirmed_at is not None
+    assert [item.id for item in store.recall("telegram:alice", "works evenings")] == [candidate.id]
+
+
+def test_near_duplicate_supersedes_and_retires_the_old_row(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    first = store.remember("telegram:alice", "Prefers concise status updates.")
+    second = store.remember("telegram:alice", "Prefers concise updates.")
+
+    assert second.id != first.id
+    assert second.supersedes_id == first.id
+    assert store.get("telegram:alice", first.id).status == "forgotten"
+    assert [item.id for item in store.recall("telegram:alice", "concise")] == [second.id]
+
+    inventory = store.search("telegram:alice", "updates")
+    assert {item.id for item in inventory} == {first.id, second.id}
+    trail = store.history("telegram:alice", first.id)
+    assert [event["event_type"] for event in trail] == ["created", "status_changed"]
+    assert trail[-1]["status"] == "forgotten"
+
+
+def test_a_proposed_rewrite_does_not_retire_an_explicitly_confirmed_memory(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    confirmed = store.remember("telegram:alice", "Deploys on Fridays.")
+    proposed = store.propose("telegram:alice", "Deploys on Fridays soon.")
+
+    assert proposed.id != confirmed.id
+    assert proposed.supersedes_id is None
+    assert store.get("telegram:alice", confirmed.id).status == "confirmed"
+    assert [item.id for item in store.recall("telegram:alice", "fridays")] == [confirmed.id]
+    assert {item.id for item in store.search("telegram:alice", "fridays")} == {
+        confirmed.id,
+        proposed.id,
+    }
+
+
+def test_dedup_is_scoped_to_owner_kind_and_project(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    alice = store.remember("telegram:alice", "Prefers concise status updates.")
+    bob = store.remember("telegram:bob", "Prefers concise updates.")
+    assert bob.id != alice.id
+    assert bob.supersedes_id is None
+    assert store.get("telegram:alice", alice.id).status == "confirmed"
+
+    fact = store.remember("telegram:alice", "Review plans Friday.", kind="fact")
+    decision = store.remember("telegram:alice", "Review plans Friday.", kind="decision")
+    assert decision.id != fact.id
+    assert decision.supersedes_id is None
+
+    project_a = store.remember("telegram:alice", "Track releases weekly.", project_id="proj-a")
+    project_b = store.remember("telegram:alice", "Track releases weekly.", project_id="proj-b")
+    assert project_b.id != project_a.id
+    assert project_b.supersedes_id is None
+
+
+def test_retired_memory_is_not_a_duplicate_candidate_again(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    first = store.remember("telegram:alice", "Prefers concise status updates.")
+    second = store.remember("telegram:alice", "Prefers concise updates.")
+    third = store.remember("telegram:alice", "Prefers concise status updates.")
+
+    assert second.supersedes_id == first.id
+    assert third.supersedes_id == second.id
+    assert store.get("telegram:alice", first.id).status == "forgotten"
+    assert store.get("telegram:alice", second.id).status == "forgotten"
+    assert [item.id for item in store.recall("telegram:alice", "concise")] == [third.id]

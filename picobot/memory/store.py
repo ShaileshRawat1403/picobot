@@ -13,6 +13,7 @@ import sqlite3
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Literal
 
@@ -80,6 +81,10 @@ class PersonalMemoryStore:
     #: Kinds carrying reasoning that cannot be re-derived from a repository.
     #: Recall may weight these ahead of plain facts once volume justifies it.
     _REASONING_KINDS = frozenset({"decision", "constraint", "open_question"})
+    #: Similarity floor for retiring a near-identical memory.  Deliberately
+    #: conservative: a missed duplicate is a redundant row the owner can clean
+    #: up, while a wrong merge silently destroys wording the owner wrote.
+    _NEAR_DEDUP_THRESHOLD = 0.85
     _RECALL_STOP_WORDS = {
         "a", "an", "and", "are", "can", "did", "do", "for", "how", "i", "in", "is",
         "it", "me", "my", "of", "on", "please", "should", "the", "to", "was", "what",
@@ -197,6 +202,141 @@ class PersonalMemoryStore:
         if len(clean) > cls._MAX_VALUE_LENGTH:
             raise ValueError(f"Memory is limited to {cls._MAX_VALUE_LENGTH} characters")
         return clean
+
+    @staticmethod
+    def _tokens(value: str) -> set[str]:
+        return set(re.findall(r"[\w]+", value.lower()))
+
+    @classmethod
+    def _near_duplicate(cls, a: str, b: str) -> bool:
+        """Very conservative near-duplicate test.
+
+        Two strings count as near-duplicates only when one side's words are a
+        subset of the other's (so the difference is added or dropped wording,
+        never a swapped key word) and the strings are otherwise near-identical
+        by length-weighted similarity.  This refuses to merge ``Works on the
+        CLI`` with ``Works on the API``, which share almost all their words but
+        mean different things.
+        """
+        if a == b:
+            return True
+        tokens_a = cls._tokens(a)
+        tokens_b = cls._tokens(b)
+        if not tokens_a or not tokens_b:
+            return False
+        if not (tokens_a <= tokens_b or tokens_b <= tokens_a):
+            return False
+        return SequenceMatcher(None, a, b).ratio() >= cls._NEAR_DEDUP_THRESHOLD
+
+    @staticmethod
+    def _may_supersede(existing, incoming_status: str) -> bool:
+        """A lower-trust inference must never retire a fact the owner confirmed."""
+        return not (existing.status == "confirmed" and incoming_status == "proposed")
+
+    def _find_dedup_target(
+        self,
+        *,
+        owner_id: str,
+        value: str,
+        kind: str,
+        project_id: str | None,
+        status: str,
+    ) -> tuple[str, MemoryItem] | None:
+        """Return a same-fact candidate to merge or supersede, or ``None``.
+
+        Only memories sharing owner, kind, and project (both ``NULL`` counts
+        as equal) are candidates, and only while they are still active.
+        Returns ``("exact", item)`` when the stored value is byte-identical,
+        or ``("near", item)`` when the stored value is a close rewording that
+        the incoming write may safely retire.  Matching is deliberately
+        conservative: a false negative costs a redundant row the owner can
+        clean up, while a false positive would silently destroy wording.
+        """
+        fts_query = self._fts_query(value)
+        if not fts_query:
+            return None
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT {self._usage_columns()}
+                FROM memory_search s
+                JOIN memory_items m ON m.id = s.memory_id
+                WHERE memory_search MATCH ?
+                  AND m.owner_id = ?
+                  AND m.status IN ('proposed', 'confirmed')
+                  AND m.kind = ?
+                  AND (m.project_id = ? OR (m.project_id IS NULL AND ? IS NULL))
+                """,
+                (fts_query, owner_id, kind, project_id, project_id),
+            ).fetchall()
+        candidates = [self._item(row) for row in rows]
+        if not candidates:
+            return None
+        for candidate in candidates:
+            if candidate.value == value:
+                return ("exact", candidate)
+        near = [
+            candidate
+            for candidate in candidates
+            if self._near_duplicate(value, candidate.value)
+            and self._may_supersede(candidate, status)
+        ]
+        if not near:
+            return None
+        best = max(near, key=lambda candidate: SequenceMatcher(None, value, candidate.value).ratio())
+        return ("near", best)
+
+    def _merge_exact(
+        self,
+        existing: MemoryItem,
+        *,
+        owner_id: str,
+        status: str,
+        source_type: str,
+        source_ref: str | None,
+        hook: str | None,
+        why: str | None,
+    ) -> MemoryItem:
+        """Collapse a byte-identical rewrite into the existing row.
+
+        Identical wording means the owner is restating the same fact, so
+        merging destroys nothing.  The row keeps its original id and created_at,
+        gets a refreshed updated_at and newly supplied provenance, and a
+        proposed candidate is promoted to confirmed.  An already confirmed row
+        is never demoted by a proposed rewrite.
+        """
+        now = self._now()
+        new_status = "confirmed" if status == "confirmed" else existing.status
+        confirm_at = now if new_status == "confirmed" and existing.status == "proposed" else None
+        with self._connect() as connection:
+            connection.execute(
+                """
+                UPDATE memory_items
+                SET status = ?, updated_at = ?, confirmed_at = COALESCE(confirmed_at, ?),
+                    source_type = ?, source_ref = COALESCE(?, source_ref),
+                    hook = COALESCE(?, hook), why = COALESCE(?, why)
+                WHERE id = ? AND owner_id = ?
+                """,
+                (
+                    new_status,
+                    now,
+                    confirm_at,
+                    source_type,
+                    source_ref,
+                    hook,
+                    why,
+                    existing.id,
+                    owner_id,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO memory_events(memory_id, owner_id, event_type, status, created_at)
+                VALUES (?, ?, 'updated', ?, ?)
+                """,
+                (existing.id, owner_id, new_status, now),
+            )
+        return self.get(owner_id, existing.id)
 
     @classmethod
     def _validate_status(cls, status: str) -> str:
@@ -322,6 +462,27 @@ class PersonalMemoryStore:
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("Memory confidence must be between 0 and 1")
 
+        dedup = self._find_dedup_target(
+            owner_id=owner_id,
+            value=clean_value,
+            kind=clean_kind,
+            project_id=project_id,
+            status=status,
+        )
+        if dedup is not None:
+            tier, existing = dedup
+            if tier == "exact":
+                return self._merge_exact(
+                    existing,
+                    owner_id=owner_id,
+                    status=status,
+                    source_type=source_type,
+                    source_ref=source_ref,
+                    hook=hook,
+                    why=why,
+                )
+            supersedes_id = existing.id
+
         now = self._now()
         item_id = str(uuid.uuid4())
         confirmed_at = now if status == "confirmed" else None
@@ -366,6 +527,22 @@ class PersonalMemoryStore:
                 """,
                 (item_id, owner_id, status, now),
             )
+            if supersedes_id is not None:
+                connection.execute(
+                    """
+                    UPDATE memory_items
+                    SET status = 'forgotten', updated_at = ?
+                    WHERE id = ? AND owner_id = ?
+                    """,
+                    (now, supersedes_id, owner_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO memory_events(memory_id, owner_id, event_type, status, created_at)
+                    VALUES (?, ?, 'status_changed', 'forgotten', ?)
+                    """,
+                    (supersedes_id, owner_id, now),
+                )
         return self.get(owner_id, item_id)
 
     def remember(
