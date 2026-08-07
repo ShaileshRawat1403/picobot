@@ -79,42 +79,23 @@ class PersonalSearch:
         lowered = text.casefold()
         return all(term in lowered for term in terms)
 
-    @staticmethod
-    def _session_title(session) -> str:
-        title = session.metadata.get("pico_web_title")
-        if isinstance(title, str) and title.strip():
-            return title.strip()
-        for message in session.messages:
-            if message.get("role") == "user" and str(message.get("content", "")).strip():
-                return " ".join(str(message["content"]).split())[:72]
-        return "Untitled session"
-
     def _session_results(
         self, owner_id: str, terms: list[str], session_prefix: str | None
     ) -> list[SearchResult]:
+        hits = self.sessions.search_sessions(
+            " ".join(terms), limit=self._MAX_LIMIT, session_prefix=session_prefix
+        )
         results: list[SearchResult] = []
-        for item in self.sessions.list_sessions():
-            key = item["key"]
-            if session_prefix is not None and not key.startswith(session_prefix):
-                continue
-            session = self.sessions.get_or_create(key)
-            title = self._session_title(session)
-            visible_messages = [
-                str(message.get("content", ""))
-                for message in session.messages
-                if message.get("role") in {"user", "assistant"}
-            ]
-            searchable = " ".join([title, *visible_messages])
-            if not self._matches(searchable, terms):
-                continue
-            session_id = key.rsplit(":", 1)[-1]
+        for item in hits:
+            searchable = " ".join([item["title"], item["content"]])
+            session_id = item["key"].rsplit(":", 1)[-1]
             results.append(
                 SearchResult(
                     kind="session",
                     id=session_id,
-                    title=title,
+                    title=item["title"],
                     snippet=self._snippet(searchable, terms),
-                    updated_at=item.get("updated_at"),
+                    updated_at=item["updated_at"],
                     session_id=session_id,
                     href=f"/api/sessions/{session_id}",
                 )

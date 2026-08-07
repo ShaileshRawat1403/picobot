@@ -7,7 +7,6 @@ from picobot.memory.store import PersonalMemoryStore
 from picobot.search import PersonalSearch
 from picobot.session.manager import SessionManager
 
-
 OWNER_A = "local:owner"
 OWNER_B = "telegram:987654321"
 SESSION_A = "web:web:session-a"
@@ -66,3 +65,66 @@ def test_search_does_not_treat_punctuation_as_a_match(tmp_path: Path):
     memory.remember(OWNER_A, "A useful confirmed fact")
 
     assert PersonalSearch(tmp_path / "workspace").search(OWNER_A, "!!!") == []
+
+
+def test_session_search_index_updates_incrementally_on_save(tmp_path: Path):
+    sessions = SessionManager(tmp_path / "workspace")
+    session = sessions.get_or_create(SESSION_A)
+    session.metadata["pico_web_title"] = "Launch planning"
+    session.add_message("user", "Prepare the launch brief and decision log")
+    sessions.save(session)
+    assert [item["key"] for item in sessions.search_sessions("launch")] == [SESSION_A]
+    assert sessions.search_sessions("tradeoff") == []
+    session.add_message("assistant", "The risk tradeoff is captured")
+    sessions.save(session)
+    assert [item["key"] for item in sessions.search_sessions("tradeoff")] == [SESSION_A]
+    assert [item["key"] for item in sessions.search_sessions("launch")] == [SESSION_A]
+
+
+def test_session_search_index_is_rebuildable_from_transcripts(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    sessions = SessionManager(workspace)
+    first = sessions.get_or_create(SESSION_A)
+    first.metadata["pico_web_title"] = "Launch planning"
+    first.add_message("user", "Prepare the launch brief and decision log")
+    sessions.save(first)
+    second = sessions.get_or_create(SESSION_B)
+    second.add_message("user", "Private research notes stay isolated")
+    sessions.save(second)
+    index = workspace / "sessions" / "session-search.db"
+    assert index.exists()
+    index.unlink()
+    assert sessions.rebuild_search_index() == 2
+    assert [item["key"] for item in sessions.search_sessions("launch")] == [SESSION_A]
+    assert [item["key"] for item in sessions.search_sessions("notes")] == [SESSION_B]
+
+
+def test_session_search_self_heals_a_deleted_index(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    sessions = SessionManager(workspace)
+    session = sessions.get_or_create(SESSION_A)
+    session.add_message("user", "alpha decision log")
+    sessions.save(session)
+    (workspace / "sessions" / "session-search.db").unlink()
+    hits = PersonalSearch(workspace).search(OWNER_A, "alpha")
+    assert any(item.kind == "session" and item.session_id == "session-a" for item in hits)
+
+
+def test_session_search_requires_all_terms_and_orders_by_updated_at(tmp_path: Path):
+    from datetime import datetime
+
+    sessions = SessionManager(tmp_path / "workspace")
+    older = sessions.get_or_create(SESSION_A)
+    older.metadata["pico_web_title"] = "First"
+    older.add_message("user", "alpha beta")
+    older.updated_at = datetime(2026, 1, 1, 12, 0, 0)
+    sessions.save(older)
+    newer = sessions.get_or_create(SESSION_B)
+    newer.metadata["pico_web_title"] = "Second"
+    newer.add_message("user", "alpha gamma")
+    newer.updated_at = datetime(2026, 2, 1, 12, 0, 0)
+    sessions.save(newer)
+    assert [item["key"] for item in sessions.search_sessions("alpha beta")] == [SESSION_A]
+    assert [item["key"] for item in sessions.search_sessions("alpha gamma")] == [SESSION_B]
+    assert [item["key"] for item in sessions.search_sessions("alpha")] == [SESSION_B, SESSION_A]
+    assert [item["key"] for item in sessions.search_sessions("alpha", session_prefix="telegram:")] == [SESSION_B]

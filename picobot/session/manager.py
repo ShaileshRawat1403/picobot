@@ -2,6 +2,8 @@
 
 import json
 import shutil
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -83,6 +85,136 @@ class SessionManager:
         self.legacy_sessions_dir = get_legacy_sessions_dir()
         self._cache: dict[str, Session] = {}
 
+    _SEARCH_SCHEMA = (
+        "CREATE VIRTUAL TABLE IF NOT EXISTS session_fts USING fts5("
+        "key UNINDEXED, title, content, updated_at UNINDEXED, "
+        "tokenize = 'unicode61 remove_diacritics 2')"
+    )
+    _SEARCH_INDEX_FILENAME = "session-search.db"
+    _SEARCH_INDEX_LIMIT = 200
+
+    def _search_index_path(self) -> Path:
+        """Sidecar FTS5 mirror. It is never a source of truth."""
+        return self.sessions_dir / self._SEARCH_INDEX_FILENAME
+
+    def _search_db(self) -> sqlite3.Connection:
+        """Open (and if needed create) the searchable mirror database."""
+        path = self._search_index_path()
+        try:
+            connection = sqlite3.connect(path)
+            connection.row_factory = sqlite3.Row
+            connection.execute(self._SEARCH_SCHEMA)
+        except sqlite3.Error:
+            # A corrupt or partial mirror is disposable: drop it and rebuild
+            # from the authoritative JSONL transcripts.
+            connection.close()
+            if path.exists():
+                path.unlink()
+            connection = sqlite3.connect(path)
+            connection.row_factory = sqlite3.Row
+            connection.execute(self._SEARCH_SCHEMA)
+        return connection
+
+    @staticmethod
+    def _search_title(session: Session) -> str:
+        title = session.metadata.get("pico_web_title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+        for message in session.messages:
+            if message.get("role") == "user" and str(message.get("content", "")).strip():
+                return " ".join(str(message["content"]).split())[:72]
+        return "Untitled session"
+
+    @classmethod
+    def _searchable_text(cls, session: Session) -> tuple[str, str]:
+        content = " ".join(
+            str(message.get("content", "")).strip()
+            for message in session.messages
+            if message.get("role") in {"user", "assistant"}
+        ).strip()
+        return cls._search_title(session), content
+
+    def _index_session(self, session: Session, *, updated_at: str | None = None) -> None:
+        title, content = self._searchable_text(session)
+        stamp = updated_at or session.updated_at.isoformat()
+        with closing(self._search_db()) as connection:
+            connection.execute("DELETE FROM session_fts WHERE key = ?", (session.key,))
+            connection.execute(
+                "INSERT INTO session_fts(key, title, content, updated_at) VALUES (?, ?, ?, ?)",
+                (session.key, title, content, stamp),
+            )
+            connection.commit()
+
+    def rebuild_search_index(self) -> int:
+        """Rebuild the searchable mirror from the authoritative JSONL files."""
+        with closing(self._search_db()) as connection:
+            connection.execute("DELETE FROM session_fts")
+            count = 0
+            for item in self.list_sessions():
+                session = self.get_or_create(item["key"])
+                connection.execute(
+                    "INSERT INTO session_fts(key, title, content, updated_at) VALUES (?, ?, ?, ?)",
+                    (
+                        session.key,
+                        *self._searchable_text(session),
+                        item.get("updated_at") or session.updated_at.isoformat(),
+                    ),
+                )
+                count += 1
+            connection.commit()
+            return count
+
+    def search_sessions(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        session_prefix: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return matching session keys with bounded text for snippets.
+
+        The mirror is refreshed lazily: if it is empty while transcripts
+        exist on disk (deleted or never built), it is rebuilt first.
+        """
+        if isinstance(limit, bool) or not isinstance(limit, int):
+            raise ValueError("Search limit must be an integer")
+        limit = max(1, min(limit, self._SEARCH_INDEX_LIMIT))
+        if not isinstance(query, str) or not " ".join(query.split()):
+            return []
+        terms = query.casefold().split()
+        with closing(self._search_db()) as connection:
+            empty = connection.execute("SELECT count(*) AS n FROM session_fts").fetchone()["n"] == 0
+        if empty and next(iter(self.sessions_dir.glob("*.jsonl")), None) is not None:
+            try:
+                self.rebuild_search_index()
+            except sqlite3.Error:
+                return []
+        with closing(self._search_db()) as connection:
+            match = " AND ".join(f'"{term.replace(chr(34), chr(34) * 2)}"*' for term in terms)
+            try:
+                rows = connection.execute(
+                    "SELECT key, title, content, updated_at FROM session_fts "
+                    "WHERE session_fts MATCH ?",
+                    (match,),
+                ).fetchall()
+            except sqlite3.Error:
+                return []
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            key = row["key"]
+            if session_prefix is not None and not key.startswith(session_prefix):
+                continue
+            results.append(
+                {
+                    "key": key,
+                    "title": row["title"],
+                    "content": row["content"],
+                    "updated_at": row["updated_at"],
+                }
+            )
+        results.sort(key=lambda item: item["updated_at"] or "", reverse=True)
+        return results[:limit]
+
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""
         safe_key = safe_filename(key.replace(":", "_"))
@@ -161,7 +293,7 @@ class SessionManager:
             return None
 
     def save(self, session: Session) -> None:
-        """Save a session to disk."""
+        """Save a session to disk and refresh its searchable mirror row."""
         path = self._get_session_path(session.key)
 
         with open(path, "w", encoding="utf-8") as f:
@@ -178,6 +310,12 @@ class SessionManager:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
 
         self._cache[session.key] = session
+        try:
+            self._index_session(session)
+        except (sqlite3.Error, OSError):
+            # The mirror is disposable; the JSONL transcript remains the source
+            # of truth, so a failed index write must never break persistence.
+            logger.warning("Failed to refresh search index for session {}", session.key)
 
     def invalidate(self, key: str) -> None:
         """Remove a session from the in-memory cache."""
