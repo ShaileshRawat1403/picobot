@@ -8,11 +8,12 @@ need an external result pause instead of guessing or executing arbitrary code.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Callable
 
 from picobot.artifacts import ArtifactStore
 
-from .store import WorkflowDefinition, WorkflowRun, WorkflowStore
+from .store import WorkflowDefinition, WorkflowNodeRun, WorkflowRun, WorkflowStore
 
 
 class WorkflowEngineError(ValueError):
@@ -46,9 +47,16 @@ class WorkflowEngine:
         "wait": "Wait nodes require an explicit resume signal.",
     }
 
-    def __init__(self, store: WorkflowStore, artifact_store: ArtifactStore | None = None):
+    def __init__(
+        self,
+        store: WorkflowStore,
+        artifact_store: ArtifactStore | None = None,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ):
         self.store = store
         self.artifact_store = artifact_store
+        self._now_fn = now if callable(now) else (lambda: datetime.now(timezone.utc))
 
     @staticmethod
     def _next_node(workflow: WorkflowDefinition, node_id: str, *, branch: str = "success") -> str | None:
@@ -72,6 +80,81 @@ class WorkflowEngine:
                 return branch.strip()
         return "success"
 
+    @staticmethod
+    def _harness(node: Any) -> dict[str, Any]:
+        config = node.config if isinstance(node.config, dict) else {}
+        harness = config.get("harness")
+        return harness if isinstance(harness, dict) else {}
+
+    def _node_timed_out(self, node_run: WorkflowNodeRun, node: Any) -> bool:
+        timeout_seconds = self._harness(node).get("timeout_seconds")
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or timeout_seconds <= 0:
+            return False
+        if not node_run.started_at:
+            return False
+        try:
+            started = datetime.fromisoformat(node_run.started_at)
+        except ValueError:
+            return False
+        return (self._now_fn() - started).total_seconds() > timeout_seconds
+
+    def _route_failure(
+        self,
+        owner_id: str,
+        run: WorkflowRun,
+        workflow: WorkflowDefinition,
+        node: Any,
+        failed_attempt: WorkflowNodeRun,
+        failure_category: str,
+    ) -> StepResult:
+        retry_limit = self._harness(node).get("retry_limit")
+        if isinstance(retry_limit, bool) or not isinstance(retry_limit, int) or retry_limit < 0:
+            retry_limit = 0
+        retry_limit = min(retry_limit, 9)
+        if failed_attempt.attempt <= retry_limit:
+            next_attempt = failed_attempt.attempt + 1
+            if node.kind in self._EXTERNAL_NODES:
+                waiting_state = "waiting_for_approval" if node.kind in {"approval", "browser_action"} else "waiting_for_input"
+                self.store.transition_run(owner_id, run.id, "running")
+                self.store.record_node_run(
+                    owner_id,
+                    run.id,
+                    node.id,
+                    waiting_state,
+                    attempt=next_attempt,
+                    result_ref=self._EXTERNAL_NODES[node.kind],
+                )
+                run = self.store.transition_run(owner_id, run.id, waiting_state)
+                return StepResult(
+                    run,
+                    node.id,
+                    waiting_state,
+                    f"Retrying node after {failure_category} (attempt {next_attempt} of {retry_limit + 1}).",
+                )
+            self.store.record_node_run(owner_id, run.id, node.id, "running", attempt=next_attempt)
+            run = self.store.transition_run(owner_id, run.id, "running")
+            return StepResult(
+                run,
+                node.id,
+                "running",
+                f"Retrying node after {failure_category} (attempt {next_attempt} of {retry_limit + 1}).",
+            )
+        branch = failure_category if failure_category in WorkflowStore._EDGE_CONDITIONS else "error"
+        next_id = self._next_node(workflow, node.id, branch=branch)
+        if next_id is None and branch != "error":
+            next_id = self._next_node(workflow, node.id, branch="error")
+        if next_id is not None:
+            run = self.store.advance_run(owner_id, run.id, next_id)
+            run = self.store.transition_run(owner_id, run.id, "running")
+            return StepResult(
+                run,
+                node.id,
+                "failed",
+                f"Node failed after {failed_attempt.attempt} attempts; advanced to {next_id}.",
+            )
+        run = self.store.transition_run(owner_id, run.id, "failed", failure_category=failure_category)
+        return StepResult(run, node.id, "failed", f"Node failed; workflow run ended ({failure_category}).")
+
     def step(
         self,
         owner_id: str,
@@ -80,6 +163,7 @@ class WorkflowEngine:
         resume: bool = False,
         result_ref: str | None = None,
         output_summary: str | None = None,
+        failure_category: str | None = None,
     ) -> StepResult:
         run = self.store.get_run(owner_id, run_id)
         workflow = self.store.get(owner_id, run.workflow_id)
@@ -89,10 +173,6 @@ class WorkflowEngine:
             return StepResult(run, run.current_node_id, None, f"Workflow run is already {run.state}.")
         elif run.state == "paused":
             raise WorkflowEngineError("Resume the workflow run before stepping it")
-        elif run.state in {"waiting_for_approval", "waiting_for_input"} and not resume:
-            return StepResult(run, run.current_node_id, None, "Workflow is waiting for an explicit resume signal.")
-        elif run.state in {"waiting_for_approval", "waiting_for_input"}:
-            run = self.store.transition_run(owner_id, run_id, "running")
 
         node = next((item for item in workflow.nodes if item.id == run.current_node_id), None)
         if node is None:
@@ -101,6 +181,28 @@ class WorkflowEngine:
 
         branch = self._node_branch(node, resume=resume)
         prior = self.store.latest_node_run(owner_id, run_id, node.id)
+        attempt = prior.attempt if prior else 1
+
+        if (
+            prior
+            and prior.state in {"waiting_for_approval", "waiting_for_input"}
+            and self._node_timed_out(prior, node)
+        ):
+            self.store.record_node_run(
+                owner_id,
+                run_id,
+                node.id,
+                "failed",
+                attempt=attempt,
+                failure_category="timeout",
+            )
+            return self._route_failure(owner_id, run, workflow, node, prior, "timeout")
+
+        if run.state in {"waiting_for_approval", "waiting_for_input"}:
+            if not resume:
+                return StepResult(run, node.id, None, "Workflow is waiting for an explicit resume signal.")
+            run = self.store.transition_run(owner_id, run_id, "running")
+
         if prior and prior.state == "succeeded":
             next_id = self._next_node(workflow, node.id, branch=branch)
             if node.kind == "end" or next_id is None:
@@ -110,7 +212,7 @@ class WorkflowEngine:
             run = self.store.advance_run(owner_id, run_id, next_id)
             return StepResult(run, node.id, "succeeded", f"Resumed from the durable result; advanced to {next_id}.")
 
-        self.store.record_node_run(owner_id, run_id, node.id, "running")
+        self.store.record_node_run(owner_id, run_id, node.id, "running", attempt=attempt)
         if node.kind in self._EXTERNAL_NODES and not resume:
             waiting_state = "waiting_for_approval" if node.kind in {"approval", "browser_action"} else "waiting_for_input"
             self.store.record_node_run(
@@ -118,6 +220,7 @@ class WorkflowEngine:
                 run_id,
                 node.id,
                 waiting_state,
+                attempt=attempt,
                 result_ref=self._EXTERNAL_NODES[node.kind],
             )
             run = self.store.transition_run(owner_id, run_id, waiting_state)
@@ -129,11 +232,22 @@ class WorkflowEngine:
             # a bounded summary, not provider output, browser payloads, or
             # reasoning.  That summary can be deliberately preserved by a
             # later artifact node after any intervening approval.
+            if failure_category:
+                failed_run = self.store.record_node_run(
+                    owner_id,
+                    run_id,
+                    node.id,
+                    "failed",
+                    attempt=attempt,
+                    failure_category=failure_category,
+                )
+                return self._route_failure(owner_id, run, workflow, node, failed_run, failure_category)
             self.store.record_node_run(
                 owner_id,
                 run_id,
                 node.id,
                 "succeeded",
+                attempt=attempt,
                 result_ref=result_ref,
                 output_summary=output_summary,
             )
@@ -146,7 +260,7 @@ class WorkflowEngine:
             return StepResult(run, node.id, "succeeded", f"Recorded a bounded outcome; advanced to {next_id}.")
         if node.kind == "artifact":
             if self.artifact_store is None:
-                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", result_ref="Artifact adapter is unavailable.")
+                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", attempt=attempt, result_ref="Artifact adapter is unavailable.")
                 run = self.store.transition_run(owner_id, run_id, "waiting_for_input")
                 return StepResult(run, node.id, "waiting_for_input", "Artifact adapter is unavailable.")
             content = node.config.get("content")
@@ -154,7 +268,7 @@ class WorkflowEngine:
                 if node.config.get("content_from") == "previous_output":
                     content = self.store.latest_output_summary(owner_id, run_id, exclude_node_id=node.id)
             if not isinstance(content, str) or not content.strip():
-                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", result_ref="Artifact content is required.")
+                self.store.record_node_run(owner_id, run_id, node.id, "waiting_for_input", attempt=attempt, result_ref="Artifact content is required.")
                 run = self.store.transition_run(owner_id, run_id, "waiting_for_input")
                 return StepResult(run, node.id, "waiting_for_input", "Artifact content is required in the node inspector.")
             artifact = self.artifact_store.create(
@@ -175,6 +289,7 @@ class WorkflowEngine:
             run_id,
             node.id,
             "succeeded",
+            attempt=attempt,
             result_ref=result_ref,
             output_summary=output_summary,
         )
@@ -195,6 +310,7 @@ class WorkflowEngine:
         resume: bool = False,
         result_ref: str | None = None,
         output_summary: str | None = None,
+        failure_category: str | None = None,
     ) -> list[StepResult]:
         if isinstance(max_steps, bool) or not 1 <= max_steps <= 40:
             raise WorkflowEngineError("Workflow step limit must be between 1 and 40")
@@ -206,10 +322,12 @@ class WorkflowEngine:
                 resume=resume,
                 result_ref=result_ref,
                 output_summary=output_summary,
+                failure_category=failure_category,
             )
             resume = False
             result_ref = None
             output_summary = None
+            failure_category = None
             results.append(result)
             if result.run.state in {"waiting_for_approval", "waiting_for_input", "completed", "failed", "cancelled"}:
                 break

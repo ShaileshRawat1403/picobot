@@ -1,5 +1,6 @@
 """Tests for Pico's bounded workflow graph and execution ledger."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,14 @@ def graph(*, include_agent: bool = False):
 
 def make_store(tmp_path: Path) -> WorkflowStore:
     return WorkflowStore(tmp_path)
+
+
+def start_flow(store: WorkflowStore, nodes: list[dict], edges: list[dict], *, title: str = "Flow") -> str:
+    workflow = store.create_draft(
+        owner_id=OWNER, session_key=SESSION, title=title, description=None, nodes=nodes, edges=edges
+    )
+    store.transition(OWNER, workflow.id, "approved")
+    return store.start_run(OWNER, workflow.id, SESSION).id
 
 
 def test_graph_validation_is_strict(tmp_path: Path):
@@ -287,3 +296,131 @@ def test_node_result_is_idempotent_when_a_run_is_retried(tmp_path: Path):
     assert result.run.state == "completed"
     node_runs = store.detail(OWNER, run.id)["nodes"]
     assert sum(node["node_id"] == "start" for node in node_runs) == 1
+
+
+def test_engine_times_out_waiting_node_and_routes_to_timeout_edge(tmp_path: Path):
+    store = make_store(tmp_path)
+    run_id = start_flow(
+        store,
+        [
+            {"id": "start", "kind": "manual_trigger", "title": "Start"},
+            {"id": "work", "kind": "agent", "title": "Work", "config": {"harness": {"timeout_seconds": 10}}},
+            {"id": "finish", "kind": "end", "title": "Finish"},
+        ],
+        [
+            {"id": "e1", "source": "start", "target": "work"},
+            {"id": "e2", "source": "work", "target": "finish", "condition": "timeout"},
+        ],
+    )
+    first = WorkflowEngine(store).run_until_wait(OWNER, run_id)[-1]
+    assert first.run.state == "waiting_for_input"
+    late = WorkflowEngine(store, now=lambda: datetime.now(timezone.utc) + timedelta(seconds=60))
+    results = late.run_until_wait(OWNER, run_id)
+    assert results[-1].run.state == "completed"
+    work = [item for item in store.detail(OWNER, run_id)["nodes"] if item["node_id"] == "work"]
+    assert len(work) == 1
+    assert work[0]["state"] == "failed"
+    assert work[0]["failure_category"] == "timeout"
+    assert any(item["event_type"] == "node_failed" for item in store.detail(OWNER, run_id)["events"])
+
+
+def test_engine_retries_until_retry_limit_then_routes_error_edge(tmp_path: Path):
+    store = make_store(tmp_path)
+    run_id = start_flow(
+        store,
+        [
+            {"id": "start", "kind": "manual_trigger", "title": "Start"},
+            {
+                "id": "work",
+                "kind": "agent",
+                "title": "Work",
+                "config": {"harness": {"timeout_seconds": 10, "retry_limit": 1}},
+            },
+            {"id": "finish", "kind": "end", "title": "Finish"},
+        ],
+        [
+            {"id": "e1", "source": "start", "target": "work"},
+            {"id": "e2", "source": "work", "target": "finish", "condition": "error"},
+        ],
+    )
+    WorkflowEngine(store).run_until_wait(OWNER, run_id)
+    late = WorkflowEngine(store, now=lambda: datetime.now(timezone.utc) + timedelta(seconds=60))
+    retried = late.run_until_wait(OWNER, run_id)
+    assert retried[-1].run.state == "waiting_for_input"
+    assert any("Retrying node after timeout" in item.summary for item in retried)
+    exhausted = WorkflowEngine(store, now=lambda: datetime.now(timezone.utc) + timedelta(seconds=60)).run_until_wait(OWNER, run_id)
+    assert exhausted[-1].run.state == "completed"
+    work = [item for item in store.detail(OWNER, run_id)["nodes"] if item["node_id"] == "work"]
+    assert [item["attempt"] for item in work] == [1, 2]
+    assert all(item["state"] == "failed" and item["failure_category"] == "timeout" for item in work)
+
+
+def test_engine_fails_run_when_timed_out_node_has_no_failure_edge(tmp_path: Path):
+    store = make_store(tmp_path)
+    run_id = start_flow(
+        store,
+        [
+            {"id": "start", "kind": "manual_trigger", "title": "Start"},
+            {"id": "work", "kind": "agent", "title": "Work", "config": {"harness": {"timeout_seconds": 10}}},
+            {"id": "finish", "kind": "end", "title": "Finish"},
+        ],
+        [
+            {"id": "e1", "source": "start", "target": "work"},
+            {"id": "e2", "source": "work", "target": "finish"},
+        ],
+    )
+    WorkflowEngine(store).run_until_wait(OWNER, run_id)
+    late = WorkflowEngine(store, now=lambda: datetime.now(timezone.utc) + timedelta(seconds=60))
+    results = late.run_until_wait(OWNER, run_id)
+    assert results[-1].run.state == "failed"
+    assert results[-1].run.failure_category == "timeout"
+    assert results[-1].node_id == "work"
+    assert results[-1].node_state == "failed"
+
+
+def test_engine_retries_an_explicit_resume_failure_then_routes_rejected_edge(tmp_path: Path):
+    store = make_store(tmp_path)
+    run_id = start_flow(
+        store,
+        [
+            {"id": "start", "kind": "manual_trigger", "title": "Start"},
+            {"id": "approval", "kind": "approval", "title": "Review", "config": {"harness": {"retry_limit": 1}}},
+            {"id": "finish", "kind": "end", "title": "Finish"},
+        ],
+        [
+            {"id": "e1", "source": "start", "target": "approval"},
+            {"id": "e2", "source": "approval", "target": "finish", "condition": "rejected"},
+        ],
+    )
+    first = WorkflowEngine(store).run_until_wait(OWNER, run_id)[-1]
+    assert first.run.state == "waiting_for_approval"
+    engine = WorkflowEngine(store)
+    retried = engine.run_until_wait(OWNER, run_id, resume=True, failure_category="rejected")
+    assert retried[-1].run.state == "waiting_for_approval"
+    assert any("Retrying node after rejected" in item.summary for item in retried)
+    done = engine.run_until_wait(OWNER, run_id, resume=True, failure_category="rejected")
+    assert done[-1].run.state == "completed"
+    approval = [item for item in store.detail(OWNER, run_id)["nodes"] if item["node_id"] == "approval"]
+    assert [item["attempt"] for item in approval] == [1, 2]
+    assert all(item["state"] == "failed" and item["failure_category"] == "rejected" for item in approval)
+
+
+def test_engine_never_times_out_a_node_without_a_configured_timeout(tmp_path: Path):
+    store = make_store(tmp_path)
+    run_id = start_flow(
+        store,
+        [
+            {"id": "start", "kind": "manual_trigger", "title": "Start"},
+            {"id": "work", "kind": "agent", "title": "Work"},
+            {"id": "finish", "kind": "end", "title": "Finish"},
+        ],
+        [
+            {"id": "e1", "source": "start", "target": "work"},
+            {"id": "e2", "source": "work", "target": "finish"},
+        ],
+    )
+    WorkflowEngine(store).run_until_wait(OWNER, run_id)
+    far_future = WorkflowEngine(store, now=lambda: datetime.now(timezone.utc) + timedelta(days=30))
+    result = far_future.run_until_wait(OWNER, run_id)[-1]
+    assert result.run.state == "waiting_for_input"
+    assert result.summary == "Workflow is waiting for an explicit resume signal."
