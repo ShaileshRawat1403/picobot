@@ -1899,9 +1899,17 @@ class AgentLoop:
         deliberately resolved per turn, so an owner-visible policy change takes
         effect for later turns without rewriting history or the session's
         recorded identity prompt.
+
+        The cache is keyed on a fingerprint of the standing-instruction files,
+        so editing ``AGENTS.md``/``SOUL.md``/``USER.md``/``TOOLS.md`` on disk
+        reaches sessions that have already started.  Previously only the
+        ``/system`` command and profile, stance, or orientation changes cleared
+        the snapshot, so a file edit silently applied to new sessions alone.
         """
         snapshot = session.metadata.get("pico_system_prompt")
-        if isinstance(snapshot, str) and snapshot.strip():
+        fingerprint = self.context.bootstrap_fingerprint()
+        current = session.metadata.get("pico_bootstrap_fingerprint")
+        if isinstance(snapshot, str) and snapshot.strip() and current == fingerprint:
             base_prompt = snapshot
         else:
             profile = self._session_profile(session)
@@ -1911,6 +1919,7 @@ class AgentLoop:
                 "Use only tool definitions available in this session. Do not claim access to other tools."
             )
             session.metadata["pico_system_prompt"] = base_prompt
+            session.metadata["pico_bootstrap_fingerprint"] = fingerprint
 
         response_mode = getattr(policy, "response_mode", "default")
         stance = stance or self._session_stance(session)

@@ -3005,7 +3005,6 @@ class WebChannel(BaseChannel):
             candidate = self._memory_store().propose(
                 owner_id,
                 feedback.note,
-                kind="correction",
                 source_type="response_correction",
                 source_ref=source_ref,
             )

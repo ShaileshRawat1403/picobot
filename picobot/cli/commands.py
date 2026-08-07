@@ -38,6 +38,7 @@ from rich.table import Table
 from rich.text import Text
 
 from picobot import __logo__, __version__
+from picobot.config.identity import LOCAL_OWNER_ID
 from picobot.config.paths import get_workspace_path
 from picobot.config.schema import Config
 from picobot.utils.helpers import sync_workspace_templates
@@ -1214,13 +1215,18 @@ def memory(
     query: str | None = typer.Option(None, help="Query for search"),
     content: str | None = typer.Option(None, help="Content to remember"),
     memory_id: str | None = typer.Option(None, "--id", help="Full memory id or displayed id prefix"),
-    owner: str = typer.Option("cli:user", help="Memory owner (normally leave unchanged)"),
-    kind: str = typer.Option("fact", help="Memory kind, e.g. preference, goal, constraint"),
+    owner: str = typer.Option(
+        LOCAL_OWNER_ID, help="Memory owner (normally leave unchanged)"
+    ),
+    kind: str = typer.Option("fact", help="Memory kind: fact, decision, constraint, next_step, open_question (default fact)"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
 ):
     """Manage durable personal memory and lexical recall."""
+    from typing import cast
+
     from picobot.memory import PersonalMemoryStore
+    from picobot.memory.store import MemoryKind
 
     from rich.console import Console
     from rich.table import Table
@@ -1251,7 +1257,7 @@ def memory(
             for item in items:
                 console.print(f"[bold]{item.id[:8]}[/bold] ({item.kind}) {item.value}")
         elif action == "add" and content:
-            item = store.remember(owner, content, kind=kind)
+            item = store.remember(owner, content, kind=cast(MemoryKind, kind))
             console.print(f"[green]✓[/green] Remembered {item.id[:8]}")
         elif action in {"why", "confirm", "reject", "forget"} and memory_id:
             resolved = store.resolve_id(owner, memory_id)
@@ -1269,11 +1275,16 @@ def memory(
             console.print("[yellow]Usage:[/yellow]")
             console.print("  picobot memory list")
             console.print("  picobot memory search --query 'theme'")
-            console.print("  picobot memory add --content 'I prefer dark mode' --kind preference")
+            console.print("  picobot memory add --content 'I prefer dark mode' --kind fact")
             console.print("  picobot memory why --id <memory-id>")
             console.print("  picobot memory confirm|reject|forget --id <memory-id>")
     except (KeyError, ValueError) as exc:
+        # Report the failure through the exit code as well as the console: a
+        # rejected memory used to print in red and still exit 0, so scripts and
+        # tests read it as success.  That is how an invalid --kind passed a
+        # test while storing nothing.
         console.print(f"[red]Memory:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

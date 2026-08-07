@@ -20,6 +20,22 @@ from typing import Literal
 MemoryStatus = Literal["proposed", "confirmed", "rejected", "forgotten"]
 MemoryScope = Literal["personal", "workspace", "project"]
 
+#: What a memory *is*.  Deliberately distinct from ``source_type``, which
+#: records where it came from: a correction is a source, not a kind, and the
+#: memory it produces is usually a ``fact`` or a ``constraint``.
+#:
+#: - ``fact``          a stable truth.  The default, and the widest category.
+#: - ``decision``      a choice made among alternatives; pair it with ``why``.
+#: - ``constraint``    a rule discovered, most often the hard way.
+#: - ``next_step``     what the owner was about to do next.
+#: - ``open_question`` an uncertainty worth carrying forward unresolved.
+#:
+#: The last three exist because they cannot be recovered from a repository
+#: later.  Adding a kind is a one-line change here; removing one is not, since
+#: stored rows keep their value, so prefer a narrow vocabulary and widen it
+#: only when a real memory does not fit.
+MemoryKind = Literal["fact", "decision", "constraint", "next_step", "open_question"]
+
 
 @dataclass(frozen=True)
 class MemoryItem:
@@ -42,6 +58,9 @@ class MemoryItem:
     supersedes_id: str | None
     usage_count: int = 0
     last_used_at: str | None = None
+    project_id: str | None = None
+    hook: str | None = None
+    why: str | None = None
 
 
 class PersonalMemoryStore:
@@ -53,8 +72,14 @@ class PersonalMemoryStore:
     """
 
     _MAX_VALUE_LENGTH = 2_000
+    #: A hook has to stay scannable in a list, so it is deliberately short.
+    _MAX_HOOK_LENGTH = 160
     _VALID_STATUSES = {"proposed", "confirmed", "rejected", "forgotten"}
     _VALID_SCOPES = {"personal", "workspace", "project"}
+    _VALID_KINDS = {"fact", "decision", "constraint", "next_step", "open_question"}
+    #: Kinds carrying reasoning that cannot be re-derived from a repository.
+    #: Recall may weight these ahead of plain facts once volume justifies it.
+    _REASONING_KINDS = frozenset({"decision", "constraint", "open_question"})
     _RECALL_STOP_WORDS = {
         "a", "an", "and", "are", "can", "did", "do", "for", "how", "i", "in", "is",
         "it", "me", "my", "of", "on", "please", "should", "the", "to", "was", "what",
@@ -133,6 +158,32 @@ class PersonalMemoryStore:
                 );
                 """
             )
+            self._add_missing_columns(connection)
+
+    #: Columns added after the table's first release, applied to existing
+    #: workspaces on open.  ``CREATE TABLE IF NOT EXISTS`` never revises a table
+    #: that already exists, so evolution has to happen here.
+    _ADDED_COLUMNS = (
+        # Which project this memory belongs to.  ``scope`` has always accepted
+        # "project", but nothing recorded *which* project, so the value could
+        # not be acted on.
+        ("project_id", "TEXT"),
+        # A one-line summary, cheap enough to keep loaded for every memory once
+        # the collection outgrows loading each one in full.
+        ("hook", "TEXT"),
+        # Why the memory is true.  A bare fact is trivia; the reasoning behind
+        # it is the part that cannot be re-derived from a repository later.
+        ("why", "TEXT"),
+    )
+
+    @classmethod
+    def _add_missing_columns(cls, connection: sqlite3.Connection) -> None:
+        """Bring an existing workspace up to the current column set."""
+        existing = {row[1] for row in connection.execute("PRAGMA table_info(memory_items)")}
+        for column, declaration in cls._ADDED_COLUMNS:
+            if column in existing:
+                continue
+            connection.execute(f"ALTER TABLE memory_items ADD COLUMN {column} {declaration}")
 
     @staticmethod
     def _now() -> str:
@@ -153,11 +204,56 @@ class PersonalMemoryStore:
             raise ValueError(f"Unsupported memory status: {status}")
         return status
 
+    @staticmethod
+    def _validate_project_scope(scope: str, project_id: str | None) -> str | None:
+        """Keep project scope and project identity consistent.
+
+        ``scope`` has always accepted "project", but without an identifier a
+        project-scoped memory cannot be recalled for the project it belongs to,
+        so it silently behaves as a personal one.  Requiring the pair makes the
+        inconsistency impossible to store.
+        """
+        cleaned = project_id.strip() if isinstance(project_id, str) else None
+        if scope == "project":
+            if not cleaned:
+                raise ValueError("A project-scoped memory needs the project it belongs to")
+            return cleaned
+        if cleaned:
+            raise ValueError("Only a project-scoped memory can name a project")
+        return None
+
+    @classmethod
+    def _clean_optional(cls, value: str | None, label: str, limit: int) -> str | None:
+        """Normalise an optional single-line field, or drop it when empty."""
+        if not isinstance(value, str):
+            return None
+        clean = " ".join(value.split())
+        if not clean:
+            return None
+        if len(clean) > limit:
+            raise ValueError(f"{label} is limited to {limit} characters")
+        return clean
+
     @classmethod
     def _validate_scope(cls, scope: str) -> str:
         if scope not in cls._VALID_SCOPES:
             raise ValueError(f"Unsupported memory scope: {scope}")
         return scope
+
+    @classmethod
+    def _validate_kind(cls, kind: str) -> str:
+        """Validate on write only.
+
+        Rows written before a kind existed keep whatever value they hold and
+        still load, so narrowing the vocabulary never strands stored memory.
+        """
+        clean = kind.strip() if isinstance(kind, str) else ""
+        if not clean:
+            return "fact"
+        if clean not in cls._VALID_KINDS:
+            supported = ", ".join(sorted(cls._VALID_KINDS))
+            raise ValueError(f"Unsupported memory kind: {kind}. Supported kinds: {supported}")
+        return clean
 
     @staticmethod
     def _item(row: sqlite3.Row) -> MemoryItem:
@@ -179,6 +275,9 @@ class PersonalMemoryStore:
             supersedes_id=row["supersedes_id"],
             usage_count=int(row["usage_count"]) if "usage_count" in row.keys() else 0,
             last_used_at=row["last_used_at"] if "last_used_at" in row.keys() else None,
+            project_id=row["project_id"] if "project_id" in row.keys() else None,
+            hook=row["hook"] if "hook" in row.keys() else None,
+            why=row["why"] if "why" in row.keys() else None,
         )
 
     @staticmethod
@@ -197,7 +296,7 @@ class PersonalMemoryStore:
         *,
         owner_id: str,
         value: str,
-        kind: str = "fact",
+        kind: MemoryKind = "fact",
         scope: MemoryScope = "personal",
         sensitivity: str = "personal",
         status: MemoryStatus = "confirmed",
@@ -206,6 +305,9 @@ class PersonalMemoryStore:
         source_ref: str | None = None,
         expires_at: str | None = None,
         supersedes_id: str | None = None,
+        project_id: str | None = None,
+        hook: str | None = None,
+        why: str | None = None,
     ) -> MemoryItem:
         """Create an explicit fact or an unconfirmed candidate."""
         if not owner_id.strip():
@@ -213,6 +315,10 @@ class PersonalMemoryStore:
         clean_value = self._clean_value(value)
         status = self._validate_status(status)
         scope = self._validate_scope(scope)
+        clean_kind = self._validate_kind(kind)
+        project_id = self._validate_project_scope(scope, project_id)
+        hook = self._clean_optional(hook, "Memory hook", self._MAX_HOOK_LENGTH)
+        why = self._clean_optional(why, "Memory reasoning", self._MAX_VALUE_LENGTH)
         if not 0.0 <= confidence <= 1.0:
             raise ValueError("Memory confidence must be between 0 and 1")
 
@@ -225,14 +331,14 @@ class PersonalMemoryStore:
                 INSERT INTO memory_items (
                     id, owner_id, value, kind, scope, sensitivity, status,
                     confidence, source_type, source_ref, created_at, updated_at,
-                    confirmed_at, expires_at, supersedes_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confirmed_at, expires_at, supersedes_id, project_id, hook, why
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item_id,
                     owner_id,
                     clean_value,
-                    kind.strip() or "fact",
+                    clean_kind,
                     scope,
                     sensitivity.strip() or "personal",
                     status,
@@ -244,6 +350,9 @@ class PersonalMemoryStore:
                     confirmed_at,
                     expires_at,
                     supersedes_id,
+                    project_id,
+                    hook,
+                    why,
                 ),
             )
             connection.execute(
@@ -259,19 +368,43 @@ class PersonalMemoryStore:
             )
         return self.get(owner_id, item_id)
 
-    def remember(self, owner_id: str, value: str, *, kind: str = "fact") -> MemoryItem:
-        """Save an explicitly requested memory immediately."""
-        return self.create(owner_id=owner_id, value=value, kind=kind)
+    def remember(
+        self,
+        owner_id: str,
+        value: str,
+        *,
+        kind: MemoryKind = "fact",
+        project_id: str | None = None,
+        hook: str | None = None,
+        why: str | None = None,
+    ) -> MemoryItem:
+        """Save an explicitly requested memory immediately.
+
+        Passing ``project_id`` files the memory against that project; the scope
+        follows from it so a caller cannot describe the two inconsistently.
+        """
+        return self.create(
+            owner_id=owner_id,
+            value=value,
+            kind=kind,
+            scope="project" if project_id else "personal",
+            project_id=project_id,
+            hook=hook,
+            why=why,
+        )
 
     def propose(
         self,
         owner_id: str,
         value: str,
         *,
-        kind: str = "fact",
+        kind: MemoryKind = "fact",
         confidence: float = 0.5,
         source_type: str = "inferred",
         source_ref: str | None = None,
+        project_id: str | None = None,
+        hook: str | None = None,
+        why: str | None = None,
     ) -> MemoryItem:
         """Save an inference without making it eligible for recall."""
         return self.create(
@@ -279,9 +412,13 @@ class PersonalMemoryStore:
             value=value,
             kind=kind,
             status="proposed",
+            scope="project" if project_id else "personal",
             confidence=confidence,
             source_type=source_type,
             source_ref=source_ref,
+            project_id=project_id,
+            hook=hook,
+            why=why,
         )
 
     def get(self, owner_id: str, item_id: str) -> MemoryItem:

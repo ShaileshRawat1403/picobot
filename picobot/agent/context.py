@@ -123,6 +123,28 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
 
         return "\n\n".join(parts) if parts else ""
 
+    def bootstrap_fingerprint(self) -> str:
+        """Return a marker that changes whenever standing instructions change.
+
+        The system prompt is snapshotted per session so a live conversation
+        keeps a stable cached prefix.  Without this marker an edit to
+        ``USER.md`` or ``AGENTS.md`` would never reach a session that had
+        already started: the owner would write a new instruction, keep working,
+        and watch Pico ignore it.  Size and modification time are enough to
+        notice an edit, and cost one ``stat`` per file rather than a re-read.
+        """
+        marks: list[str] = []
+        for filename in self.BOOTSTRAP_FILES:
+            try:
+                stat = (self.workspace / filename).stat()
+            except OSError:
+                # Absent is itself a state worth noticing: deleting a file has
+                # to invalidate the snapshot just as editing one does.
+                marks.append(f"{filename}:-")
+                continue
+            marks.append(f"{filename}:{stat.st_size}:{stat.st_mtime_ns}")
+        return "|".join(marks)
+
     @staticmethod
     def render_mission_context(mission: Any | None) -> str:
         """Render bounded mission context for reference beside runtime metadata."""

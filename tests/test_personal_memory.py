@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -11,6 +12,7 @@ from picobot.agent.vector_memory import VectorMemory, VectorMemoryUnavailable
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.cli.commands import app
+from picobot.config.identity import LOCAL_OWNER_ID
 from picobot.memory import PersonalMemoryStore
 from picobot.providers.base import LLMProvider, LLMResponse
 from typer.testing import CliRunner
@@ -39,7 +41,7 @@ runner = CliRunner()
 
 def test_explicit_memory_is_recalled_only_for_its_owner(tmp_path):
     store = PersonalMemoryStore(tmp_path)
-    item = store.remember("telegram:alice", "Prefers concise status updates.", kind="preference")
+    item = store.remember("telegram:alice", "Prefers concise status updates.", kind="constraint")
 
     assert [result.id for result in store.recall("telegram:alice", "concise status")] == [item.id]
     assert store.recall("telegram:bob", "concise status") == []
@@ -47,7 +49,7 @@ def test_explicit_memory_is_recalled_only_for_its_owner(tmp_path):
 
 def test_proposed_memory_requires_confirmation_and_has_a_lifecycle_trail(tmp_path):
     store = PersonalMemoryStore(tmp_path)
-    candidate = store.propose("telegram:alice", "Usually works evenings.", kind="schedule")
+    candidate = store.propose("telegram:alice", "Usually works evenings.")
 
     assert store.recall("telegram:alice", "works evenings") == []
     assert [event["status"] for event in store.history("telegram:alice", candidate.id)] == ["proposed"]
@@ -63,7 +65,7 @@ def test_proposed_memory_requires_confirmation_and_has_a_lifecycle_trail(tmp_pat
 
 def test_rejected_and_expired_memories_are_not_recalled(tmp_path):
     store = PersonalMemoryStore(tmp_path)
-    rejected = store.propose("telegram:alice", "Likes long reports.", kind="preference")
+    rejected = store.propose("telegram:alice", "Likes long reports.", kind="constraint")
     store.transition("telegram:alice", rejected.id, "rejected")
     expired = store.create(
         owner_id="telegram:alice",
@@ -78,7 +80,7 @@ def test_rejected_and_expired_memories_are_not_recalled(tmp_path):
 
 def test_recall_treats_query_as_data_not_sql(tmp_path):
     store = PersonalMemoryStore(tmp_path)
-    store.remember("telegram:alice", "Prefers short paragraphs.", kind="preference")
+    store.remember("telegram:alice", "Prefers short paragraphs.", kind="constraint")
 
     assert store.recall("telegram:alice", "' OR 1=1 --") == []
 
@@ -116,7 +118,7 @@ def test_memory_use_is_an_owner_scoped_audit_signal_not_a_lifecycle_change(tmp_p
 def test_context_uses_memory_beside_the_user_message_not_in_the_system_prompt(tmp_path):
     context = ContextBuilder(tmp_path)
     context.personal_memory.remember(
-        "telegram:alice", "Use simple words and short paragraphs.", kind="style"
+        "telegram:alice", "Use simple words and short paragraphs.", kind="constraint"
     )
     static_prompt = context.build_system_prompt()
 
@@ -222,9 +224,167 @@ def test_memory_cli_uses_explicit_test_workspace(tmp_path):
             "--content",
             "Prefer a concise response.",
             "--kind",
-            "preference",
+            "constraint",
         ],
     )
 
     assert result.exit_code == 0, result.output
     assert (workspace / "memory" / "pico-memory.db").exists()
+    stored = PersonalMemoryStore(workspace).list(LOCAL_OWNER_ID)
+    assert [item.value for item in stored] == ["Prefer a concise response."]
+    assert stored[0].kind == "constraint"
+
+
+def test_unsupported_kind_raises_and_names_supported_set(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="Unsupported memory kind: preference. Supported kinds: constraint, decision, fact, next_step, open_question",
+    ):
+        store.remember("telegram:alice", "Prefers concise updates.", kind="preference")
+
+    with pytest.raises(ValueError, match="Unsupported memory kind: schedule"):
+        store.create(owner_id="telegram:alice", value="Works evenings.", kind="schedule")
+
+
+def test_empty_kind_defaults_to_fact(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    assert store.remember("telegram:alice", "Works evenings.", kind="").kind == "fact"
+    assert store.remember("telegram:alice", "Travels monthly.", kind="   ").kind == "fact"
+
+
+def test_row_stored_with_an_unknown_kind_still_loads(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            """
+            INSERT INTO memory_items (
+                id, owner_id, value, kind, scope, sensitivity, status, confidence,
+                source_type, source_ref, created_at, updated_at, confirmed_at,
+                expires_at, supersedes_id, project_id, hook, why
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-kind-1",
+                "telegram:alice",
+                "Written before kinds were constrained.",
+                "preference",
+                "personal",
+                "personal",
+                "confirmed",
+                1.0,
+                "explicit_user",
+                None,
+                "2024-01-01T00:00:00+00:00",
+                "2024-01-01T00:00:00+00:00",
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+
+    item = store.get("telegram:alice", "legacy-kind-1")
+    assert item.kind == "preference"
+    assert item.scope == "personal"
+
+
+def test_project_scope_requires_project_id_and_vice_versa(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    with pytest.raises(ValueError, match="A project-scoped memory needs the project it belongs to"):
+        store.create(owner_id="telegram:alice", value="Scoped to a project.", scope="project")
+
+    with pytest.raises(ValueError, match="Only a project-scoped memory can name a project"):
+        store.create(owner_id="telegram:alice", value="Names a project.", project_id="proj-a")
+
+    with pytest.raises(ValueError, match="A project-scoped memory needs the project it belongs to"):
+        store.remember("telegram:alice", "Blank project id.", project_id="   ")
+
+
+def test_remember_with_project_id_sets_project_scope(tmp_path):
+    store = PersonalMemoryStore(tmp_path)
+
+    item = store.remember("telegram:alice", "Fixed after the incident.", project_id="proj-a", why="The queue stalled twice.")
+    assert item.scope == "project"
+    assert item.project_id == "proj-a"
+    assert item.why == "The queue stalled twice."
+
+    candidate = store.propose("telegram:alice", "Revisit the retry budget.", project_id="proj-a", hook="retry budget")
+    assert candidate.scope == "project"
+    assert candidate.project_id == "proj-a"
+    assert candidate.hook == "retry budget"
+
+
+def test_opening_pre_migration_database_adds_columns_and_preserves_rows(tmp_path):
+    workspace = tmp_path / "legacy-workspace"
+    (workspace / "memory").mkdir(parents=True)
+    db = workspace / "memory" / "pico-memory.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            """
+            CREATE TABLE memory_items (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                value TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                sensitivity TEXT NOT NULL,
+                status TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source_type TEXT NOT NULL,
+                source_ref TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                confirmed_at TEXT,
+                expires_at TEXT,
+                supersedes_id TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO memory_items (
+                id, owner_id, value, kind, scope, sensitivity, status, confidence,
+                source_type, source_ref, created_at, updated_at, confirmed_at,
+                expires_at, supersedes_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "legacy-id-1",
+                "telegram:alice",
+                "Legacy preference survives.",
+                "preference",
+                "personal",
+                "personal",
+                "confirmed",
+                1.0,
+                "explicit_user",
+                None,
+                "2024-01-01T00:00:00+00:00",
+                "2024-01-01T00:00:00+00:00",
+                None,
+                None,
+                None,
+            ),
+        )
+
+    store = PersonalMemoryStore(workspace)
+
+    with sqlite3.connect(db) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(memory_items)")}
+    assert {"project_id", "hook", "why"} <= columns
+
+    item = store.get("telegram:alice", "legacy-id-1")
+    assert item.value == "Legacy preference survives."
+    assert item.kind == "preference"
+    assert item.project_id is None
+    assert item.hook is None
+    assert item.why is None
+
+    reopened = PersonalMemoryStore(workspace)
+    assert reopened.get("telegram:alice", "legacy-id-1").value == "Legacy preference survives."
