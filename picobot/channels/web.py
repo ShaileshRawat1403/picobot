@@ -1376,6 +1376,14 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps(result).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/leave"):
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    session_id = path.removeprefix("/api/sessions/").removesuffix("/leave").strip("/")
+                    result = self._browser_session_leave(client_id, session_id)
+                    self._write_response(writer, 200, json.dumps(result).encode())
+                except (ValueError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif path.startswith("/api/sessions/"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -3588,6 +3596,26 @@ class WebChannel(BaseChannel):
                 }
             )
         return result
+
+    def _browser_session_leave(self, client_id: str, session_id: str) -> dict[str, Any]:
+        """Report whether leaving this session is worth a capture reminder.
+
+        Archiving is a rare, deliberate act, so a nudge offered only there is a
+        nudge almost never seen.  Leaving a session -- switching to another or
+        starting a new one -- is the moment the work is actually being set
+        down, and it is the last point at which the owner still remembers what
+        they decided.
+        """
+        session_id = self._valid_browser_id(session_id)
+        self._require_browser_session(client_id, session_id)
+        manager = self._session_manager()
+        session = manager.get_or_create(self._session_key(client_id, session_id))
+        nudge = self._browser_session_capture_nudge(session)
+        if nudge:
+            # The helper records that the reminder was offered; persist it so a
+            # session cannot nag twice.
+            manager.save(session)
+        return {"id": session_id, "capture_nudge": nudge}
 
     def _set_browser_session_archive(self, client_id: str, session_id: str, archived: bool) -> dict[str, Any]:
         session_id = self._valid_browser_id(session_id)

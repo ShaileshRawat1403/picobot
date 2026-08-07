@@ -265,7 +265,24 @@ class CompactionService:
             and recent.outcome in {"failed", "skipped"}
             and self._within_cooldown(recent, self.cooldown_minutes)
         ):
-            return AssembledWindow(messages=history[plan.tail_start:], plan=plan)
+            # The prefix is dropped without a handoff here, exactly as it is
+            # when no summarizer is configured, so it has to leave the same
+            # durable trace.  Without one the turn reports action="compact"
+            # with no record behind it, and the owner is told compaction
+            # happened while being shown nothing that performed it.
+            tail = history[plan.tail_start:]
+            record = self._record(
+                owner_id=owner_id,
+                session_key=session_key,
+                plan=plan,
+                history_message_count=len(history),
+                outcome="skipped",
+                tokens_after=estimate_messages_tokens(tail) + current_request_tokens,
+                reason=f"within cooldown after a recent {recent.outcome} compaction",
+                provider=provider,
+                model=model,
+            )
+            return AssembledWindow(messages=tail, plan=plan, records_created=(record,))
 
         if active_summarizer is None:
             tail = history[plan.tail_start:]
