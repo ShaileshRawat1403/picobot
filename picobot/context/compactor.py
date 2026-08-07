@@ -48,6 +48,7 @@ class ProviderContextSummarizer:
         self.model = model
         self.provider_name: str | None = None
         self.model_name: str | None = None
+        self.last_usage: dict[str, int] | None = None
 
     async def summarize(self, messages: list[dict[str, Any]], *, max_tokens: int) -> str:
         response = await self.provider.chat_with_retry(
@@ -65,6 +66,7 @@ class ProviderContextSummarizer:
             raise RuntimeError("The compaction provider returned an empty handoff.")
         self.provider_name = response.provider_name
         self.model_name = response.model_name
+        self.last_usage = response.usage if response.usage else None
         return response.content
 
 
@@ -178,6 +180,8 @@ class CompactionService:
         error_summary: str | None = None,
         provider: str | None = None,
         model: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> CompactionRecord:
         return self.store.create(
             owner_id=owner_id,
@@ -196,6 +200,8 @@ class CompactionService:
             provider=provider,
             model=model,
             error_summary=error_summary,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     async def build_window(
@@ -344,6 +350,7 @@ class CompactionService:
             *history[plan.tail_start:],
         ]
         tokens_after = estimate_messages_tokens(window) + current_request_tokens
+        usage = getattr(active_summarizer, "last_usage", None) or {}
         completed = self._record(
             owner_id=owner_id,
             session_key=session_key,
@@ -355,6 +362,8 @@ class CompactionService:
             summary=bounded,
             provider=getattr(active_summarizer, "provider_name", None) or provider,
             model=getattr(active_summarizer, "model_name", None) or model,
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
         )
         return AssembledWindow(
             messages=[self.handoff_message(completed), *history[plan.tail_start:]],

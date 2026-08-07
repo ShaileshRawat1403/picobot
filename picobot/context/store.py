@@ -47,6 +47,8 @@ class CompactionRecord:
     provider: str | None
     model: str | None
     error_summary: str | None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
     def to_dict(self) -> dict:
         """Return the bounded record, including the handoff text."""
@@ -76,6 +78,8 @@ class CompactionRecord:
             "provider": self.provider,
             "model": self.model,
             "error_summary": self.error_summary,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
         }
 
 
@@ -129,7 +133,9 @@ class CompactionStore:
                     summary TEXT,
                     provider TEXT,
                     model TEXT,
-                    error_summary TEXT
+                    error_summary TEXT,
+                    input_tokens INTEGER,
+                    output_tokens INTEGER
                 );
                 CREATE INDEX IF NOT EXISTS compactions_owner_created_idx
                     ON compactions(owner_id, created_at DESC);
@@ -137,6 +143,19 @@ class CompactionStore:
                     ON compactions(owner_id, session_key, created_at DESC);
                 """
             )
+        self._ensure_columns()
+
+    def _ensure_columns(self) -> None:
+        """Idempotently add columns introduced after the original schema."""
+        with self._connect() as connection:
+            columns = {
+                str(row["name"])
+                for row in connection.execute("PRAGMA table_info(compactions)").fetchall()
+            }
+            if "input_tokens" not in columns:
+                connection.execute("ALTER TABLE compactions ADD COLUMN input_tokens INTEGER")
+            if "output_tokens" not in columns:
+                connection.execute("ALTER TABLE compactions ADD COLUMN output_tokens INTEGER")
 
     @staticmethod
     def _now() -> str:
@@ -185,6 +204,12 @@ class CompactionStore:
         return value
 
     @classmethod
+    def _validate_optional_count(cls, value: object, label: str) -> int | None:
+        if value is None:
+            return None
+        return cls._validate_count(value, label)
+
+    @classmethod
     def _validate_index(cls, value: object, label: str) -> int:
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(f"Compaction {label} must be a non-negative integer")
@@ -221,6 +246,8 @@ class CompactionStore:
         provider: str | None = None,
         model: str | None = None,
         error_summary: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
     ) -> CompactionRecord:
         owner_id = self._required_identifier(owner_id, "owner")
         session_key = self._required_identifier(session_key, "session")
@@ -240,6 +267,8 @@ class CompactionStore:
             summary = self._redact_sensitive_text(summary)
         provider = self._bounded_text(provider, "provider", self._MAX_TEXT_LENGTH, required=False)
         model = self._bounded_text(model, "model", self._MAX_TEXT_LENGTH, required=False)
+        input_tokens = self._validate_optional_count(input_tokens, "input tokens")
+        output_tokens = self._validate_optional_count(output_tokens, "output tokens")
 
         clean_error = self._bounded_text(
             error_summary, "error summary", self._MAX_ERROR_SUMMARY_LENGTH, required=False
@@ -274,6 +303,8 @@ class CompactionStore:
             provider=provider,
             model=model,
             error_summary=clean_error,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
         with self._connect() as connection:
             connection.execute(
@@ -283,8 +314,8 @@ class CompactionStore:
                     history_message_count, source_range, compact_start, compact_end,
                     protected_tail_start, tail_start, compacted_message_count,
                     estimated_tokens_before, estimated_tokens_after, saved_tokens,
-                    summary, provider, model, error_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    summary, provider, model, error_summary, input_tokens, output_tokens
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -308,6 +339,8 @@ class CompactionStore:
                     record.provider,
                     record.model,
                     record.error_summary,
+                    record.input_tokens,
+                    record.output_tokens,
                 ),
             )
         return record

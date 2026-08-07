@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ from picobot.agent.loop import AgentLoop
 from picobot.bus.events import InboundMessage
 from picobot.bus.queue import MessageBus
 from picobot.channels.web import WebChannel
-from picobot.context import CompactionService, CompactionStore
+from picobot.context import CompactionService, CompactionStore, ProviderContextSummarizer
 from picobot.context.planner import estimate_messages_tokens
 from picobot.memory.store import PersonalMemoryStore
 from picobot.providers.base import LLMProvider, LLMResponse
@@ -40,6 +41,7 @@ class _FakeSummarizer:
         self.error = error
         self.calls = 0
         self.sources: list[list[dict]] = []
+        self.last_usage: dict[str, int] | None = None
 
     async def summarize(self, messages: list[dict], *, max_tokens: int) -> str:
         self.calls += 1
@@ -60,6 +62,19 @@ class _RecordingProvider(LLMProvider):
     async def chat(self, messages, tools=None, model=None, **kwargs):
         self.calls.append({"messages": list(messages), "tools": tools or []})
         return LLMResponse(content="Done.", provider_name="test-provider", model_name="test-model")
+
+
+class _UsageProvider(LLMProvider):
+    def get_default_model(self) -> str:
+        return "test-model"
+
+    async def chat(self, messages, tools=None, model=None, **kwargs):
+        return LLMResponse(
+            content="condensed facts",
+            provider_name="test-provider",
+            model_name="test-model",
+            usage={"prompt_tokens": 12_345, "completion_tokens": 678},
+        )
 
 
 @pytest.mark.asyncio
@@ -104,6 +119,40 @@ async def test_successful_compaction_persists_completed_record_and_uses_handoff(
     assert reloaded.summary == "Material facts from the earlier conversation."
     assert reloaded.source_range is not None
     assert history == _over_budget_history()  # source transcript unchanged
+
+
+@pytest.mark.asyncio
+async def test_completed_record_carries_summarizer_usage_tokens(tmp_path: Path):
+    history = _over_budget_history()
+    summarizer = _FakeSummarizer()
+    summarizer.last_usage = {"prompt_tokens": 12_345, "completion_tokens": 678}
+    service = CompactionService(tmp_path, summarizer=summarizer, cooldown_minutes=0)
+    window = await service.build_window(
+        history, owner_id=OWNER, session_key=SESSION, budget_tokens=25_000,
+        current_request_tokens=30, provider="fake", model="fake-model",
+    )
+    assert window.plan.action == "compact"
+    assert len(window.records_created) == 1
+    record = window.records_created[0]
+    assert record.input_tokens == 12_345
+    assert record.output_tokens == 678
+
+    reloaded = CompactionStore(tmp_path).latest_completed(OWNER, SESSION)
+    assert reloaded is not None and reloaded.input_tokens == 12_345
+    assert reloaded.output_tokens == 678
+    view = reloaded.public_view()
+    assert view["input_tokens"] == 12_345
+    assert view["output_tokens"] == 678
+
+
+@pytest.mark.asyncio
+async def test_provider_summarizer_captures_response_usage():
+    summarizer = ProviderContextSummarizer(_UsageProvider(), "test-model")
+    handoff = await summarizer.summarize([_message("user", "condense this")], max_tokens=800)
+    assert handoff == "condensed facts"
+    assert summarizer.last_usage == {"prompt_tokens": 12_345, "completion_tokens": 678}
+    assert summarizer.provider_name == "test-provider"
+    assert summarizer.model_name == "test-model"
 
 
 @pytest.mark.asyncio
@@ -323,6 +372,87 @@ def test_record_public_view_is_safe_and_bounded(tmp_path: Path):
     assert "sk-" not in json.dumps(failed_view)
 
 
+def test_compaction_store_persists_usage_tokens_in_public_view(tmp_path: Path):
+    store = CompactionStore(tmp_path)
+    record = store.create(
+        owner_id=OWNER,
+        session_key=SESSION,
+        outcome="completed",
+        history_message_count=80,
+        compact_start=0,
+        compact_end=71,
+        protected_tail_start=72,
+        tail_start=72,
+        compacted_message_count=72,
+        estimated_tokens_before=100_000,
+        estimated_tokens_after=1_800,
+        provider="fake",
+        model="fake-model",
+        input_tokens=12_345,
+        output_tokens=678,
+    )
+    reloaded = store.get(OWNER, record.id)
+    assert reloaded.input_tokens == 12_345
+    assert reloaded.output_tokens == 678
+    view = reloaded.public_view()
+    assert view["input_tokens"] == 12_345
+    assert view["output_tokens"] == 678
+
+
+def test_compaction_store_migrates_legacy_database_without_token_columns(tmp_path: Path):
+    db = tmp_path / "context" / "pico-compactions.db"
+    db.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(db)
+    connection.executescript(
+        """
+        CREATE TABLE compactions (
+            id TEXT PRIMARY KEY,
+            owner_id TEXT NOT NULL,
+            session_key TEXT NOT NULL,
+            role TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            history_message_count INTEGER NOT NULL,
+            source_range TEXT,
+            compact_start INTEGER NOT NULL,
+            compact_end INTEGER NOT NULL,
+            protected_tail_start INTEGER NOT NULL,
+            tail_start INTEGER NOT NULL,
+            compacted_message_count INTEGER NOT NULL,
+            estimated_tokens_before INTEGER NOT NULL,
+            estimated_tokens_after INTEGER NOT NULL,
+            saved_tokens INTEGER NOT NULL,
+            summary TEXT,
+            provider TEXT,
+            model TEXT,
+            error_summary TEXT
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    store = CompactionStore(tmp_path)
+    record = store.create(
+        owner_id=OWNER,
+        session_key=SESSION,
+        outcome="completed",
+        history_message_count=2,
+        compact_start=0,
+        compact_end=1,
+        protected_tail_start=2,
+        tail_start=2,
+        compacted_message_count=2,
+        estimated_tokens_before=100,
+        estimated_tokens_after=10,
+        input_tokens=7,
+        output_tokens=3,
+    )
+    assert record.input_tokens == 7
+    assert store.get(OWNER, record.id).output_tokens == 3
+
+
 def test_web_context_response_shows_safe_compaction_block(tmp_path: Path, monkeypatch):
     workspace = tmp_path / "workspace"
     web_owner = "local:owner"
@@ -353,6 +483,8 @@ def test_web_context_response_shows_safe_compaction_block(tmp_path: Path, monkey
         summary="Secret-like handoff text api_key=sk-hidden should not surface.",
         provider="fake",
         model="fake-model",
+        input_tokens=12_345,
+        output_tokens=678,
     )
 
     channel = WebChannel(SimpleNamespace(), MessageBus())
@@ -366,6 +498,8 @@ def test_web_context_response_shows_safe_compaction_block(tmp_path: Path, monkey
     assert body["compaction"] is not None
     assert body["compaction"]["outcome"] == "completed"
     assert body["compaction"]["saved_tokens"] == 100_000 - 1_800
+    assert body["compaction"]["input_tokens"] == 12_345
+    assert body["compaction"]["output_tokens"] == 678
     assert body["compaction_timeline"][0]["record_id"] == body["compaction"]["record_id"]
     assert "summary" not in body["compaction"]
     assert "summary" not in body["compaction_timeline"][0]
