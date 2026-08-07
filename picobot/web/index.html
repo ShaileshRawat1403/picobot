@@ -48,6 +48,15 @@
     .message.user .avatar { background:#e8e9f1; font-size:11px; font-weight:750; }
     .bubble { padding:11px 13px; border:1px solid var(--line); border-radius:4px 14px 14px; background:#fff; white-space:pre-wrap; }
     .bubble h4 { margin:0 0 7px; font-size:14px; line-height:1.35; }
+    .bubble h3 { margin:0 0 7px; font-size:15px; line-height:1.35; }
+    .bubble h5, .bubble h6 { margin:0 0 7px; font-size:13px; line-height:1.35; }
+    .bubble blockquote { margin:0 0 8px; padding:4px 11px; border-left:3px solid #c9d2e6; border-radius:3px; background:#f7f8fb; color:#4d5a70; }
+    .bubble blockquote p, .bubble blockquote div { margin:0; }
+    .bubble table { margin:0 0 8px; border-collapse:collapse; font-size:12px; }
+    .bubble th, .bubble td { border:1px solid #dfe3ec; padding:5px 8px; text-align:left; }
+    .bubble th { background:#f2f4f9; font-weight:600; }
+    .bubble hr { margin:9px 0; border:0; border-top:1px solid #dfe3ec; }
+    .bubble mark { background:#fff1b8; color:#4a3a00; border-radius:3px; padding:0 2px; }
     .bubble p, .bubble div { margin:0 0 7px; }
     .bubble p:last-child, .bubble div:last-child { margin-bottom:0; }
     .bubble ul, .bubble ol { margin:0 0 8px; padding-left:20px; }
@@ -422,7 +431,7 @@
     @keyframes message-in { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }    .avatar { color:#fff; }
     .message.user .avatar { border-color:#d9d9e2; box-shadow:none; }
     .bubble { padding:2px 2px 2px 0; border:0; border-radius:0; background:transparent; }
-    .bubble h4 { margin:6px 0 8px; }
+    .bubble h3, .bubble h4, .bubble h5, .bubble h6 { margin:6px 0 8px; }
     .bubble p,.bubble div { margin-bottom:9px; }
     .bubble ul,.bubble ol { margin-bottom:10px; padding-left:22px; }
     .bubble code { border-color:#dedbea; }
@@ -509,7 +518,12 @@
     .avatar { width:22px; height:22px; border:0; border-radius:6px; background:linear-gradient(135deg,#698cff,#4f72e4); box-shadow:none; font-size:11px; }
     .message.user .avatar { background:#edf0f6; color:#7a8291; }
     .bubble { color:#404451; font-size:14px; line-height:1.7; }
-    .bubble h4 { color:#363a48; font-size:14px; }
+    .bubble h3, .bubble h4, .bubble h5, .bubble h6 { color:#363a48; }
+    .bubble blockquote { border-left-color:#d3d9e8; background:#f3f5fa; color:#4b5568; }
+    .bubble th, .bubble td { border-color:#e2e7f1; }
+    .bubble th { background:#eef2fa; }
+    .bubble hr { border-top-color:#e2e7f1; }
+    .bubble mark { background:#fdeecb; color:#4a3a00; }
     .bubble code { border:0; border-radius:4px; background:#eef2fb; color:#5770bd; }
     .bubble pre { border:1px solid #e0e6f2; border-radius:8px; background:#f6f8fc; box-shadow:none; color:#43526b; }
     .bubble a { color:#4d6ed6; font-weight:560; }
@@ -1033,6 +1047,12 @@
     html[data-theme="dark"] .message.user .avatar { border-color:var(--line); background:var(--panel-raised); color:var(--muted); }
     html[data-theme="dark"] .message.user .bubble { color:var(--ink); }
     html[data-theme="dark"] .bubble h4 { color:var(--ink); }
+    html[data-theme="dark"] .bubble h3, html[data-theme="dark"] .bubble h5, html[data-theme="dark"] .bubble h6 { color:var(--ink); }
+    html[data-theme="dark"] .bubble blockquote { border-left-color:var(--line); background:var(--panel-raised); color:var(--muted); }
+    html[data-theme="dark"] .bubble th, html[data-theme="dark"] .bubble td { border-color:var(--line); }
+    html[data-theme="dark"] .bubble th { background:var(--panel-raised); }
+    html[data-theme="dark"] .bubble hr { border-top-color:var(--line); }
+    html[data-theme="dark"] .bubble mark { background:#5c4a10; color:#ffef9e; }
     html[data-theme="dark"] .bubble a { color:var(--pico); }
     html[data-theme="dark"] .bubble code { border-color:transparent; background:var(--pico-pale); color:var(--pico); }
     html[data-theme="dark"] .bubble pre { border-color:var(--line); background:#111725; color:#cfd9ea; box-shadow:none; }
@@ -1391,8 +1411,8 @@
     async function nudgeCaptureOnLeave(leavingSession) { if (!leavingSession || leavingSession === sessionId) return; try { const response = await api(`/api/sessions/${encodeURIComponent(leavingSession)}/leave`, {method:'POST'}); if (!response.ok) return; const data = await response.json().catch(() => ({})); if (data.capture_nudge) toast('That session had real work but nothing was captured. Use ✎ Capture to keep the decisions and next steps.'); } catch { /* A reminder is never worth interrupting the switch for. */ } }
     function setSession(nextSession) { const leaving = sessionId; sessionId = nextSession; latestAssistantRunId = null; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); loadStance(); loadPolicy(); nudgeCaptureOnLeave(leaving); }
     function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Make a little room for the work.</h2><p>Bring a question, keep the useful trace, and decide what should become memory.</p><div class="welcome-actions"><button class="welcome-action" type="button" data-prompt="Help me think through a decision. First, ask what matters most.">Think it through</button><button class="welcome-action" type="button" data-prompt="Turn this into a practical plan with the next smallest step: ">Make a plan</button><button class="welcome-action" type="button" data-prompt="Help me turn this into a concise durable note: ">Capture a note</button></div></div>`; $('transcript').querySelectorAll('[data-prompt]').forEach((button) => button.onclick = () => { const input = $('message-input'); input.value = button.dataset.prompt || ''; input.dispatchEvent(new Event('input')); input.focus(); }); }
-    function formatInlineMarkdown(value) { return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>'); }
-    function renderMessageContent(value) { const lines = escapeHtml(value || '').split('\n'), output = []; let listType = null, codeLines = null; const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = null; } };     const closeCode = () => { if (codeLines !== null) { output.push(`<div class="code-block"><button class="code-copy" type="button">Copy</button><pre><code>${codeLines.join('\n')}</code></pre></div>`); codeLines = null; } }; lines.forEach((line) => { if (line.trim().startsWith('```')) { if (codeLines === null) { closeList(); codeLines = []; } else closeCode(); return; } if (codeLines !== null) { codeLines.push(line); return; } const bullet = line.match(/^\s*[-*]\s+(.+)$/), ordered = line.match(/^\s*\d+[.)]\s+(.+)$/), heading = line.match(/^\s*#{1,3}\s+(.+)$/); if (bullet) { if (listType !== 'ul') { closeList(); output.push('<ul>'); listType = 'ul'; } output.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`); } else if (ordered) { if (listType !== 'ol') { closeList(); output.push('<ol>'); listType = 'ol'; } output.push(`<li>${formatInlineMarkdown(ordered[1])}</li>`); } else { closeList(); if (!line.trim()) output.push('<br>'); else if (heading) output.push(`<h4>${formatInlineMarkdown(heading[1])}</h4>`); else output.push(`<div>${formatInlineMarkdown(line)}</div>`); } }); closeList(); closeCode(); return output.join(''); }
+    function formatInlineMarkdown(value) { return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>').replace(/~~([^~\n]+)~~/g, '<del>$1</del>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>').replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>'); }
+    function renderMessageContent(value) { const lines = escapeHtml(value || '').split('\n'), output = []; let listType = null, codeLines = null, quoteLines = null; const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = null; } }; const closeQuote = () => { if (quoteLines !== null) { output.push(`<blockquote>${quoteLines.join('<br>')}</blockquote>`); quoteLines = null; } }; const closeCode = () => { if (codeLines !== null) { output.push(`<div class="code-block"><button class="code-copy" type="button">Copy</button><pre><code>${codeLines.join('\n')}</code></pre></div>`); codeLines = null; } }; const tableRow = (line) => { const trimmed = (line || '').trim(); return trimmed.startsWith('|') && trimmed.endsWith('|'); }; const tableCells = (line) => (line || '').trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim()); const isSeparator = (cells) => cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell)); for (let i = 0; i < lines.length; i += 1) { const line = lines[i]; if (line.trim().startsWith('```')) { if (codeLines === null) { closeList(); closeQuote(); codeLines = []; } else closeCode(); continue; } if (codeLines !== null) { codeLines.push(line); continue; } const quote = line.match(/^\s*&gt;\s?(.*)$/); if (quote) { if (quoteLines === null) { closeList(); quoteLines = []; } quoteLines.push(formatInlineMarkdown(quote[1])); continue; } closeQuote(); if (tableRow(line) && tableRow(lines[i + 1]) && isSeparator(tableCells(lines[i + 1]))) { closeList(); output.push('<table><thead><tr>' + tableCells(line).map((cell) => `<th>${formatInlineMarkdown(cell)}</th>`).join('') + '</tr></thead><tbody>'); i += 1; while (i + 1 < lines.length && tableRow(lines[i + 1])) { i += 1; output.push('<tr>' + tableCells(lines[i]).map((cell) => `<td>${formatInlineMarkdown(cell)}</td>`).join('') + '</tr>'); } output.push('</tbody></table>'); continue; } const bullet = line.match(/^\s*[-*]\s+(.+)$/), ordered = line.match(/^\s*\d+[.)]\s+(.+)$/), heading = line.match(/^\s*(#{1,6})\s+(.+)$/), rule = line.match(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/); if (bullet) { if (listType !== 'ul') { closeList(); output.push('<ul>'); listType = 'ul'; } output.push(`<li>${formatInlineMarkdown(bullet[1])}</li>`); } else if (ordered) { if (listType !== 'ol') { closeList(); output.push('<ol>'); listType = 'ol'; } output.push(`<li>${formatInlineMarkdown(ordered[1])}</li>`); } else { closeList(); if (!line.trim()) output.push('<br>'); else if (rule) output.push('<hr>'); else if (heading) output.push(`<h${Math.min(6, heading[1].length + 2)}>${formatInlineMarkdown(heading[2])}</h${Math.min(6, heading[1].length + 2)}>`); else output.push(`<div>${formatInlineMarkdown(line)}</div>`); } } closeList(); closeQuote(); closeCode(); return output.join(''); }
     function fallbackCopy(text, done) { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); done(); }
     function copyCodeBlock(button) { const text = button.parentElement.querySelector('pre').textContent; const done = () => { button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1600); }; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done)); else fallbackCopy(text, done); }
     function transcriptPinned(transcript) { return transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 64; }
