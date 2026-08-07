@@ -38,10 +38,12 @@ def test_context_evidence_is_owner_scoped_and_redacted(tmp_path):
         estimated_tokens_after=300,
         compaction_record_ids=["compaction-a"],
         stance_id="review",
+        context_window_budget=8_192,
     )
 
     assert record.public_view()["skill_names"] == ["writing-style"]
     assert record.public_view()["stance_id"] == "review"
+    assert record.public_view()["context_window_budget"] == 8_192
     assert "owner_id" not in json.dumps(record.public_view())
     assert store.latest("web:owner-a", "web:owner-a:session-a").run_id == "run-a"
     assert store.latest("web:owner-b", "web:owner-a:session-a") is None

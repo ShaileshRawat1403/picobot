@@ -2025,12 +2025,19 @@ class AgentLoop:
         """
         policy = self._policy_for_submitted_turn(session, queued_run_id)
         serving, model, _effort, _policy = self._serving_resources(session, policy=policy)
+        effective_budget, clamped = self._effective_context_budget(self.context_window_tokens, serving)
+        if clamped:
+            logger.warning(
+                "Configured context budget {} exceeds the active provider window {}; clamping this turn",
+                self.context_window_tokens,
+                effective_budget,
+            )
         summarizer = self.compaction.summarizer or ProviderContextSummarizer(serving, model)
         window = await self.compaction.build_window(
             session.get_history(),
             owner_id=owner_id,
             session_key=session.key,
-            budget_tokens=self.context_window_tokens,
+            budget_tokens=effective_budget,
             current_request_tokens=current_request_tokens,
             provider=self._provider_label(serving),
             model=model,
@@ -2059,8 +2066,22 @@ class AgentLoop:
             "estimated_tokens_after": plan.estimated_tokens_after,
             "compaction_record_ids": compaction_ids,
             "context_warning": context_warning,
+            "context_window_budget": effective_budget,
         }
         return window.messages
+
+    @staticmethod
+    def _effective_context_budget(configured: int, provider: LLMProvider | None) -> tuple[int, bool]:
+        """Clamp the configured window budget to the active provider's window.
+
+        Providers that declare a ``context_window`` smaller than the configured
+        budget win, so a model is never handed a window larger than it can
+        accept.  Unknown windows leave the configured budget unchanged.
+        """
+        window = getattr(provider, "context_window", None)
+        if isinstance(window, int) and window > 0 and window < configured:
+            return window, True
+        return configured, False
 
     def _pending_context_warning(self, session: Session) -> str | None:
         """Return the owner-facing context warning for this turn, if any."""
@@ -2099,6 +2120,7 @@ class AgentLoop:
                 "estimated_tokens_before": 0,
                 "estimated_tokens_after": 0,
                 "compaction_record_ids": [],
+                "context_window_budget": None,
             }
         names = list(dict.fromkeys((self.context.skills.get_always_skills() or []) + (skill_names or [])))
         memory_ids = [item.id for item in memories]
@@ -2119,6 +2141,7 @@ class AgentLoop:
             "estimated_tokens_before": plan.get("estimated_tokens_before", 0),
             "estimated_tokens_after": plan.get("estimated_tokens_after", 0),
             "compaction_record_ids": plan.get("compaction_record_ids", []),
+            "context_window_budget": plan.get("context_window_budget"),
             "stance_id": stance_id,
             "orientation": orientation_evidence,
         }
@@ -2134,6 +2157,7 @@ class AgentLoop:
             estimated_tokens_before=plan.get("estimated_tokens_before", 0),
             estimated_tokens_after=plan.get("estimated_tokens_after", 0),
             compaction_record_ids=plan.get("compaction_record_ids", []),
+            context_window_budget=plan.get("context_window_budget"),
             stance_id=stance_id,
             orientation=orientation_evidence,
         )

@@ -3853,6 +3853,7 @@ class WebChannel(BaseChannel):
             "plan_reason": trace.get("plan_reason", "below_budget"),
             "estimated_tokens_before": trace.get("estimated_tokens_before", 0),
             "estimated_tokens_after": trace.get("estimated_tokens_after", 0),
+            "context_window_budget": trace.get("context_window_budget"),
             "run_id": trace.get("run_id"),
             "orientation": trace.get("orientation", {}) if isinstance(trace.get("orientation", {}), dict) else {},
             "memory": memories,

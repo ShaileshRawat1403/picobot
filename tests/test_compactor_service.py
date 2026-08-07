@@ -424,3 +424,44 @@ async def test_empty_window_surfaces_context_warning_on_that_turn(tmp_path: Path
     warning = response.metadata.get("context_warning")
     assert isinstance(warning, str) and warning
     assert "alone exceeds the context window" in warning
+
+
+def test_effective_context_budget_clamps_to_provider_window():
+    assert AgentLoop._effective_context_budget(65_536, None) == (65_536, False)
+    provider = _RecordingProvider()
+    provider.context_window = 4_000
+    assert AgentLoop._effective_context_budget(65_536, provider) == (4_000, True)
+    provider.context_window = 100_000
+    assert AgentLoop._effective_context_budget(65_536, provider) == (65_536, False)
+    provider.context_window = 0
+    assert AgentLoop._effective_context_budget(65_536, provider) == (65_536, False)
+
+
+@pytest.mark.asyncio
+async def test_loop_clamps_context_budget_to_provider_window(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    provider = _RecordingProvider()
+    provider.context_window = 4_000
+    agent = AgentLoop(
+        bus=MessageBus(),
+        provider=provider,
+        workspace=workspace,
+        context_window_tokens=25_000,
+        compaction=CompactionService(workspace, summarizer=_FakeSummarizer(), protected_tail_count=4),
+    )
+    session = agent.sessions.get_or_create("web:chat-a")
+    for i in range(20):
+        session.add_message("user", f"user-{i} " + "x" * 3000)
+        session.add_message("assistant", f"assistant-{i} " + "y" * 3000)
+    agent.sessions.save(session)
+
+    response = await agent._process_message(
+        InboundMessage(
+            channel="web", sender_id="browser:owner-a", chat_id="chat-a", content="Condense this"
+        )
+    )
+    assert response is not None
+    plan = session.metadata["pico_pending_context_plan"]
+    assert plan["context_window_budget"] == 4_000
+    evidence = agent.context_evidence.latest("local:owner", "web:chat-a")
+    assert evidence is not None and evidence.context_window_budget == 4_000

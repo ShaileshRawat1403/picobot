@@ -94,9 +94,15 @@ class LLMProvider(ABC):
 
     _SENTINEL = object()
 
-    def __init__(self, api_key: str | None = None, api_base: str | None = None):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        context_window: int | None = None,
+    ):
         self.api_key = api_key
         self.api_base = api_base
+        self.context_window = context_window
         self.generation: GenerationSettings = GenerationSettings()
 
     @staticmethod
