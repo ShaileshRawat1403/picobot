@@ -362,7 +362,7 @@
     .capture-actions .provider-note { margin:0; }
     @media (max-width:760px) {     .stance-options { grid-template-columns:1fr 1fr; } }
     @media (max-width:760px) {     .policy-scopes { grid-template-columns:1fr; } }
-    @media (max-width:760px) {     :root { --rail:0px; }     .app { display:block; }     .rail { z-index:2; width:100%; height:auto; position:static; padding:10px; flex-direction:row; align-items:center; gap:10px; border-right:0; border-bottom:1px solid var(--line); }     .brand { padding:0; }     .new-session { width:34px; min-height:34px; padding:0; justify-content:center; font-size:0; }     .new-session::before { content:'+'; font-size:18px; }     .nav { display:flex; grid-auto-flow:column; }     .nav-button { padding:8px; gap:0; }     .nav-button>span:last-child { display:none; }     .sessions,.rail-footer { display:none; }     main { margin:0; width:100%; }     .title-action { display:none; }     .transcript,.composer-area { padding-left:16px; padding-right:16px; }     .workspace-head { display:block; }     .workspace-head .action { margin-top:14px; }     .message { max-width:96%; }     .artifact-layout,.mission-layout,.context-grid,.memory-layout,.skill-proposal-layout,.learning-layout,.operations-grid,.provider-card { grid-template-columns:1fr; }     .form-row,.memory-controls { grid-template-columns:1fr; }     .utility-bar { padding:5px 9px; overflow:auto; }     .utility-action { flex:none; }     .utility-action:nth-child(3) { display:none; }     .utility-local { display:none; }     .cockpit-grid { gap:8px 12px; } }
+    @media (max-width:760px) {     :root { --rail:0px; }     .app { display:block; }     .rail { z-index:2; width:100%; height:auto; position:static; padding:10px; flex-direction:row; align-items:center; gap:10px; border-right:0; border-bottom:1px solid var(--line); }     .brand { padding:0; }     .new-session { width:34px; min-height:34px; padding:0; justify-content:center; font-size:0; }     .new-session::before { content:'+'; font-size:18px; }     .nav { display:flex; grid-auto-flow:column; }     .nav-group { display:contents; }     .nav-group-label { display:none; }     .nav-button { padding:8px; gap:0; min-height:44px; }     .sessions,.rail-footer { display:none; }     main { margin:0; width:100%; }     .title-action { display:none; }     .transcript,.composer-area { padding-left:16px; padding-right:16px; }     .workspace-head { display:block; }     .workspace-head .action { margin-top:14px; }     .message { max-width:96%; }     .artifact-layout,.mission-layout,.context-grid,.memory-layout,.skill-proposal-layout,.learning-layout,.operations-grid,.provider-card { grid-template-columns:1fr; }     .form-row,.memory-controls { grid-template-columns:1fr; }     .utility-bar { padding:5px 9px; overflow:auto; }     .utility-action { flex:none; }     .utility-action:nth-child(3) { display:none; }     .utility-local { display:none; }     .cockpit-grid { gap:8px 12px; } }
     /* Survivors folded from the field-notes pass (359-409). */
     body { color:var(--ink); }
     .rail { border-right-color:#d8d0c3; }
@@ -455,7 +455,7 @@
     .utility-action { border-radius:7px; }
     .utility-action:hover,button.cockpit-action:hover { background:#eeebff; color:#5645c9; }
     @media (max-width:900px) {     :root { --rail:226px; }     .cockpit-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }     .cockpit-grid .cockpit-action { min-height:57px; }     .topbar { padding:0 24px; } }
-    @media (max-width:760px) {     .rail { position:static; width:100%; height:auto; padding:10px 12px; flex-direction:row; overflow:visible; }     .rail::before,.sessions,.rail-footer { display:none; }     .brand { padding:0; }     .new-session { width:38px; min-height:38px; padding:0; font-size:0; }     .new-session::before { content:"+"; font-size:20px; }     .nav { display:flex; min-width:0; overflow:auto; padding:0; }     .nav-button { width:38px; min-width:38px; padding:9px 11px; }     .nav-button.active::before { top:auto; bottom:0; width:auto; height:2px; }     .nav-button>span:last-child { display:none; }     main { margin-left:0; width:100%; }     .topbar { height:62px; }     .connection { padding:6px 8px; }     .connection #connection-text { display:none; }     .cockpit-bar::before { padding-left:13px; }     button.cockpit-action { min-height:56px; padding:10px 12px; }     .welcome { padding:21px 20px; }     .welcome h2 { font-size:25px; }     .message { max-width:96%; }     .composer-hint::after { display:none; }     .workspace-head h2 { font-size:31px; }     .card { border-radius:13px; }     .utility-bar { padding:5px 10px; } }
+    @media (max-width:760px) {     .rail { position:static; width:100%; height:auto; padding:10px 12px; flex-direction:row; overflow:visible; }     .rail::before,.sessions,.rail-footer { display:none; }     .brand { padding:0; }     .new-session { width:38px; min-height:38px; padding:0; font-size:0; }     .new-session::before { content:"+"; font-size:20px; }     .nav { display:flex; min-width:0; overflow:auto; padding:0; -webkit-overflow-scrolling:touch; }     .nav-group { display:contents; }     .nav-group-label { display:none; }     .nav-button { min-width:44px; min-height:44px; padding:9px 12px; }     .nav-button.active::before { top:auto; bottom:0; width:auto; height:2px; }     main { margin-left:0; width:100%; }     .topbar { height:62px; }     .connection { padding:6px 8px; }     .connection #connection-text { display:none; }     .cockpit-bar::before { padding-left:13px; }     button.cockpit-action { min-height:56px; padding:10px 12px; }     .welcome { padding:21px 20px; }     .welcome h2 { font-size:25px; }     .message { max-width:96%; }     .composer-hint::after { display:none; }     .workspace-head h2 { font-size:31px; }     .card { border-radius:13px; }     .utility-bar { padding:5px 10px; } }
 
     body { background:radial-gradient(ellipse 70% 62% at 72% 18%,#ffffff 0%,#f6f9ffcc 45%,transparent 76%),radial-gradient(ellipse 64% 74% at 52% 88%,#eaf4ff7d 0%,transparent 72%),linear-gradient(135deg,#f7f9ff,#f4f7fc 54%,#f8fbff); letter-spacing:-.006em; }
     body::before { opacity:.55; background-image:radial-gradient(#b9c9ed46 .7px,transparent .8px),radial-gradient(#ffffff99 .7px,transparent .8px); background-position:0 0,12px 12px; background-size:24px 24px; mask-image:radial-gradient(ellipse at 55% 32%,black,transparent 74%); }
@@ -544,7 +544,9 @@
     .send:not(:disabled):hover { transform:none; background:#5276ee; box-shadow:none; }
     .composer-hint { width:min(970px,100%); padding:0 3px; color:#a0a8b6; font-size:9.5px; }
     .composer-hint::after { display:none; }
-    .run-status { width:min(970px,100%); border-color:#e1e7f2; border-radius:6px; background:#fbfcffb8; }
+    /* Opaque on purpose: at 72% alpha the transcript scrolled visibly through
+       this bar, which reads as a rendering fault rather than as translucency. */
+    .run-status { width:min(970px,100%); border-color:#e1e7f2; border-radius:6px; background:var(--panel-raised,#fbfcff); }
     .run-detail-panel { width:min(970px,100%); border-color:#e2e7f1; border-radius:8px; box-shadow:0 8px 22px #60728e0b; }
     .workspace-view { padding:49px 42px; }
     .workspace { width:min(1000px,100%); }
@@ -588,7 +590,12 @@
     .workspace-view { padding-top:40px; }
     @media (max-width:760px) { .rail { top:auto; padding-top:10px; } .rail .brand { position:static; width:auto; height:auto; margin:0; padding:0; border:0; background:transparent; backdrop-filter:none; } main { padding-top:0; } .topbar { position:sticky; inset:auto; width:auto; height:52px; padding:0 16px; } .title-line { min-height:52px; } .topbar .eyebrow { display:block; } h1 { font-size:13px; } }
     /* Final editorial pass: literature in the reading surface, precision in the chrome. */
-    .rail .brand { display:none; }
+    /* The wordmark was hidden on desktop and shown only under 760px, so the
+       product had no visible identity in its own interface at the size it is
+       actually used. It sits in the rail, above the session control, as a
+       quiet label rather than fixed chrome competing with the session title. */
+    .rail .brand { position:static; z-index:auto; width:auto; height:auto; display:flex; align-items:center; gap:8px; margin:0 0 12px; padding:2px 10px; border:0; background:transparent; backdrop-filter:none; color:var(--ink); font-family:inherit; font-size:13px; font-weight:600; letter-spacing:-.01em; text-transform:none; }
+    .rail .brand .mark { width:20px; height:20px; display:grid; place-items:center; border-radius:6px; background:var(--pico); box-shadow:none; color:#fff; font-size:11px; font-weight:700; letter-spacing:0; }
     .rail { top:42px; }
     main { padding-top:42px; }
     .topbar { height:42px; padding:0 22px 0 calc(var(--rail) + 24px); }
@@ -875,9 +882,9 @@
     .workflow-builder.is-focused { grid-template-columns:minmax(0,1fr); }
     .workflow-builder.is-focused .workflow-library, .workflow-builder.is-focused .workflow-inspector { display:none; }
     .workflow-builder.is-focused .workflow-canvas { min-height:calc(100vh - 325px); }
-    .workflow-mode .rail { width:74px; padding-left:11px; padding-right:11px; }
-    .workflow-mode main { margin-left:74px; width:calc(100% - 74px); }
-    .workflow-mode .brand > span:last-child, .workflow-mode .new-session, .workflow-mode .nav-button > span:last-child, .workflow-mode .sessions, .workflow-mode .rail-footer { display:none; }
+    .workflow-mode .rail { width:120px; padding-left:11px; padding-right:11px; }
+    .workflow-mode main { margin-left:120px; width:calc(100% - 120px); }
+    .workflow-mode .brand > span:last-child, .workflow-mode .new-session, .workflow-mode .nav-group-label, .workflow-mode .sessions, .workflow-mode .rail-footer { display:none; }
     .workflow-mode .brand { justify-content:center; } .workflow-mode .nav-button { justify-content:center; padding-left:0; padding-right:0; }
     .workflow-mode .workspace-view { padding-left:24px; padding-right:24px; }
     .workflow-mode .topbar { min-height:52px; }
@@ -994,14 +1001,83 @@
     .workspace-head p, .provider-note, .memory-summary { color:var(--muted); }
     .card, .artifact-preview, .search-result, .mission-detail, .run-detail-panel, .workflow-inspector, .workflow-library, .workflow-toolbar, .workflow-evidence-drawer { border-color:var(--line); background:var(--panel); box-shadow:0 6px 20px rgba(37,50,79,.025); }
     .card { border-radius:10px; }
-    .transcript { width:min(1080px,calc(100% - 32px)); padding:26px 24px 18px; gap:18px; }
+    /* Reading measure. Prose stays comfortable at 60-75 characters per line;
+       the transcript was running to about 127, which is why long replies were
+       tiring to read. 68ch caps the line without narrowing the window, and the
+       composer is held to the same rail so the writing and reading columns
+       align. */
+    .transcript { width:min(68ch,calc(100% - 32px)); padding:26px 24px 18px; gap:18px; }
     .bubble { border-color:var(--line); background:var(--panel-raised); }
-    .bubble.user { max-width:min(740px,90%); background:var(--pico-pale); }
+    .bubble.user { max-width:100%; background:var(--pico-pale); }
     .bubble.assistant { max-width:100%; }
     .message-content { color:var(--ink); }
-    .composer { width:min(1080px,calc(100% - 32px)); border-color:var(--line); background:var(--panel); box-shadow:0 10px 28px rgba(35,48,74,.055); }
+    .composer { width:min(68ch,calc(100% - 32px)); border-color:var(--line); background:var(--panel); box-shadow:0 10px 28px rgba(35,48,74,.055); }
+    /* Chrome tracks the composer, but the hint is a single line of metadata
+       rather than prose: holding it to the reading measure wrapped it to two
+       lines and added noise under the thing it describes. */
+    .run-status, .run-detail-panel { width:min(68ch,calc(100% - 32px)); }
+    .composer-hint { width:min(68ch,calc(100% - 32px)); }
+    /* The fade let transcript text sit half-visible behind the composer, which
+       reads as a rendering fault. Fading to the page colour sooner keeps the
+       gradient's purpose without leaving text stranded mid-letter. */
+    .composer-area { background:linear-gradient(0deg,var(--paper) 88%,transparent); }
     .composer textarea, input, select, textarea { color:var(--ink); border-color:var(--line); background:var(--panel-raised); }
+    /* Fourteen flat destinations shared five repeated glyphs: nav-memory stood
+       for Review, Memory and Learning at once, so the icons identified nothing
+       and three of them rendered as a bare cross, which reads as an error or a
+       disabled item. Labels alone are unambiguous; three groups separate what
+        is used daily from what is configured once. */
+    @media (min-width:761px) {
+        .nav { display:block; }
+        .nav-group { display:grid; gap:0; margin-bottom:2px; }
+        .nav-group-label { padding:10px 10px 3px; color:var(--soft,#98a1af); font-size:10px; font-weight:650; letter-spacing:.09em; text-transform:uppercase; }
+        .nav-group-label:first-child { padding-top:2px; }
+        /* Grouping costs three label rows, so the item rhythm tightens to pay for
+           them: the session list has to stay reachable without scrolling the rail. */
+        .nav-button { gap:0; min-height:28px; padding-top:5px; padding-bottom:5px; }
+    }
+    /* The narrow rail collapses this control to a "+" square, but an
+       unconditional rule earlier in the sheet sets font-size:12px and wins on
+       source order, so the full label rendered inside a 38px box and spilled
+       across the nav. This block must sit OUTSIDE the min-width:761px group
+       above: nested inside it, the two conditions can never both be true and
+       the rule silently never applies. */
+    /* Home. Entries are quotes rather than objects, so they take a left rule
+       instead of a card: the page is a briefing you read down, not a grid you
+       scan across. Drift colours the rule because it is the one signal that
+       changes whether you should trust what you wrote. */
+    .home-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:22px; }
+    .home-metric { padding:12px 14px; border-radius:8px; background:var(--panel-raised); }
+    .home-metric-label { color:var(--muted); font-size:12px; }
+    .home-metric-value { margin-top:3px; font-size:20px; letter-spacing:-.01em; }
+    .home-metric-note { margin-top:2px; color:var(--soft,#98a1af); font-size:11px; }
+    .home-project { width:100%; display:block; padding:11px 0 11px 14px; border:0; border-left:2px solid var(--line); background:transparent; color:inherit; text-align:left; cursor:pointer; transition:border-color .16s ease, background .16s ease; }
+    .home-project:hover { border-left-color:var(--pico); background:var(--panel-raised); }
+    .home-project.drift-watch { border-left-color:#c99a3a; }
+    .home-project.drift-review { border-left-color:var(--bad); }
+    .home-project-title { font-size:14px; font-weight:620; }
+    .home-project-next { margin-top:3px; color:var(--muted); font-size:13px; line-height:1.55; }
+    .home-project-meta { margin-top:4px; font-size:11px; color:var(--soft,#98a1af); }
+    .home-project.drift-watch .home-project-meta { color:#a8792a; }
+    .home-project.drift-review .home-project-meta { color:var(--bad); }
+    @media (prefers-reduced-motion:reduce) { .home-project { transition-duration:.01ms; } }
+
+    @media (max-width:760px) {
+      .new-session { flex:none; width:44px; min-height:44px; justify-content:center; padding:0; font-size:0; }
+      .new-session::before { content:'+'; font-size:20px; font-weight:650; }
+      .nav-button { min-height:44px; }
+    }
+
+    @media (max-width:760px) { .nav-button { min-width:44px; min-height:44px; padding:9px 12px; } }
+
     .utility-bar { background:var(--chrome); border-color:var(--line); }
+    /* The utility bar repeated the cockpit exactly: profile, missions,
+       approvals and session all sit above, and "Local session ready" restates
+       the topbar's connection status. Two fixed bars 650px apart saying the
+       same thing cost 15% of the viewport to tell you nothing twice. It stays
+       for narrow windows, where the cockpit collapses and this becomes the
+       only status surface. */
+    @media (min-width:900px) { .utility-bar { display:none; } .composer-area { bottom:0; } }
     .session-cockpit { border-color:var(--line); background:var(--panel-raised); box-shadow:0 5px 18px rgba(35,48,74,.025); }
     .cockpit-cell, .cockpit-head { border-color:var(--line); }
     .empty, .workflow-empty, .workspace-empty { color:var(--muted); border-color:var(--line); background:var(--panel-raised); }
@@ -1184,20 +1260,30 @@
       <div class="brand"><span class="mark" aria-hidden="true">P</span><span>Pico</span></div>
       <button class="new-session" id="new-session">+ New session</button>
       <nav class="nav" aria-label="Workbench">
-        <button class="nav-button active" data-view="chat"><span class="nav-icon nav-chat" aria-hidden="true"></span><span>Chat</span></button>
-        <button class="nav-button" data-view="maintenance"><span class="nav-icon nav-memory" aria-hidden="true"></span><span>Review</span></button>
-        <button class="nav-button" data-view="projects"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Projects</span></button>
-        <button class="nav-button" data-view="search"><span class="nav-icon nav-search" aria-hidden="true"></span><span>Search</span></button>
-        <button class="nav-button" data-view="artifacts"><span class="nav-icon nav-artifacts" aria-hidden="true"></span><span>Artifacts</span></button>
-        <button class="nav-button" data-view="memory"><span class="nav-icon nav-memory" aria-hidden="true"></span><span>Memory</span></button>
-        <button class="nav-button" data-view="context"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Context</span></button>
-        <button class="nav-button" data-view="missions"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Missions</span></button>
-        <button class="nav-button" data-view="workflows"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Workflows</span></button>
-        <button class="nav-button" data-view="schedules"><span class="nav-icon nav-context" aria-hidden="true"></span><span>Schedules</span></button>
-        <button class="nav-button" data-view="operations"><span class="nav-icon nav-skills" aria-hidden="true"></span><span>Operations</span></button>
-        <button class="nav-button" data-view="providers"><span class="nav-icon nav-skills" aria-hidden="true"></span><span>Providers</span></button>
-        <button class="nav-button" data-view="learning"><span class="nav-icon nav-memory" aria-hidden="true"></span><span>Learning</span></button>
-        <button class="nav-button" data-view="skills"><span class="nav-icon nav-skills" aria-hidden="true"></span><span>Skills</span></button>
+        <div class="nav-group-label" id="nav-group-work">Work</div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-work">
+          <button class="nav-button" data-view="home"><span>Home</span></button>
+          <button class="nav-button active" data-view="chat"><span>Chat</span></button>
+          <button class="nav-button" data-view="maintenance"><span>Review</span></button>
+          <button class="nav-button" data-view="projects"><span>Projects</span></button>
+          <button class="nav-button" data-view="missions"><span>Missions</span></button>
+          <button class="nav-button" data-view="workflows"><span>Workflows</span></button>
+        </div>
+        <div class="nav-group-label" id="nav-group-knowledge">Knowledge</div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-knowledge">
+          <button class="nav-button" data-view="memory"><span>Memory</span></button>
+          <button class="nav-button" data-view="artifacts"><span>Artifacts</span></button>
+          <button class="nav-button" data-view="search"><span>Search</span></button>
+          <button class="nav-button" data-view="context"><span>Context</span></button>
+          <button class="nav-button" data-view="learning"><span>Learning</span></button>
+        </div>
+        <div class="nav-group-label" id="nav-group-setup">Setup</div>
+        <div class="nav-group" role="group" aria-labelledby="nav-group-setup">
+          <button class="nav-button" data-view="providers"><span>Providers</span></button>
+          <button class="nav-button" data-view="operations"><span>Operations</span></button>
+          <button class="nav-button" data-view="skills"><span>Skills</span></button>
+          <button class="nav-button" data-view="schedules"><span>Schedules</span></button>
+        </div>
       </nav>
       <section class="sessions">
         <div class="section-label"><span>Sessions</span><span id="session-count"></span></div>
@@ -1311,7 +1397,7 @@
           </div>
         </div>
         <div class="transcript" id="transcript" aria-live="polite" aria-relevant="additions"></div>
-        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span id="composer-project-context">No project context</span><button class="capture-trigger" id="capture-toggle" type="button" aria-expanded="false">✎ Capture</button></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · `/` to focus the composer · Pico remembers only what you explicitly save.</div></div>
+        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span id="composer-project-context">No project context</span><button class="capture-trigger" id="capture-toggle" type="button" aria-expanded="false">✎ Capture</button></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Pico remembers only what you explicitly save.</div></div>
       </section>
       <section class="view workspace-view" id="view-projects"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Pico Home</div><h2>Projects</h2><p>Connect only work Pico should understand. A project supplies context; it never grants execution authority.</p></div></div><div class="project-setup-grid"><div class="card project-connect-card"><div class="workspace-panel-head"><span>1 · Name the work</span><span>Owner scoped</span></div><form id="project-form" class="project-connect-form"><label>Project name<input id="project-title" maxlength="160" autocomplete="off" placeholder="e.g. Soothsayer"></label><label>Kind<select id="project-kind" aria-label="Project kind"><option value="software">Software</option><option value="research">Research</option><option value="writing">Writing</option><option value="business">Business</option><option value="personal">Personal</option></select></label><label class="project-purpose-field">What will Pico help you do with it?<textarea id="project-purpose" maxlength="4000" placeholder="e.g. Understand the operator workbench before I plan a bounded change."></textarea></label><button class="action" type="submit">Connect project</button></form><p class="provider-note">Next, Pico will let you attach its local folder or GitHub repository.</p></div><div class="card"><div class="workspace-panel-head"><span>Connected projects</span><span id="project-count">0 connected</span></div><div class="memory-list" id="project-list"><div class="empty">Start with one project you want Pico to understand.</div></div></div></div><div id="project-source-host" hidden></div><details class="card project-orientation-card" id="project-orientation-panel" hidden><summary><span>Optional · shape this session</span><span id="orientation-project-label">No project attached</span></summary><form id="orientation-form" class="memory-form"><input id="orientation-objective" maxlength="2000" placeholder="Objective for this session (optional)"><div class="form-row"><select id="orientation-role" aria-label="Role lens"><option value="">No role lens selected</option><option value="founder">Founder / strategist</option><option value="systems_designer">Systems designer / architect</option><option value="builder">Builder / maintainer</option><option value="researcher">Researcher / analyst</option><option value="writer">Writer / communicator</option></select><select id="orientation-challenge" aria-label="Challenge policy"><option value="active">Actively challenge</option><option value="balanced">Balanced</option><option value="supportive">Supportive</option></select></div><textarea id="orientation-constraints" maxlength="4000" placeholder="Temporary constraints, one per line (optional)"></textarea><input id="orientation-result" maxlength="1000" placeholder="Expected result (optional)"><button class="action" type="submit">Apply orientation</button></form><p class="provider-note">Orientation shapes reasoning for later turns. It cannot change tools, providers, profiles, or approvals.</p></details></div></section>
       <section class="view workspace-view" id="view-maintenance">
@@ -1323,6 +1409,7 @@
           <p class="maintenance-note">A useful weekly review is small: clear what is waiting, verify one durable output, and choose one outcome to carry forward.</p>
         </div>
       </section>
+      <section class="view workspace-view" id="view-home"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Across your work</div><h2 id="home-greeting">Home</h2><p>What is waiting, what has moved, and what you last wrote down.</p></div><button class="action secondary" id="home-refresh" type="button">Refresh</button></div><div class="home-metrics" id="home-metrics"></div><div id="home-projects"><div class="empty loading">Loading your projects…</div></div></div></section>
       <section class="view workspace-view" id="view-search"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Personal retrieval</div><h2>Find work</h2><p>Search your sessions, saved memory, and local artifacts without leaving Pico.</p></div></div><div class="card"><form class="search-controls" id="work-search-form"><input id="work-search-input" autocomplete="off" placeholder="Search across your Pico workbench"><button class="action" type="submit">Search</button></form><div class="memory-summary" id="search-summary"></div><div class="workspace-panel-head"><span>Matches</span><span>Sessions · memory · artifacts</span></div><div class="memory-list" id="search-list"><div class="empty">Search across your durable Pico work.</div></div></div></div></section>
       <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep notes, briefs, plans, reports, structured data, code, configs, and source links as local versioned work products.</p></div><button class="action secondary" id="new-artifact" type="button">New artifact</button></div><div class="artifact-toolbar"><div class="artifact-tabs" role="tablist" aria-label="Artifact categories"><button class="artifact-tab active" data-artifact-filter="all" type="button" role="tab" aria-selected="true">All</button><button class="artifact-tab" data-artifact-filter="notes" type="button" role="tab" aria-selected="false">Notes</button><button class="artifact-tab" data-artifact-filter="data" type="button" role="tab" aria-selected="false">Structured</button><button class="artifact-tab" data-artifact-filter="code" type="button" role="tab" aria-selected="false">Code</button><button class="artifact-tab" data-artifact-filter="links" type="button" role="tab" aria-selected="false">Links</button></div><span class="artifact-count" id="artifact-count">0 saved</span></div><div class="artifact-layout"><div class="artifact-library card"><div class="workspace-panel-head"><span>Saved outputs</span><span id="artifact-scope">Local · versioned</span></div><div class="artifact-table-head"><span>Title / kind</span><span>Revision / updated</span></div><div class="skills-list" id="artifact-list"></div><div class="artifact-revisions" id="artifact-revisions"></div></div><div class="artifact-inspector"><div class="card artifact-editor-card"><div class="inspector-head"><div><div class="workspace-panel-kicker">Work product</div><strong id="artifact-editor-heading">Create an artifact</strong></div><span class="inspector-note">Owner saved</span></div><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="report">Report</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option><option value="link">Source links</option><option value="code">Code</option><option value="config">Config</option></select></div><div class="form-row"><label class="memory-meta" for="artifact-format">Format<select id="artifact-format" aria-label="Artifact format"><option value="text/markdown">Markdown</option><option value="text/plain">Plain text</option><option value="application/json">JSON</option><option value="application/yaml">YAML</option><option value="text/csv">CSV</option><option value="text/tab-separated-values">TSV</option><option value="application/x-ndjson">JSONL</option><option value="text/uri-list">URI list</option></select></label></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><button class="action secondary" type="button" id="use-artifact-as-brief" hidden>Use in this session</button><button class="memory-action reject" type="button" id="remove-artifact-as-brief" hidden>Remove from session</button><a class="action secondary" id="download-artifact" hidden>Download</a><a class="action secondary" id="export-html-artifact" hidden>Export HTML</a><a class="action secondary" id="export-bundle-artifact" hidden>Export bundle</a><button class="memory-action" id="artifact-source-run" type="button" hidden>View source run</button></div></form><div class="provider-row" style="margin-top:12px"><label class="memory-meta" for="artifact-status">Lifecycle<select id="artifact-status" disabled><option value="draft">Draft</option><option value="final">Final, ready to share</option><option value="archived">Archived</option></select></label><button class="memory-action" id="save-artifact-status" type="button" disabled>Set lifecycle</button></div><div class="provider-row" style="margin-top:8px"><label class="memory-meta" for="artifact-verification">Verification</label><select id="artifact-verification" disabled><option value="unverified">Unverified</option><option value="verified">Verified</option><option value="stale">Stale</option></select><button class="memory-action" id="save-artifact-verification" type="button" disabled>Set verification</button></div></div><div class="card artifact-preview-card"><div class="workspace-panel-head"><span>Preview</span><span>Read-only</span></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></div></section>
       <section class="view workspace-view" id="view-workflows">
@@ -1426,6 +1513,43 @@
     function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('archive-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { reconnectAttempt = 0; socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempt)); reconnectAttempt += 1; reconnectTimer = setTimeout(connect, delay); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; }     if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); loadPolicy(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content, null, data.metadata?.run_id || null, true); if (data.metadata && data.metadata.context_warning) toast(data.metadata.context_warning); loadSessions(); if (currentView === 'context') loadSessionContext(); if (currentView === 'learning') loadLearning(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.', true); pollRuns(); } }
+    function homeGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
+    function homeDrift(project) {
+      const c = project.commits_since_capture, d = project.days_since_capture;
+      if (project.last_captured_at === null) return project.sources ? 'Connected, never captured' : 'Nothing captured yet';
+      const age = d === 0 ? 'Captured today' : `Captured ${d} day${d === 1 ? '' : 's'} ago`;
+      // "Could not read" and "nothing changed" must never render alike.
+      if (c === null) return `${age} · repository unreadable`;
+      const moved = `${c} commit${c === 1 ? '' : 's'} since`;
+      if (project.drift === 'review') return `${age} · ${moved} · check before trusting`;
+      if (project.drift === 'watch') return `${age} · ${moved} · worth re-reading`;
+      return `${age} · ${moved} · likely still valid`;
+    }
+    async function loadHome() {
+      const list = $('home-projects'), metrics = $('home-metrics');
+      if (!list) return;
+      $('home-greeting').textContent = homeGreeting();
+      loadingSoon(list, 'Loading your projects…');
+      try {
+        const response = await api('/api/home');
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        const waiting = data.projects.filter((p) => p.drift === 'review' || p.drift === 'watch').length;
+        metrics.innerHTML = [
+          ['This week', `${(data.tokens_this_week || 0).toLocaleString()}`, `tokens over ${data.runs_this_week || 0} run${data.runs_this_week === 1 ? '' : 's'}`],
+          ['Worth re-reading', String(waiting), waiting === 1 ? 'project has drifted' : 'projects have drifted'],
+          ['Uncaptured', data.uncaptured_sessions === null ? '—' : String(data.uncaptured_sessions), data.uncaptured_sessions === null ? 'sessions could not be read' : 'sessions with real work'],
+        ].map(([label, value, note]) => `<div class="home-metric"><div class="home-metric-label">${escapeHtml(label)}</div><div class="home-metric-value">${escapeHtml(value)}</div><div class="home-metric-note">${escapeHtml(note)}</div></div>`).join('');
+        if (!data.projects.length) {
+          list.innerHTML = '<div class="empty">No projects connected yet. Connect one in Projects so Pico can tell you what moved while you were away.</div>';
+          return;
+        }
+        list.innerHTML = data.projects.map((p) => `<button class="home-project drift-${escapeHtml(p.drift)}" data-project="${escapeHtml(p.id)}" type="button"><div class="home-project-title">${escapeHtml(p.title)}</div><div class="home-project-next">${escapeHtml(p.next_step || 'No next step written down')}</div><div class="home-project-meta">${escapeHtml(homeDrift(p))}</div></button>`).join('');
+        list.querySelectorAll('[data-project]').forEach((button) => {
+          button.addEventListener('click', () => { showView('projects'); window.setTimeout(() => openProject && openProject(button.dataset.project), 0); });
+        });
+      } catch { list.innerHTML = '<div class="empty">Pico could not build your home view.</div>'; }
+    }
     async function nudgeCaptureOnLeave(leavingSession) { if (!leavingSession || leavingSession === sessionId) return; try { const response = await api(`/api/sessions/${encodeURIComponent(leavingSession)}/leave`, {method:'POST'}); if (!response.ok) return; const data = await response.json().catch(() => ({})); if (data.capture_nudge) toast('That session had real work but nothing was captured. Use ✎ Capture to keep the decisions and next steps.'); } catch { /* A reminder is never worth interrupting the switch for. */ } }
     function setSession(nextSession) { const leaving = sessionId; sessionId = nextSession; latestAssistantRunId = null; localStorage.setItem(SESSION_KEY, sessionId); setSessionTitle('New session'); setSessionTitleEditing(false); if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); else connect(); pollRuns(); loadStance(); loadPolicy(); nudgeCaptureOnLeave(leaving); }
     function renderWelcome() { $('transcript').innerHTML = `<div class="welcome"><h2>Make a little room for the work.</h2><p>Bring a question, keep the useful trace, and decide what should become memory.</p><div class="welcome-actions"><button class="welcome-action" type="button" data-prompt="Help me think through a decision. First, ask what matters most.">Think it through</button><button class="welcome-action" type="button" data-prompt="Turn this into a practical plan with the next smallest step: ">Make a plan</button><button class="welcome-action" type="button" data-prompt="Help me turn this into a concise durable note: ">Capture a note</button></div></div>`; $('transcript').querySelectorAll('[data-prompt]').forEach((button) => button.onclick = () => { const input = $('message-input'); input.value = button.dataset.prompt || ''; input.dispatchEvent(new Event('input')); input.focus(); }); }
@@ -2022,7 +2146,8 @@
     function moveCommandSelection(delta) { if (!commandMatches.length) return; commandIndex = (commandIndex + delta + commandMatches.length) % commandMatches.length; renderCommandItems(); }
     function runSelectedCommand() { const command = commandMatches[commandIndex]; if (!command) return; closeCommandPalette(); if (command.view) showView(command.view); else command.run(); }
     function filterCommands(value) { const query = value.trim().toLowerCase(); if (!query) { commandMatches = COMMANDS; commandMatchIndices = null; commandIndex = 0; renderCommandItems(); return; } const matched = []; COMMANDS.forEach((command) => { const labelMatch = fuzzyMatch(command.label, query), detailMatch = fuzzyMatch(command.detail, query); if (labelMatch || detailMatch) matched.push({ command, score: (labelMatch ? labelMatch.score + 5 : 0) + (detailMatch ? detailMatch.score : 0), indices: labelMatch ? labelMatch.indices : null }); }); matched.sort((a, b) => b.score - a.score); commandMatches = matched.map((item) => item.command); commandMatchIndices = matched.map((item) => item.indices); commandIndex = 0; renderCommandItems(); }
-    function showView(name) { currentView = name; document.querySelector('.app').classList.toggle('workflow-mode', name === 'workflows'); document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'maintenance' ? 'Daily and weekly review' : name === 'projects' ? 'Pico Home' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'workflows' ? 'Bounded orchestration' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'maintenance' ? 'Maintenance' : name === 'projects' ? 'Projects' : name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'workflows' ? 'Workflows' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'maintenance') loadMaintenance(); if (name === 'projects') { loadProjects(); loadOrientation(); } if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
+    function scrollActiveNavIntoView() { const nav = document.querySelector('.nav'), active = document.querySelector('.nav-button.active'); if (!nav || !active) return; if (nav.scrollWidth <= nav.clientWidth) return; const navRect = nav.getBoundingClientRect(), btnRect = active.getBoundingClientRect(), target = nav.scrollLeft + (btnRect.left - navRect.left) - (nav.clientWidth - btnRect.width) / 2; nav.scrollTo({ left: Math.max(0, target), behavior: 'smooth' }); }
+    function showView(name) { currentView = name; document.querySelector('.app').classList.toggle('workflow-mode', name === 'workflows'); document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); scrollActiveNavIntoView(); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'maintenance' ? 'Daily and weekly review' : name === 'home' ? 'Across your work' : name === 'projects' ? 'Pico Home' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'workflows' ? 'Bounded orchestration' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'maintenance' ? 'Maintenance' : name === 'projects' ? 'Projects' : name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'workflows' ? 'Workflows' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'maintenance') loadMaintenance(); if (name === 'projects') { loadProjects(); loadOrientation(); } if (name === 'home') loadHome(); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
     $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
     $('command-trigger').onclick = openCommandPalette;
     $('theme-toggle').onclick = toggleTheme;
@@ -2034,6 +2159,7 @@
     function isEditingTarget(target) { return target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable); }
     document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('command-palette').hidden ? openCommandPalette() : closeCommandPalette(); } else if (event.key === 'Escape') { if (!$('command-palette').hidden) { event.preventDefault(); closeCommandPalette(); } else if (!$('capture-panel').hidden) { event.preventDefault(); $('capture-panel').hidden = true; $('capture-toggle').setAttribute('aria-expanded', 'false'); $('capture-toggle').focus(); } } else if (event.key === '/' && !isEditingTarget(event.target)) { event.preventDefault(); showView('chat'); $('message-input').focus(); } });
     $('maintenance-refresh').onclick = loadMaintenance;
+    $('home-refresh').onclick = loadHome;
     document.querySelectorAll('.nav-button').forEach((button) => button.onclick = () => showView(button.dataset.view));
     const workflowContextMenu = document.createElement('div'); workflowContextMenu.id = 'workflow-context-menu'; workflowContextMenu.className = 'workflow-context-menu'; workflowContextMenu.hidden = true; workflowContextMenu.innerHTML = '<button type="button" data-workflow-context="duplicate">Duplicate node</button><button type="button" data-workflow-context="connect">Start transition</button><button type="button" data-workflow-context="delete">Remove node</button>'; document.body.appendChild(workflowContextMenu);
     workflowContextMenu.querySelectorAll('[data-workflow-context]').forEach((button) => button.onclick = () => { const action = button.dataset.workflowContext, id = workflowContextNodeId || selectedWorkflowNodeId; closeWorkflowContextMenu(); if (action === 'duplicate') duplicateWorkflowNode(id); if (action === 'delete') removeWorkflowNode(id); if (action === 'connect') { workflowConnectSource = id; selectedWorkflowNodeId = id; selectedWorkflowEdgeId = null; $('workflow-connect').textContent = 'Choose target'; renderWorkflowGraph(); renderWorkflowInspector(); } });
