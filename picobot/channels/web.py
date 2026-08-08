@@ -1381,6 +1381,16 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps(result).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "GET" and path == "/api/home":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    owner_id = self._memory_owner(client_id)
+                    summary = self._build_home_summary(owner_id)
+                    self._write_response(
+                        writer, 200, json.dumps(summary, ensure_ascii=False).encode()
+                    )
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "POST" and path.startswith("/api/sessions/") and path.endswith("/leave"):
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -3601,6 +3611,32 @@ class WebChannel(BaseChannel):
                 }
             )
         return result
+
+    def _build_home_summary(self, owner_id: str) -> dict[str, Any]:
+        """Assemble the cross-project view shown when Pico opens.
+
+        Repository reads are the slow part, so they are done through the same
+        per-source guard the resume uses: a folder that has moved reports as
+        unreadable rather than failing the whole summary.
+        """
+        from picobot.projects.home import build_home_summary
+
+        def observe(project_id: str) -> list[dict[str, Any]]:
+            try:
+                resume = self._build_project_resume(owner_id, project_id)
+                return list(resume.get("observed", []))
+            except Exception:
+                return []
+
+        summary = build_home_summary(
+            owner_id=owner_id,
+            project_store=self._project_store(),
+            memory_store=self._memory_store(),
+            runs_store=self._run_store(),
+            session_manager=self._session_manager(),
+            observe=observe,
+        )
+        return summary.to_dict()
 
     def _build_project_resume(self, owner_id: str, project_id: str) -> dict[str, Any]:
         """Assemble what this project was, for an owner returning to it cold.

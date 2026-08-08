@@ -1593,3 +1593,21 @@ def test_project_resume_carries_captures_live_observation_and_writes_no_memory(t
         assert len(memory.list(owner_id, limit=100)) == before
 
     asyncio.run(scenario())
+
+
+def test_home_rejects_a_malformed_client_id(tmp_path: Path):
+    async def scenario():
+        config = SimpleNamespace(workspace_path=tmp_path)
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), MessageBus())
+        channel._runtime_config = lambda: config
+
+        for bad in ["short", "not valid!", ""]:
+            rejected = await _http_api_request(
+                channel, "GET", f"/api/home?client_id={bad}"
+            )
+            assert rejected["status"] == 400
+
+        missing = await _http_api_request(channel, "GET", "/api/home")
+        assert missing["status"] == 400
+
+    asyncio.run(scenario())
