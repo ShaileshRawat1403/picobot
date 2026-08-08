@@ -119,6 +119,62 @@ def test_browser_messages_use_server_bound_identity_and_private_replies():
     asyncio.run(scenario())
 
 
+def test_stream_deltas_are_sent_as_delta_type():
+    async def scenario():
+        bus = MessageBus()
+        channel = WebChannel(SimpleNamespace(allow_from=["*"]), bus)
+        client = FakeWebSocket()
+        client_task = asyncio.create_task(channel._handle_connection(client))
+        await client.incoming.put(
+            json.dumps({"type": "hello", "client_id": CLIENT_A, "session_id": SESSION_A})
+        )
+        ready = json.loads(await asyncio.wait_for(client.outgoing.get(), timeout=1))
+
+        await channel.send(
+            OutboundMessage(
+                channel="web",
+                chat_id=ready["chat_id"],
+                content="Hello",
+                metadata={"_stream": True},
+            )
+        )
+        await channel.send(
+            OutboundMessage(
+                channel="web",
+                chat_id=ready["chat_id"],
+                content=" world",
+                metadata={"_stream": True},
+            )
+        )
+        await channel.send(
+            OutboundMessage(
+                channel="web",
+                chat_id=ready["chat_id"],
+                content="Final answer",
+                metadata={"run_id": "run-123"},
+            )
+        )
+
+        first = json.loads(await asyncio.wait_for(client.outgoing.get(), timeout=1))
+        second = json.loads(await asyncio.wait_for(client.outgoing.get(), timeout=1))
+        third = json.loads(await asyncio.wait_for(client.outgoing.get(), timeout=1))
+
+        assert first["type"] == "delta"
+        assert first["content"] == "Hello"
+        assert first["metadata"]["_stream"] is True
+        assert second["type"] == "delta"
+        assert second["content"] == " world"
+        # The final full message keeps the regular "message" type.
+        assert third["type"] == "message"
+        assert third["content"] == "Final answer"
+        assert third["metadata"]["run_id"] == "run-123"
+
+        await client.incoming.put(None)
+        await asyncio.wait_for(client_task, timeout=1)
+
+    asyncio.run(scenario())
+
+
 def test_browser_identity_resumes_its_session_after_reconnect():
     async def scenario():
         bus = MessageBus()

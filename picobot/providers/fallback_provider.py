@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from typing import AsyncIterator
+
 from loguru import logger
 
-from picobot.providers.base import LLMProvider, LLMResponse
+from picobot.providers.base import LLMProvider, LLMResponse, StreamChunk
 
 
 class FallbackProvider(LLMProvider):
@@ -71,6 +74,69 @@ class FallbackProvider(LLMProvider):
             reasoning_effort=reasoning_effort,
             tool_choice=tool_choice,
         )
+
+    async def stream_chat(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        tool_choice: str | dict | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream from the primary provider, falling back only before any text flows.
+
+        A provider that fails before producing its first chunk yields an error
+        chunk immediately, so it is safe to switch to the fallback stream.
+        Once a primary delta has been emitted the stream is committed — mid-stream
+        errors are surfaced rather than silently restarted from the fallback.
+        """
+        primary_model = model or self.primary_model
+        stream = self.primary.stream_chat(
+            messages=messages,
+            tools=tools,
+            model=primary_model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            tool_choice=tool_choice,
+        )
+
+        first = None
+        try:
+            first = await stream.__anext__()
+        except asyncio.CancelledError:
+            raise
+        except StopAsyncIteration:
+            return
+        except Exception as exc:
+            first = StreamChunk(
+                content_delta=f"Error calling LLM: {exc}",
+                finish_reason="error",
+            )
+
+        if first.finish_reason == "error":
+            logger.warning(
+                "Primary provider failed for model {}. Falling back to {}",
+                primary_model,
+                self.fallback_model,
+            )
+            async for chunk in self.fallback.stream_chat(
+                messages=messages,
+                tools=tools,
+                model=self.fallback_model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                reasoning_effort=reasoning_effort,
+                tool_choice=tool_choice,
+            ):
+                yield chunk
+            return
+
+        yield first
+        async for chunk in stream:
+            yield chunk
 
     async def _dispatch(
         self,

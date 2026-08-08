@@ -42,7 +42,7 @@ from picobot.context.evidence import ContextEvidenceStore
 from picobot.context.planner import estimate_tokens
 from picobot.missions import MissionStore
 from picobot.projects import ProjectContext, ProjectContextResolver
-from picobot.providers.base import LLMProvider
+from picobot.providers.base import LLMProvider, LLMResponse, StreamChunk
 from picobot.operations import CapabilityRegistry, GovernedRegistryStore, ProposedActionStore, ToolActivityStore
 from picobot.runs import RunRecord, RunStore
 from picobot.session.manager import Session, SessionManager
@@ -356,6 +356,7 @@ class AgentLoop:
         allowed_tools: set[str] | None = None,
         activity_context: dict[str, str] | None = None,
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        on_delta: Callable[[str], Awaitable[None]] | None = None,
         serving_provider: LLMProvider | None = None,
         serving_model: str | None = None,
         reasoning_effort: str | None = None,
@@ -383,10 +384,16 @@ class AgentLoop:
             if reasoning_effort is not None:
                 chat_kwargs["reasoning_effort"] = reasoning_effort
             try:
-                response = await asyncio.wait_for(
-                    provider.chat_with_retry(**chat_kwargs),
-                    timeout=self._MODEL_CALL_TIMEOUT_SECONDS,
-                )
+                if on_delta is not None:
+                    response = await asyncio.wait_for(
+                        self._collect_stream(provider, chat_kwargs, on_delta),
+                        timeout=self._MODEL_CALL_TIMEOUT_SECONDS,
+                    )
+                else:
+                    response = await asyncio.wait_for(
+                        provider.chat_with_retry(**chat_kwargs),
+                        timeout=self._MODEL_CALL_TIMEOUT_SECONDS,
+                    )
             except asyncio.TimeoutError:
                 failed = True
                 final_content = (
@@ -404,9 +411,13 @@ class AgentLoop:
 
             if response.has_tool_calls:
                 if on_progress:
-                    thought = self._strip_think(response.content)
-                    if thought:
-                        await on_progress(thought)
+                    # When streaming, the preamble before the tool call has
+                    # already flowed to the channel as deltas; only the tool
+                    # hint is still new information here.
+                    if on_delta is None:
+                        thought = self._strip_think(response.content)
+                        if thought:
+                            await on_progress(thought)
                     await on_progress(self._tool_hint(response.tool_calls), tool_hint=True)
 
                 tool_call_dicts = [tc.to_openai_tool_call() for tc in response.tool_calls]
@@ -549,6 +560,38 @@ class AgentLoop:
         response_meta["_failed"] = failed
 
         return final_content, tools_used, messages, response_meta
+
+    async def _collect_stream(
+        self,
+        provider: LLMProvider,
+        chat_kwargs: dict,
+        on_delta: Callable[[str], Awaitable[None]],
+    ) -> LLMResponse:
+        """Drain a provider stream, forwarding text deltas and rebuilding the response."""
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        final: StreamChunk | None = None
+        async for chunk in provider.stream_chat(**chat_kwargs):
+            if chunk.content_delta:
+                content_parts.append(chunk.content_delta)
+                await on_delta(chunk.content_delta)
+            if chunk.reasoning_delta:
+                reasoning_parts.append(chunk.reasoning_delta)
+            if chunk.is_final:
+                final = chunk
+        content = "".join(content_parts) or None
+        if final is None:
+            return LLMResponse(content=content, finish_reason="stop")
+        return LLMResponse(
+            content=content,
+            reasoning_content="".join(reasoning_parts) or None,
+            tool_calls=final.tool_calls,
+            finish_reason=final.finish_reason or "stop",
+            usage=final.usage,
+            thinking_blocks=final.thinking_blocks,
+            provider_name=final.provider_name,
+            model_name=final.model_name,
+        )
 
     def _workspace_inspect_guard(self, arguments: Any) -> str | None:
         """Keep the read-only workspace profile inside Pico's configured root."""
@@ -1240,6 +1283,7 @@ class AgentLoop:
         messages: list[dict],
         activity_context: dict[str, str],
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        on_delta: Callable[[str], Awaitable[None]] | None = None,
         mission_id: str | None = None,
         task_id: str | None = None,
         result_ref: str | None = None,
@@ -1318,6 +1362,7 @@ class AgentLoop:
                         allowed_tools=allowed_tools,
                         activity_context=activity_context,
                         on_progress=on_progress,
+                        on_delta=on_delta,
                         serving_provider=serving,
                         serving_model=model,
                         reasoning_effort=reasoning_effort,
@@ -1331,6 +1376,7 @@ class AgentLoop:
                     allowed_tools=allowed_tools,
                     activity_context=activity_context,
                     on_progress=on_progress,
+                    on_delta=on_delta,
                     serving_provider=serving,
                     serving_model=model,
                     reasoning_effort=reasoning_effort,
@@ -1764,6 +1810,18 @@ class AgentLoop:
                 )
             )
 
+        async def _bus_delta(content: str) -> None:
+            meta = dict(msg.metadata or {})
+            meta["_stream"] = True
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    content=content,
+                    metadata=meta,
+                )
+            )
+
         message_id = msg.metadata.get("message_id")
         final_content, all_msgs, response_meta, run = await self._run_turn(
             owner_id=owner_id,
@@ -1780,6 +1838,7 @@ class AgentLoop:
                 "message_id": message_id,
             },
             on_progress=on_progress or _bus_progress,
+            on_delta=_bus_delta if msg.channel == "web" else None,
             result_ref=f"message:{message_id}" if isinstance(message_id, str) else None,
             queued_run_id=queued_run_id,
             mission_id=active_mission.id if active_mission else None,

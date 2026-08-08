@@ -4001,9 +4001,13 @@ class WebChannel(BaseChannel):
         if not self._clients:
             return
 
+        # Streaming increments travel as a distinct "delta" message so the
+        # browser can append into one live bubble; everything else stays a
+        # regular "message".
+        payload_type = "delta" if (msg.metadata or {}).get("_stream") else "message"
         payload = json.dumps(
             {
-                "type": "message",
+                "type": payload_type,
                 "content": msg.content,
                 "chat_id": msg.chat_id,
                 "metadata": msg.metadata,

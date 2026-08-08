@@ -4,7 +4,7 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, AsyncIterator
 
 from loguru import logger
 
@@ -51,6 +51,31 @@ class LLMResponse:
     def has_tool_calls(self) -> bool:
         """Check if response contains tool calls."""
         return len(self.tool_calls) > 0
+
+
+@dataclass
+class StreamChunk:
+    """One increment of a streaming chat completion.
+
+    ``content_delta`` and ``reasoning_delta`` hold only the text produced
+    since the previous chunk, so a consumer accumulates them to reconstruct
+    the full response. The final chunk carries the ``finish_reason`` plus
+    any tool calls / usage collected across the stream.
+    """
+
+    content_delta: str = ""
+    reasoning_delta: str | None = None
+    finish_reason: str | None = None
+    tool_calls: list[ToolCallRequest] = field(default_factory=list)
+    usage: dict[str, int] = field(default_factory=dict)
+    thinking_blocks: list[dict] | None = None
+    provider_name: str | None = None
+    model_name: str | None = None
+
+    @property
+    def is_final(self) -> bool:
+        """True when this chunk ends the stream."""
+        return self.finish_reason is not None
 
 
 @dataclass(frozen=True)
@@ -271,6 +296,52 @@ class LLMProvider(ABC):
                 content=f"Error calling LLM: {exc}",
                 finish_reason="error",
             )
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream a chat completion, yielding :class:`StreamChunk` deltas.
+
+        The base implementation performs one non-streaming :meth:`chat` call
+        and yields a single final chunk, so every provider can be consumed
+        through the same streaming interface. Providers that support token
+        streaming override this to yield deltas as they arrive.
+        """
+        try:
+            response = await self.chat(
+                messages=messages,
+                tools=tools,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                reasoning_effort=reasoning_effort,
+                tool_choice=tool_choice,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            yield StreamChunk(
+                content_delta=f"Error calling LLM: {exc}",
+                finish_reason="error",
+            )
+            return
+        yield StreamChunk(
+            content_delta=response.content or "",
+            reasoning_delta=response.reasoning_content,
+            finish_reason=response.finish_reason,
+            tool_calls=response.tool_calls,
+            usage=response.usage,
+            thinking_blocks=response.thinking_blocks,
+            provider_name=response.provider_name,
+            model_name=response.model_name,
+        )
 
     @abstractmethod
     def get_default_model(self) -> str:

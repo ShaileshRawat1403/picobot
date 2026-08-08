@@ -1,17 +1,18 @@
 """LiteLLM provider implementation for multi-provider support."""
 
+import asyncio
 import hashlib
 import os
 import secrets
 import string
-from typing import Any
+from typing import Any, AsyncIterator
 
 import json_repair
 import litellm
 from litellm import acompletion
 from loguru import logger
 
-from picobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from picobot.providers.base import LLMProvider, LLMResponse, StreamChunk, ToolCallRequest
 from picobot.providers.registry import find_by_model, find_gateway
 
 # Standard chat-completion message keys.
@@ -292,6 +293,167 @@ class LiteLLMProvider(LLMProvider):
                 provider_name=provider_name,
                 model_name=original_model,
             )
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        reasoning_effort: str | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream a chat completion via LiteLLM, yielding delta chunks.
+
+        Text and reasoning arrive as per-token deltas. Tool calls are
+        accumulated across chunks and attached to the final chunk.
+        """
+        original_model = model or self.default_model
+        model = self._resolve_model(original_model)
+        extra_msg_keys = self._extra_msg_keys(original_model, model)
+
+        if self._supports_cache_control(original_model):
+            messages, tools = self._apply_cache_control(messages, tools)
+
+        max_tokens = max(1, max_tokens)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": self._sanitize_messages(self._sanitize_empty_content(messages), extra_keys=extra_msg_keys),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+
+        self._apply_model_overrides(model, kwargs)
+
+        if self._langsmith_enabled:
+            kwargs.setdefault("callbacks", []).append("langsmith")
+
+        if self.api_key:
+            kwargs["api_key"] = self.api_key
+
+        if self.api_base:
+            kwargs["api_base"] = self.api_base
+
+        if self.extra_headers:
+            kwargs["extra_headers"] = self.extra_headers
+
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+            kwargs["drop_params"] = True
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = tool_choice or "auto"
+
+        provider_spec = self._gateway or find_by_model(original_model)
+        provider_name = provider_spec.name if provider_spec else None
+
+        tool_builders: dict[int, dict[str, Any]] = {}
+        try:
+            stream = await acompletion(**kwargs)
+            async for chunk in stream:
+                yield self._parse_stream_chunk(
+                    chunk,
+                    tool_builders,
+                    provider_name=provider_name,
+                    model_name=original_model,
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            yield StreamChunk(
+                content_delta=f"Error calling LLM: {str(e)}",
+                finish_reason="error",
+                provider_name=provider_name,
+                model_name=original_model,
+            )
+
+    def _parse_stream_chunk(
+        self,
+        chunk: Any,
+        tool_builders: dict[int, dict[str, Any]],
+        *,
+        provider_name: str | None,
+        model_name: str | None,
+    ) -> StreamChunk:
+        """Parse one LiteLLM stream chunk into a :class:`StreamChunk`."""
+        if not getattr(chunk, "choices", None):
+            return StreamChunk(
+                usage=self._stream_usage(chunk),
+                provider_name=provider_name,
+                model_name=model_name,
+            )
+
+        choice = chunk.choices[0]
+        delta = getattr(choice, "delta", None)
+        content = getattr(delta, "content", None) or ""
+        reasoning = getattr(delta, "reasoning_content", None) if delta is not None else None
+        finish_reason = getattr(choice, "finish_reason", None)
+
+        if delta is not None:
+            for call in getattr(delta, "tool_calls", None) or []:
+                self._accumulate_stream_tool_call(call, tool_builders)
+
+        tool_calls = []
+        if finish_reason and tool_builders:
+            tool_calls = [
+                self._build_stream_tool_call(tool_builders[index])
+                for index in sorted(tool_builders)
+            ]
+
+        return StreamChunk(
+            content_delta=content,
+            reasoning_delta=reasoning,
+            finish_reason=finish_reason,
+            tool_calls=tool_calls,
+            usage=self._stream_usage(chunk),
+            provider_name=provider_name,
+            model_name=model_name,
+        )
+
+    @staticmethod
+    def _accumulate_stream_tool_call(
+        call: Any,
+        tool_builders: dict[int, dict[str, Any]],
+    ) -> None:
+        """Fold one partial streamed tool-call delta into its builder."""
+        index = int(getattr(call, "index", 0) or 0)
+        builder = tool_builders.setdefault(index, {"id": "", "name": "", "arguments": ""})
+        if getattr(call, "id", None):
+            builder["id"] = call.id
+        function = getattr(call, "function", None)
+        if function is not None:
+            if getattr(function, "name", None):
+                builder["name"] = function.name
+            if getattr(function, "arguments", None):
+                builder["arguments"] += function.arguments
+
+    @classmethod
+    def _build_stream_tool_call(cls, builder: dict[str, Any]) -> ToolCallRequest:
+        """Turn an accumulated tool-call builder into a ToolCallRequest."""
+        raw_args = builder["arguments"]
+        parsed = json_repair.loads(raw_args) if raw_args.strip() else {}
+        arguments = parsed if isinstance(parsed, dict) else {}
+        return ToolCallRequest(
+            id=builder["id"] or _short_tool_id(),
+            name=builder["name"],
+            arguments=arguments,
+        )
+
+    @staticmethod
+    def _stream_usage(chunk: Any) -> dict[str, int]:
+        """Extract token usage from a (typically final) stream chunk."""
+        usage = getattr(chunk, "usage", None)
+        if not usage:
+            return {}
+        return {
+            "prompt_tokens": getattr(usage, "prompt_tokens", 0),
+            "completion_tokens": getattr(usage, "completion_tokens", 0),
+            "total_tokens": getattr(usage, "total_tokens", 0),
+        }
 
     def _parse_response(self, response: Any) -> LLMResponse:
         """Parse LiteLLM response into our standard format."""
