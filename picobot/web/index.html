@@ -1042,6 +1042,7 @@
        across the nav. This block must sit OUTSIDE the min-width:761px group
        above: nested inside it, the two conditions can never both be true and
        the rule silently never applies. */
+    /* The shell. One chrome, three centres. Everything outside .surface-body
        holds still between surfaces so nothing has to be relearned: the rail
        keeps its position and its slots, only their contents change. The other
        twelve views still exist and stay reachable through the command palette
@@ -1060,15 +1061,52 @@
     .failed { padding:15px 17px; border:1px solid var(--bad); border-radius:9px; background:var(--panel); color:var(--bad); font-size:13px; line-height:1.6; }
     .empty { color:var(--muted); }
 
+    .rail-label { padding:0 8px 5px; color:var(--soft,#98a1af); font-size:10px; font-weight:650; letter-spacing:.09em; text-transform:uppercase; }
+    .rail-project { margin-bottom:14px; }
+    .rail-project-name { width:100%; padding:0 8px; border:0; background:transparent; color:var(--ink); font:inherit; font-size:13px; font-weight:620; text-align:left; cursor:pointer; }
+    .rail-project-meta { padding:2px 8px 0; color:var(--muted); font-size:11px; line-height:1.5; }
+    .rail-context { margin-top:16px; min-height:0; }
+    .rail-context-item { width:100%; display:block; padding:4px 8px; border:0; border-radius:6px; background:transparent; color:var(--muted); font:inherit; font-size:12px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+    .rail-context-item:hover { color:var(--ink); background:var(--panel-raised); }
+    .rail-context-item.active { color:var(--pico); background:var(--pico-pale); }
 
+    .surface-view { flex-direction:column; min-height:0; }
+    .surface-head { padding:22px 24px 0; width:min(72ch,calc(100% - 32px)); margin:0 auto; }
+    .surface-title { font-size:17px; font-weight:600; letter-spacing:-.02em; }
+    .surface-note { margin-top:3px; color:var(--muted); font-size:13px; }
+    .surface-body { flex:1; min-height:0; overflow:auto; padding:16px 24px 8px; width:min(72ch,calc(100% - 32px)); margin:0 auto; }
+    .surface-slot { margin-bottom:14px; }
+    .surface-composer { width:min(72ch,calc(100% - 32px)); margin:0 auto; padding:0 24px 18px; }
+    .surface-composer textarea { width:100%; min-height:44px; max-height:180px; padding:11px 13px; border:1px solid var(--line); border-radius:9px; background:var(--panel); color:var(--ink); resize:none; outline:0; }
+    .surface-composer textarea:focus { border-color:var(--pico); box-shadow:0 0 0 3px var(--pico-pale); }
+    .surface-composer-meta { display:flex; align-items:center; justify-content:space-between; margin-top:9px; color:var(--soft,#98a1af); font-size:11px; }
 
     /* Config. Everything here is authored once and reused, so it is one list
        filtered by kind rather than a tab per table: with nothing defined yet,
        tabs would offer five empty rooms. A filter that hides itself when there
        is nothing to filter keeps the empty state an invitation. Setup sits
        below and quieter because it is set once and then left alone. */
+    .config-section { margin-bottom:30px; }
+    .config-section-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding-bottom:9px; border-bottom:1px solid var(--line); color:var(--muted); font-size:12px; }
+    .config-section-head span:first-child { color:var(--ink); font-size:14px; font-weight:620; }
     /* A display rule beats the hidden attribute, so hiding has to be explicit
        or the filters render regardless of what the script decides. */
+    .config-filters { display:flex; flex-wrap:wrap; gap:5px; margin:13px 0 11px; }
+    .config-filters[hidden] { display:none; }
+    .config-filter { padding:3px 10px; border:1px solid var(--line); border-radius:999px; background:transparent; color:var(--muted); font:inherit; font-size:12px; cursor:pointer; }
+    .config-filter:hover { border-color:var(--pico); color:var(--ink); }
+    .config-filter.active { border-color:var(--pico); color:var(--pico); background:var(--pico-pale); }
+    .config-item { width:100%; display:flex; align-items:baseline; gap:11px; padding:10px 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+    .config-item:hover .config-item-name { color:var(--pico); }
+    .config-item-kind { flex:none; min-width:66px; color:var(--soft,#98a1af); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+    .config-item-name { font-size:13px; font-weight:600; }
+    .config-item-note { color:var(--muted); font-size:12px; }
+    .config-new { display:flex; flex-wrap:wrap; gap:8px; margin-top:15px; }
+    .config-setup { margin-top:6px; }
+    .config-setup-row { width:100%; display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:11px 0; border:0; border-bottom:1px solid var(--line); background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+    .config-setup-row:hover .config-setup-name { color:var(--pico); }
+    .config-setup-name { font-size:13px; font-weight:600; }
+    .config-setup-state { color:var(--muted); font-size:12px; }
 
     /* Home. Entries are quotes rather than objects, so they take a left rule
        instead of a card: the page is a briefing you read down, not a grid you
@@ -1287,34 +1325,23 @@
     <aside class="rail">
       <div class="brand"><span class="mark" aria-hidden="true">P</span><span>Pico</span></div>
       <button class="new-session" id="new-session">+ New session</button>
+      <div class="rail-project" id="rail-project">
+        <div class="rail-label">Working on</div>
+        <button class="rail-project-name" id="rail-project-name" type="button">No project</button>
+        <div class="rail-project-meta" id="rail-project-meta">Attach one to keep context</div>
+      </div>
       <nav class="nav" aria-label="Workbench">
-        <div class="nav-group-label" id="nav-group-work">Work</div>
+        <div class="nav-group-label" id="nav-group-work">Go</div>
         <div class="nav-group" role="group" aria-labelledby="nav-group-work">
           <button class="nav-button" data-view="home"><span>Home</span></button>
           <button class="nav-button active" data-view="chat"><span>Chat</span></button>
-          <button class="nav-button" data-view="maintenance"><span>Review</span></button>
-          <button class="nav-button" data-view="projects"><span>Projects</span></button>
-          <button class="nav-button" data-view="missions"><span>Missions</span></button>
-          <button class="nav-button" data-view="workflows"><span>Workflows</span></button>
-        </div>
-        <div class="nav-group-label" id="nav-group-knowledge">Knowledge</div>
-        <div class="nav-group" role="group" aria-labelledby="nav-group-knowledge">
-          <button class="nav-button" data-view="memory"><span>Memory</span></button>
-          <button class="nav-button" data-view="artifacts"><span>Artifacts</span></button>
-          <button class="nav-button" data-view="search"><span>Search</span></button>
-          <button class="nav-button" data-view="context"><span>Context</span></button>
-          <button class="nav-button" data-view="learning"><span>Learning</span></button>
-        </div>
-        <div class="nav-group-label" id="nav-group-setup">Setup</div>
-        <div class="nav-group" role="group" aria-labelledby="nav-group-setup">
-          <button class="nav-button" data-view="providers"><span>Providers</span></button>
-          <button class="nav-button" data-view="operations"><span>Operations</span></button>
-          <button class="nav-button" data-view="skills"><span>Skills</span></button>
-          <button class="nav-button" data-view="schedules"><span>Schedules</span></button>
+          <button class="nav-button" data-view="code"><span>Code</span></button>
+          <button class="nav-button" data-view="design"><span>Design</span></button>
+          <button class="nav-button" data-view="config"><span>Config</span></button>
         </div>
       </nav>
       <section class="sessions">
-        <div class="section-label"><span>Sessions</span><span id="session-count"></span></div>
+        <div class="section-label"><span id="rail-context-label">Threads</span><span id="session-count"></span></div>
         <input class="session-search" id="session-search" autocomplete="off" placeholder="Search sessions" aria-label="Search sessions">
         <label class="session-archive-toggle"><input id="show-archived-sessions" type="checkbox"> Show archived</label>
         <div id="session-list"></div>
@@ -1437,6 +1464,77 @@
           <p class="maintenance-note">A useful weekly review is small: clear what is waiting, verify one durable output, and choose one outcome to carry forward.</p>
         </div>
       </section>
+      <section class="view workspace-view" id="view-config"><div class="workspace">
+        <div class="workspace-head"><div><div class="eyebrow">Author once, reuse</div><h2>Config</h2><p>Workflows, workers, skills and schedules you define, and the setup they run on.</p></div></div>
+        <div class="config-section">
+          <div class="config-section-head"><span>Defined</span><span id="config-count">nothing yet</span></div>
+          <div class="config-filters" id="config-filters" role="group" aria-label="Filter by kind">
+            <button class="config-filter active" data-kind="all" type="button">All</button>
+            <button class="config-filter" data-kind="workflow" type="button">Workflows</button>
+            <button class="config-filter" data-kind="worker" type="button">Workers</button>
+            <button class="config-filter" data-kind="skill" type="button">Skills</button>
+            <button class="config-filter" data-kind="schedule" type="button">Schedules</button>
+          </div>
+          <div id="config-list"><div class="empty loading">Loading what you have defined…</div></div>
+          <div class="config-new" id="config-new">
+            <button class="action" data-new="workflow" type="button">New workflow</button>
+            <button class="action secondary" data-new="skill" type="button">New skill</button>
+            <button class="action secondary" data-new="schedule" type="button">New schedule</button>
+          </div>
+        </div>
+        <div class="config-section">
+          <div class="config-section-head"><span>Setup</span><span>Rarely changes</span></div>
+          <div class="config-setup">
+            <button class="config-setup-row" data-open="providers" type="button">
+              <span class="config-setup-name">Providers</span>
+              <span class="config-setup-state" id="config-providers">Which models Pico may use</span>
+            </button>
+            <button class="config-setup-row" data-open="operations" type="button">
+              <span class="config-setup-name">Permissions</span>
+              <span class="config-setup-state" id="config-operations">What a session is allowed to do</span>
+            </button>
+          </div>
+        </div>
+      </div></section>
+      <section class="view surface-view" id="view-code">
+        <div class="surface-head">
+          <div class="surface-title">Code</div>
+          <div class="surface-note">Pico proposes; nothing is written until you approve.</div>
+        </div>
+        <div class="surface-body">
+          <div class="surface-slot" id="code-proposal" data-slot="proposal">
+            <div class="empty">No change proposed. Describe one below and Pico will draft it against <span id="code-project-name">this project</span>.</div>
+          </div>
+          <div class="surface-slot" id="code-diff" data-slot="diff" hidden></div>
+          <div class="surface-slot" id="code-checks" data-slot="checks" hidden></div>
+        </div>
+        <form class="surface-composer" id="code-composer">
+          <textarea id="code-input" rows="1" placeholder="Describe the change you want"></textarea>
+          <div class="surface-composer-meta">
+            <span id="code-boundary">propose only</span>
+            <button class="send" id="code-send" type="submit" aria-label="Propose change">↑</button>
+          </div>
+        </form>
+      </section>
+      <section class="view surface-view" id="view-design">
+        <div class="surface-head">
+          <div class="surface-title">Design</div>
+          <div class="surface-note">Drafts and references, kept beside the work that produced them.</div>
+        </div>
+        <div class="surface-body">
+          <div class="surface-slot" id="design-canvas" data-slot="canvas">
+            <div class="empty">Nothing in progress. Start a draft and it will live here with its references.</div>
+          </div>
+          <div class="surface-slot" id="design-refs" data-slot="refs" hidden></div>
+        </div>
+        <form class="surface-composer" id="design-composer">
+          <textarea id="design-input" rows="1" placeholder="Describe what you want to make"></textarea>
+          <div class="surface-composer-meta">
+            <span id="design-boundary">draft only</span>
+            <button class="send" id="design-send" type="submit" aria-label="Start draft">↑</button>
+          </div>
+        </form>
+      </section>
       <section class="view workspace-view" id="view-home"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Across your work</div><h2 id="home-greeting">Home</h2><p>What is waiting, what has moved, and what you last wrote down.</p></div><button class="action secondary" id="home-refresh" type="button">Refresh</button></div><div class="home-metrics" id="home-metrics"></div><div id="home-projects"><div class="empty loading">Loading your projects…</div></div></div></section>
       <section class="view workspace-view" id="view-search"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Personal retrieval</div><h2>Find work</h2><p>Search your sessions, saved memory, and local artifacts without leaving Pico.</p></div></div><div class="card"><form class="search-controls" id="work-search-form"><input id="work-search-input" autocomplete="off" placeholder="Search across your Pico workbench"><button class="action" type="submit">Search</button></form><div class="memory-summary" id="search-summary"></div><div class="workspace-panel-head"><span>Matches</span><span>Sessions · memory · artifacts</span></div><div class="memory-list" id="search-list"><div class="empty">Search across your durable Pico work.</div></div></div></div></section>
       <section class="view workspace-view" id="view-artifacts"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Durable session outputs</div><h2>Artifacts</h2><p>Keep notes, briefs, plans, reports, structured data, code, configs, and source links as local versioned work products.</p></div><button class="action secondary" id="new-artifact" type="button">New artifact</button></div><div class="artifact-toolbar"><div class="artifact-tabs" role="tablist" aria-label="Artifact categories"><button class="artifact-tab active" data-artifact-filter="all" type="button" role="tab" aria-selected="true">All</button><button class="artifact-tab" data-artifact-filter="notes" type="button" role="tab" aria-selected="false">Notes</button><button class="artifact-tab" data-artifact-filter="data" type="button" role="tab" aria-selected="false">Structured</button><button class="artifact-tab" data-artifact-filter="code" type="button" role="tab" aria-selected="false">Code</button><button class="artifact-tab" data-artifact-filter="links" type="button" role="tab" aria-selected="false">Links</button></div><span class="artifact-count" id="artifact-count">0 saved</span></div><div class="artifact-layout"><div class="artifact-library card"><div class="workspace-panel-head"><span>Saved outputs</span><span id="artifact-scope">Local · versioned</span></div><div class="artifact-table-head"><span>Title / kind</span><span>Revision / updated</span></div><div class="skills-list" id="artifact-list"></div><div class="artifact-revisions" id="artifact-revisions"></div></div><div class="artifact-inspector"><div class="card artifact-editor-card"><div class="inspector-head"><div><div class="workspace-panel-kicker">Work product</div><strong id="artifact-editor-heading">Create an artifact</strong></div><span class="inspector-note">Owner saved</span></div><form class="artifact-form" id="artifact-form"><div class="form-row"><input id="artifact-title" maxlength="160" placeholder="Artifact title"><select id="artifact-kind"><option value="note">Note</option><option value="brief">Brief</option><option value="plan">Plan</option><option value="report">Report</option><option value="draft">Draft</option><option value="checklist">Checklist</option><option value="data">Data</option><option value="link">Source links</option><option value="code">Code</option><option value="config">Config</option></select></div><div class="form-row"><label class="memory-meta" for="artifact-format">Format<select id="artifact-format" aria-label="Artifact format"><option value="text/markdown">Markdown</option><option value="text/plain">Plain text</option><option value="application/json">JSON</option><option value="application/yaml">YAML</option><option value="text/csv">CSV</option><option value="text/tab-separated-values">TSV</option><option value="application/x-ndjson">JSONL</option><option value="text/uri-list">URI list</option></select></label></div><textarea id="artifact-content" placeholder="Write or paste the work product here. You can also load the latest Pico reply."></textarea><div class="artifact-actions"><button class="action" id="save-artifact">Save artifact</button><button class="action secondary" type="button" id="save-latest">Use latest reply</button><button class="action secondary" type="button" id="revise-artifact" hidden>Save revision</button><button class="action secondary" type="button" id="use-artifact-as-brief" hidden>Use in this session</button><button class="memory-action reject" type="button" id="remove-artifact-as-brief" hidden>Remove from session</button><a class="action secondary" id="download-artifact" hidden>Download</a><a class="action secondary" id="export-html-artifact" hidden>Export HTML</a><a class="action secondary" id="export-bundle-artifact" hidden>Export bundle</a><button class="memory-action" id="artifact-source-run" type="button" hidden>View source run</button></div></form><div class="provider-row" style="margin-top:12px"><label class="memory-meta" for="artifact-status">Lifecycle<select id="artifact-status" disabled><option value="draft">Draft</option><option value="final">Final, ready to share</option><option value="archived">Archived</option></select></label><button class="memory-action" id="save-artifact-status" type="button" disabled>Set lifecycle</button></div><div class="provider-row" style="margin-top:8px"><label class="memory-meta" for="artifact-verification">Verification</label><select id="artifact-verification" disabled><option value="unverified">Unverified</option><option value="verified">Verified</option><option value="stale">Stale</option></select><button class="memory-action" id="save-artifact-verification" type="button" disabled>Set verification</button></div></div><div class="card artifact-preview-card"><div class="workspace-panel-head"><span>Preview</span><span>Read-only</span></div><pre class="artifact-preview" id="artifact-preview">Select an artifact to preview it here.</pre></div></div></div></div></section>
@@ -1541,6 +1639,69 @@
     function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('archive-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { reconnectAttempt = 0; socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempt)); reconnectAttempt += 1; reconnectTimer = setTimeout(connect, delay); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; }     if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); loadPolicy(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content, null, data.metadata?.run_id || null, true); if (data.metadata && data.metadata.context_warning) toast(data.metadata.context_warning); loadSessions(); if (currentView === 'context') loadSessionContext(); if (currentView === 'learning') loadLearning(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.', true); pollRuns(); } }
+    // Config lists everything authored, whatever its kind, and filters rather
+    // than tabs. Filters hide themselves below two kinds present: a control
+    // that cannot change anything is noise.
+    let configKind = 'all', configEntries = [];
+    const CONFIG_KIND_LABEL = { workflow:'Workflow', worker:'Worker', skill:'Skill', schedule:'Schedule' };
+    function renderConfigList() {
+      const list = $('config-list'), count = $('config-count'), filters = $('config-filters');
+      if (!list) return;
+      const kinds = new Set(configEntries.map((entry) => entry.kind));
+      filters.hidden = kinds.size < 2;
+      const shown = configKind === 'all' ? configEntries : configEntries.filter((entry) => entry.kind === configKind);
+      count.textContent = configEntries.length
+        ? `${configEntries.length} defined`
+        : 'nothing yet';
+      if (!configEntries.length) {
+        list.innerHTML = '<div class="empty">Nothing defined yet. A workflow runs a sequence, a skill shapes how Pico works, a schedule runs something later.</div>';
+        return;
+      }
+      if (!shown.length) { list.innerHTML = `<div class="empty">No ${escapeHtml(configKind)}s yet.</div>`; return; }
+      list.innerHTML = shown.map((entry) => `<button class="config-item" data-open-kind="${escapeHtml(entry.kind)}" data-id="${escapeHtml(entry.id || '')}" type="button"><span class="config-item-kind">${escapeHtml(CONFIG_KIND_LABEL[entry.kind] || entry.kind)}</span><span><span class="config-item-name">${escapeHtml(entry.name)}</span>${entry.note ? `<span class="config-item-note"> · ${escapeHtml(entry.note)}</span>` : ''}</span></button>`).join('');
+      list.querySelectorAll('[data-open-kind]').forEach((item) => {
+        item.onclick = () => showView(item.dataset.openKind === 'schedule' ? 'schedules' : `${item.dataset.openKind}s`);
+      });
+    }
+    async function loadConfig() {
+      loadingSoon($('config-list'), 'Loading what you have defined…');
+      const entries = [];
+      const pull = async (path, kind, map) => {
+        try {
+          const response = await api(path);
+          if (!response.ok) return;
+          const data = await response.json();
+          (map(data) || []).forEach((entry) => entries.push({...entry, kind}));
+        } catch { /* One missing source must not empty the whole page. */ }
+      };
+      await Promise.all([
+        pull('/api/workflows', 'workflow', (d) => (d.workflows || []).map((w) => ({id:w.id, name:w.name || 'Untitled workflow', note:w.state}))),
+        pull('/api/skills', 'skill', (d) => (d.skills || []).map((s) => ({id:s.name, name:s.name, note:s.available ? '' : 'needs setup'}))),
+        pull('/api/schedules', 'schedule', (d) => (d.schedules || []).map((s) => ({id:s.id, name:s.message || 'Untitled schedule', note:s.schedule}))),
+      ]);
+      configEntries = entries;
+      renderConfigList();
+      try {
+        const providers = await (await api('/api/providers')).json();
+        const ready = (providers.connections || []).filter((c) => c.state === 'ready').length;
+        if (ready) $('config-providers').textContent = `${ready} connected`;
+      } catch { /* leave the descriptive default */ }
+    }
+
+    // Which rail contents belong to which surface. The slot never moves, so
+    // "what belongs to this project, in this mode" is always in one place.
+    const SURFACE_RAIL = { chat:'Threads', code:'Changed files', design:'Drafts' };
+    // One list, relabelled per surface, rather than a second list beside it.
+    // Threads and Sessions were the same thing under two headings.
+    function railSurface(name) {
+      const label = $('rail-context-label');
+      if (label) label.textContent = SURFACE_RAIL[name] || 'Threads';
+    }
+    function railProject(title, meta) {
+      const name = $('rail-project-name'), note = $('rail-project-meta');
+      if (name) name.textContent = title || 'No project';
+      if (note) note.textContent = meta || 'Attach one to keep context';
+    }
     function homeGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
     function homeDrift(project) {
       const c = project.commits_since_capture, d = project.days_since_capture;
@@ -2175,7 +2336,7 @@
     function runSelectedCommand() { const command = commandMatches[commandIndex]; if (!command) return; closeCommandPalette(); if (command.view) showView(command.view); else command.run(); }
     function filterCommands(value) { const query = value.trim().toLowerCase(); if (!query) { commandMatches = COMMANDS; commandMatchIndices = null; commandIndex = 0; renderCommandItems(); return; } const matched = []; COMMANDS.forEach((command) => { const labelMatch = fuzzyMatch(command.label, query), detailMatch = fuzzyMatch(command.detail, query); if (labelMatch || detailMatch) matched.push({ command, score: (labelMatch ? labelMatch.score + 5 : 0) + (detailMatch ? detailMatch.score : 0), indices: labelMatch ? labelMatch.indices : null }); }); matched.sort((a, b) => b.score - a.score); commandMatches = matched.map((item) => item.command); commandMatchIndices = matched.map((item) => item.indices); commandIndex = 0; renderCommandItems(); }
     function scrollActiveNavIntoView() { const nav = document.querySelector('.nav'), active = document.querySelector('.nav-button.active'); if (!nav || !active) return; if (nav.scrollWidth <= nav.clientWidth) return; const navRect = nav.getBoundingClientRect(), btnRect = active.getBoundingClientRect(), target = nav.scrollLeft + (btnRect.left - navRect.left) - (nav.clientWidth - btnRect.width) / 2; nav.scrollTo({ left: Math.max(0, target), behavior: 'smooth' }); }
-    function showView(name) { currentView = name; document.querySelector('.app').classList.toggle('workflow-mode', name === 'workflows'); document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); scrollActiveNavIntoView(); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'maintenance' ? 'Daily and weekly review' : name === 'home' ? 'Across your work' : name === 'projects' ? 'Pico Home' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'workflows' ? 'Bounded orchestration' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'maintenance' ? 'Maintenance' : name === 'projects' ? 'Projects' : name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'workflows' ? 'Workflows' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'maintenance') loadMaintenance(); if (name === 'projects') { loadProjects(); loadOrientation(); } if (name === 'home') loadHome(); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
+    function showView(name) { currentView = name; document.querySelector('.app').classList.toggle('workflow-mode', name === 'workflows'); document.querySelectorAll('.nav-button').forEach((button) => button.classList.toggle('active', button.dataset.view === name)); document.querySelectorAll('.view').forEach((view) => view.classList.toggle('active', view.id === `view-${name}`)); scrollActiveNavIntoView(); $('view-label').textContent = name === 'chat' ? 'Personal workbench' : name === 'maintenance' ? 'Daily and weekly review' : name === 'home' ? 'Across your work' : name === 'code' ? 'Propose and approve' : name === 'design' ? 'Draft and refine' : name === 'projects' ? 'Pico Home' : name === 'search' ? 'Personal retrieval' : name === 'memory' ? 'Your durable context' : name === 'learning' ? 'Owner-controlled learning' : name === 'context' ? 'Current session evidence' : name === 'missions' ? 'Durable coordination' : name === 'workflows' ? 'Bounded orchestration' : name === 'schedules' ? 'Scheduled personal work' : name === 'artifacts' ? 'Durable session outputs' : name === 'operations' ? 'Capability control' : name === 'providers' ? 'Runtime setup' : 'Capability catalog'; setSessionTitleEditing(false); $('rename-session').hidden = name !== 'chat'; if (name !== 'chat') setSessionTitle(name === 'maintenance' ? 'Maintenance' : name === 'projects' ? 'Projects' : name === 'search' ? 'Find work' : name === 'memory' ? 'Memory' : name === 'learning' ? 'Learning proof' : name === 'context' ? 'Context used' : name === 'missions' ? 'Missions' : name === 'workflows' ? 'Workflows' : name === 'schedules' ? 'Schedules' : name === 'artifacts' ? 'Artifacts' : name === 'operations' ? 'Operations' : name === 'providers' ? 'Providers' : 'Skills'); if (name === 'maintenance') loadMaintenance(); if (name === 'projects') { loadProjects(); loadOrientation(); } railSurface(name); if (name === 'config') loadConfig(); if (name === 'home') loadHome(); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
     $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
     $('command-trigger').onclick = openCommandPalette;
     $('theme-toggle').onclick = toggleTheme;
@@ -2188,6 +2349,19 @@
     document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('command-palette').hidden ? openCommandPalette() : closeCommandPalette(); } else if (event.key === 'Escape') { if (!$('command-palette').hidden) { event.preventDefault(); closeCommandPalette(); } else if (!$('capture-panel').hidden) { event.preventDefault(); $('capture-panel').hidden = true; $('capture-toggle').setAttribute('aria-expanded', 'false'); $('capture-toggle').focus(); } } else if (event.key === '/' && !isEditingTarget(event.target)) { event.preventDefault(); showView('chat'); $('message-input').focus(); } });
     $('maintenance-refresh').onclick = loadMaintenance;
     $('home-refresh').onclick = loadHome;
+    $('config-filters')?.querySelectorAll('[data-kind]').forEach((button) => {
+      button.onclick = () => {
+        configKind = button.dataset.kind;
+        $('config-filters').querySelectorAll('[data-kind]').forEach((other) => other.classList.toggle('active', other === button));
+        renderConfigList();
+      };
+    });
+    $('config-new')?.querySelectorAll('[data-new]').forEach((button) => {
+      button.onclick = () => showView(button.dataset.new === 'schedule' ? 'schedules' : `${button.dataset.new}s`);
+    });
+    $('view-config')?.querySelectorAll('[data-open]').forEach((button) => {
+      button.onclick = () => showView(button.dataset.open);
+    });
     document.querySelectorAll('.nav-button').forEach((button) => button.onclick = () => showView(button.dataset.view));
     const workflowContextMenu = document.createElement('div'); workflowContextMenu.id = 'workflow-context-menu'; workflowContextMenu.className = 'workflow-context-menu'; workflowContextMenu.hidden = true; workflowContextMenu.innerHTML = '<button type="button" data-workflow-context="duplicate">Duplicate node</button><button type="button" data-workflow-context="connect">Start transition</button><button type="button" data-workflow-context="delete">Remove node</button>'; document.body.appendChild(workflowContextMenu);
     workflowContextMenu.querySelectorAll('[data-workflow-context]').forEach((button) => button.onclick = () => { const action = button.dataset.workflowContext, id = workflowContextNodeId || selectedWorkflowNodeId; closeWorkflowContextMenu(); if (action === 'duplicate') duplicateWorkflowNode(id); if (action === 'delete') removeWorkflowNode(id); if (action === 'connect') { workflowConnectSource = id; selectedWorkflowNodeId = id; selectedWorkflowEdgeId = null; $('workflow-connect').textContent = 'Choose target'; renderWorkflowGraph(); renderWorkflowInspector(); } });
