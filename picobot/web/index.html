@@ -981,10 +981,10 @@
     }
     html[data-theme="dark"] {
       color-scheme:dark;
-      --paper:#10131a; --panel:#171b24; --panel-raised:#1d2330; --rail-surface:#131822;
-      --ink:#eef1f6; --muted:#a5aeba; --soft:#778191; --line:#2a3240;
-      --pico:#8ea7ff; --pico-dark:#bcc9ff; --pico-pale:#202b4a;
-      --good:#65c6a7; --bad:#ef8c94; --chrome:#121722ed;
+      --paper:#0b0d14; --panel:rgba(20, 24, 36, 0.75); --panel-raised:rgba(28, 34, 48, 0.85); --rail-surface:#0e111a;
+      --ink:#f0f3f9; --muted:#949db0; --soft:#6b7588; --line:rgba(255,255,255,0.08);
+      --pico:#7b96ff; --pico-dark:#a3b7ff; --pico-pale:rgba(123,150,255,0.14);
+      --good:#4ade80; --bad:#f87171; --chrome:rgba(13,16,25,0.85);
     }
     body { background:var(--paper); color:var(--ink); }
     .topbar { min-height:48px; padding:7px 22px; background:var(--chrome); border-color:var(--line); }
@@ -1171,27 +1171,31 @@
     .workflow-node { border-color:var(--line); background:var(--panel); box-shadow:0 5px 16px rgba(34,49,80,.06); }
     .workflow-node-title, .workflow-node h4, .workflow-inspector h3, .workflow-library h3 { color:var(--ink); }
     .workflow-node p, .workflow-inspector p, .workflow-library p { color:var(--muted); }
-    html[data-theme="dark"] .topbar, html[data-theme="dark"] .utility-bar, html[data-theme="dark"] .rail { background:var(--chrome); }
-    html[data-theme="dark"] .nav-button { color:var(--muted); }
-    html[data-theme="dark"] .nav-button:hover, html[data-theme="dark"] .nav-button.active { color:var(--pico); background:var(--pico-pale); }
+    html[data-theme="dark"] .topbar, html[data-theme="dark"] .utility-bar, html[data-theme="dark"] .rail { background:var(--chrome); backdrop-filter:blur(16px) saturate(180%); border-color:var(--line); }
+    html[data-theme="dark"] .nav-button { color:var(--muted); transition:all .18s cubic-bezier(.16,1,.3,1); }
+    html[data-theme="dark"] .nav-button:hover { color:var(--ink); background:rgba(255,255,255,.04); }
+    html[data-theme="dark"] .nav-button.active { color:var(--pico); background:linear-gradient(90deg, rgba(123,150,255,.16) 0%, rgba(123,150,255,.04) 100%); box-shadow:inset 3px 0 0 var(--pico); }
     html[data-theme="dark"] .brand, html[data-theme="dark"] .topbar h1, html[data-theme="dark"] .workspace-head h2, html[data-theme="dark"] .memory-value, html[data-theme="dark"] .artifact-title, html[data-theme="dark"] .mission-title, html[data-theme="dark"] .skill-title { color:var(--ink); }
-    html[data-theme="dark"] .mark { background:linear-gradient(135deg,#8a84ff,var(--pico-dark)); }
+    html[data-theme="dark"] .mark { background:linear-gradient(135deg,#7b96ff,var(--pico-dark)); }
     html[data-theme="dark"] .topbar::before { color:var(--pico); }
-    html[data-theme="dark"] .card, html[data-theme="dark"] .artifact-preview, html[data-theme="dark"] .search-result, html[data-theme="dark"] .mission-detail, html[data-theme="dark"] .run-detail-panel, html[data-theme="dark"] .workflow-inspector, html[data-theme="dark"] .workflow-library, html[data-theme="dark"] .workflow-toolbar, html[data-theme="dark"] .workflow-evidence-drawer, html[data-theme="dark"] .session-cockpit, html[data-theme="dark"] .composer, html[data-theme="dark"] .bubble, html[data-theme="dark"] .workflow-node { background:var(--panel); border-color:var(--line); color:var(--ink); box-shadow:none; }
-    html[data-theme="dark"] .bubble.user, html[data-theme="dark"] .nav-button.active { background:var(--pico-pale); }
-    html[data-theme="dark"] .workflow-canvas { background-color:#151b26; background-image:radial-gradient(#34425d 1px, transparent 1px); }
-    html[data-theme="dark"] .workflow-canvas svg path { stroke:#7286b6; }
-    html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea { color:var(--ink); border-color:var(--line); background:var(--panel-raised); }
+    html[data-theme="dark"] .card, html[data-theme="dark"] .artifact-preview, html[data-theme="dark"] .search-result, html[data-theme="dark"] .mission-detail, html[data-theme="dark"] .run-detail-panel, html[data-theme="dark"] .workflow-inspector, html[data-theme="dark"] .workflow-library, html[data-theme="dark"] .workflow-toolbar, html[data-theme="dark"] .workflow-evidence-drawer, html[data-theme="dark"] .session-cockpit, html[data-theme="dark"] .composer, html[data-theme="dark"] .bubble, html[data-theme="dark"] .workflow-node { background:var(--panel); backdrop-filter:blur(12px); border-color:var(--line); color:var(--ink); box-shadow:0 8px 32px 0 rgba(0,0,0,.36), inset 0 1px 0 0 rgba(255,255,255,.05); }
+    html[data-theme="dark"] .bubble.user { background:rgba(123,150,255,.12); border-color:rgba(123,150,255,.24); }
+    html[data-theme="dark"] .workflow-canvas { background-color:#0b0d14; background-image:radial-gradient(rgba(255,255,255,.12) 1px, transparent 1px); background-size:20px 20px; }
+    html[data-theme="dark"] .workflow-canvas svg path { stroke:#5f78b5; }
+    html[data-theme="dark"] input, html[data-theme="dark"] select, html[data-theme="dark"] textarea { color:var(--ink); border-color:var(--line); background:var(--panel-raised); transition:border-color .18s ease,box-shadow .18s ease; }
+    html[data-theme="dark"] input:focus, html[data-theme="dark"] select:focus, html[data-theme="dark"] textarea:focus { border-color:var(--pico); box-shadow:0 0 0 3px rgba(123,150,255,.2); outline:none; }
     html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color:var(--soft); }
     html[data-theme="dark"] .section-label, html[data-theme="dark"] .workspace-panel-head, html[data-theme="dark"] .artifact-meta, html[data-theme="dark"] .memory-meta, html[data-theme="dark"] .provider-note, html[data-theme="dark"] .bubble-meta { color:var(--muted); border-color:var(--line); }
-    html[data-theme="dark"] .action.secondary, html[data-theme="dark"] .memory-action, html[data-theme="dark"] .title-action, html[data-theme="dark"] .command-trigger, html[data-theme="dark"] .theme-toggle { color:var(--pico); border-color:#3a4770; background:var(--panel-raised); }
+    html[data-theme="dark"] .action.secondary, html[data-theme="dark"] .memory-action, html[data-theme="dark"] .title-action, html[data-theme="dark"] .command-trigger, html[data-theme="dark"] .theme-toggle { color:var(--pico); border-color:rgba(123,150,255,.25); background:var(--panel-raised); transition:all .18s ease; }
+    html[data-theme="dark"] .action.secondary:hover, html[data-theme="dark"] .command-trigger:hover, html[data-theme="dark"] .theme-toggle:hover { border-color:var(--pico); background:var(--pico-pale); color:var(--pico-dark); box-shadow:0 0 12px rgba(123,150,255,.15); }
     /* Dark-mode completion: surfaces and chrome the earlier theme passes left
        hardcoded to light palette values. Each override maps a light-mode hex to
        a dark palette token so dark mode stays a first-class theme. */
-    html[data-theme="dark"] .new-session { border-color:var(--pico); background:var(--pico); color:#fff; box-shadow:none; }
-    html[data-theme="dark"] .new-session:hover { border-color:var(--pico-dark); background:var(--pico-dark); color:#fff; }
-    html[data-theme="dark"] .session-button { color:var(--muted); }
-    html[data-theme="dark"] .session-button:hover, html[data-theme="dark"] .session-button.active { color:var(--pico); background:var(--pico-pale); box-shadow:inset 2px 0 var(--pico); }
+    html[data-theme="dark"] .new-session { border-color:transparent; background:linear-gradient(135deg, #6385ff 0%, #4f6ee6 100%); color:#fff; box-shadow:0 4px 14px rgba(99,133,255,.3); }
+    html[data-theme="dark"] .new-session:hover { background:linear-gradient(135deg, #7594ff 0%, #5d7ceb 100%); box-shadow:0 6px 18px rgba(99,133,255,.45); color:#fff; }
+    html[data-theme="dark"] .session-button { color:var(--muted); transition:all .18s cubic-bezier(.16,1,.3,1); }
+    html[data-theme="dark"] .session-button:hover { color:var(--ink); background:rgba(255,255,255,.04); }
+    html[data-theme="dark"] .session-button.active { color:var(--pico); background:linear-gradient(90deg, rgba(123,150,255,.16) 0%, rgba(123,150,255,.04) 100%); box-shadow:inset 3px 0 0 var(--pico); }
     html[data-theme="dark"] .session-title { color:var(--ink); }
     html[data-theme="dark"] .session-meta, html[data-theme="dark"] .rail-footer, html[data-theme="dark"] .session-empty, html[data-theme="dark"] .session-archive-toggle { color:var(--muted); }
     html[data-theme="dark"] .session-work { color:var(--pico); }
