@@ -862,7 +862,10 @@ class WebChannel(BaseChannel):
                     response = json.dumps(
                         {
                             "sessions": self._list_browser_sessions(
-                                client_id, search=search, include_archived=include_archived
+                                client_id,
+                                search=search,
+                                include_archived=include_archived,
+                                keep_session_id=self._single_query_value(query, "session_id"),
                             )
                         },
                         ensure_ascii=False,
@@ -3536,7 +3539,17 @@ class WebChannel(BaseChannel):
         *,
         search: str = "",
         include_archived: bool = False,
+        keep_session_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        """List a browser's sessions, newest first.
+
+        A session with no messages is not a thread yet.  Sessions are now
+        materialised the moment the browser announces one, so listing every
+        empty shell would fill the rail with identical "New session, 0
+        messages" entries the owner never wrote.  ``keep_session_id`` exempts
+        the session currently open, which still has to show as active while it
+        is empty.
+        """
         self._valid_browser_id(client_id)
         prefix = "web:web:"
         manager = self._session_manager()
@@ -3552,6 +3565,8 @@ class WebChannel(BaseChannel):
             session = manager.get_or_create(key)
             archived = session.metadata.get("pico_archived") is True
             if archived and not include_archived:
+                continue
+            if not session.messages and session_id != keep_session_id:
                 continue
             title = self._browser_session_title(session)
             if search_terms:
@@ -3985,6 +4000,21 @@ class WebChannel(BaseChannel):
                     sender_id = f"browser:{client_id}"
                     self._clients[websocket] = chat_id
                     self._chat_clients[chat_id] = websocket
+                    # Materialise the session the moment the browser announces
+                    # it, not on its first message. A session that existed only
+                    # in localStorage was absent server-side, so every
+                    # session-scoped route answered "Session was not found for
+                    # this browser identity" -- which the workbench rendered as
+                    # "Sync unavailable" across the cockpit and "Maintenance is
+                    # unavailable. Reconnect Pico" in Review, while the topbar
+                    # still read "Connected locally". Starting a new session
+                    # put the whole interface into a failure state until the
+                    # first message happened to save it.
+                    try:
+                        manager = self._session_manager()
+                        manager.save(manager.get_or_create(self._session_key(client_id, session_id)))
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.warning("Could not materialise session {}: {}", session_id, exc)
                     await websocket.send(
                         json.dumps(
                             {
