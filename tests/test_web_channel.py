@@ -280,6 +280,10 @@ def test_browser_session_title_is_explicit_durable_and_shared_across_browsers(tm
 
     title = channel._set_browser_session_title(CLIENT_A, SESSION_A, "  Website Ops review  ")
 
+    seeded = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+    seeded.add_message("user", "Review the website operations plan.")
+    SessionManager(workspace).save(seeded)
+
     assert title == "Website Ops review"
     assert channel._list_browser_sessions(CLIENT_A)[0]["title"] == "Website Ops review"
     assert channel._list_browser_sessions(CLIENT_B)[0]["title"] == "Website Ops review"
@@ -625,6 +629,7 @@ def test_browser_session_summaries_expose_only_its_active_mission_and_task(tmp_p
     sessions = SessionManager(workspace)
     session = sessions.get_or_create(session_key)
     session.metadata["pico_operation_profile"] = "mission-work"
+    session.add_message("user", "Make the active work visible in the rail.")
     sessions.save(session)
 
     owner_id = channel._memory_owner(CLIENT_A)
@@ -1010,7 +1015,9 @@ def test_browser_session_list_includes_safe_latest_run_state(tmp_path: Path):
     owner = channel._memory_owner(CLIENT_A)
     session_key = channel._session_key(CLIENT_A, SESSION_A)
     sessions = SessionManager(workspace)
-    sessions.save(sessions.get_or_create(session_key))
+    session = sessions.get_or_create(session_key)
+    session.add_message("user", "Why did that run fail?")
+    sessions.save(session)
     run_store = RunStore(workspace)
     run = run_store.create(
         owner_id=owner,
@@ -1202,9 +1209,9 @@ def test_http_api_work_stays_visible_after_client_identity_changes(tmp_path: Pat
         channel._runtime_config = lambda: config
 
         # A WebSocket hello would have saved this session before any HTTP write.
-        SessionManager(workspace).save(
-            SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
-        )
+        hello_session = SessionManager(workspace).get_or_create(channel._session_key(CLIENT_A, SESSION_A))
+        hello_session.add_message("user", "Keep the launch work in one place.")
+        SessionManager(workspace).save(hello_session)
 
         created_project = await _http_api_request(
             channel,
