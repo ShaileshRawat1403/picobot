@@ -599,9 +599,10 @@
     .rail { top:42px; }
     main { padding-top:42px; }
     .topbar { height:42px; padding:0 22px 0 calc(var(--rail) + 24px); }
-    .topbar::before { content:"▣  PICO"; position:absolute; left:20px; top:0; height:42px; display:flex; align-items:center; color:#5276ee; font-family:Inter,ui-sans-serif,sans-serif; font-size:10px; font-weight:790; letter-spacing:.18em; }
-    .title-line { min-height:42px; }
-    .topbar .title-action { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.01em; }
+    .topbar::before { display:none !important; }
+    .title-line { min-height:42px; display:flex; align-items:center; gap:8px; max-width:calc(100vw - var(--rail) - 260px); overflow:hidden; }
+    .topbar h1 { max-width:480px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .topbar .title-action { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.01em; flex:none; }
     .connection { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
     .cockpit-wrapper { padding-top:16px; }
     .cockpit-bar { background:linear-gradient(90deg,#ffffff89,#f9fbff70); }
@@ -1006,7 +1007,7 @@
        tiring to read. 68ch caps the line without narrowing the window, and the
        composer is held to the same rail so the writing and reading columns
        align. */
-    .transcript { width:min(68ch,calc(100% - 32px)); padding:26px 24px 18px; gap:18px; }
+    .transcript { width:min(68ch,calc(100% - 32px)); padding:26px 24px 140px; gap:18px; }
     .bubble { border-color:var(--line); background:var(--panel-raised); }
     .bubble.user { max-width:100%; background:var(--pico-pale); }
     .bubble.assistant { max-width:100%; }
@@ -1211,7 +1212,7 @@
     html[data-theme="dark"] .title-action:hover { color:var(--pico); }
     html[data-theme="dark"] .avatar { box-shadow:none; }
     html[data-theme="dark"] .message.user .avatar { border-color:var(--line); background:var(--panel-raised); color:var(--muted); }
-    html[data-theme="dark"] .message.user .bubble { color:var(--ink); }
+    html[data-theme="dark"] .message.user .bubble { background:rgba(123,150,255,.16) !important; border-color:rgba(123,150,255,.3) !important; color:#f0f3f9 !important; }
     html[data-theme="dark"] .bubble h4 { color:var(--ink); }
     html[data-theme="dark"] .bubble h3, html[data-theme="dark"] .bubble h5, html[data-theme="dark"] .bubble h6 { color:var(--ink); }
     html[data-theme="dark"] .bubble blockquote { border-left-color:var(--line); background:var(--panel-raised); color:var(--muted); }
