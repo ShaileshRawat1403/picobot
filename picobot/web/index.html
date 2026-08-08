@@ -1051,12 +1051,20 @@
        state invites you to start; a failure says what happened and what to do.
        Rendering both as the same grey box is what made a fresh session read as
        a broken app. */
+    /* Actions reveal on hover so the transcript stays a reading surface, and
        mirror on focus-within so the keyboard reaches everything the mouse can.
        They reserve their own height rather than appearing from nowhere: a row
        that shifts the text when you approach it feels broken. */
     /* The compile note names what was drawn on. A draft you cannot trace is a
        draft you have to re-read in full every time; naming the sources makes an
 
+    .message-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:6px; opacity:0; transition:opacity .16s ease; }
+    .message:hover .message-actions, .message:focus-within .message-actions { opacity:1; }
+    .message-actions button { padding:2px 7px; border:1px solid transparent; border-radius:5px; background:transparent; color:var(--muted); font:inherit; font-size:11px; cursor:pointer; }
+    .message-actions button:hover { border-color:var(--line); color:var(--ink); background:var(--panel-raised); }
+    .message-actions button:focus-visible { outline:2px solid var(--pico); outline-offset:1px; }
+    .message-actions-split { width:1px; height:12px; margin:0 4px; background:var(--line); }
+    @media (prefers-reduced-motion:reduce) { .message-actions { transition-duration:.01ms; } }
 
     .failed { padding:15px 17px; border:1px solid var(--bad); border-radius:9px; background:var(--panel); color:var(--bad); font-size:13px; line-height:1.6; }
     .empty { color:var(--muted); }
@@ -1688,6 +1696,77 @@
       } catch { /* leave the descriptive default */ }
     }
 
+    // Actions on a message. A reply you cannot copy, keep or re-run is a wall
+    // of text you have to select by hand every time, which is the single most
+    // repeated cost in a working day. They reveal on hover so the transcript
+    // stays a reading surface, and mirror on focus-within for the keyboard.
+    function sendComposerText(text) {
+      if (!text || !connected) return false;
+      appendMessage('user', text, null, null, true);
+      showProgress();
+      socket.send(JSON.stringify({type:'message', content:text}));
+      return true;
+    }
+    function lastUserMessageBefore(node) {
+      let previous = node?.previousElementSibling;
+      while (previous) {
+        if (previous.classList?.contains('user')) return previous.querySelector('.bubble')?.textContent || '';
+        previous = previous.previousElementSibling;
+      }
+      return '';
+    }
+    async function copyMessage(button, raw) {
+      try { await navigator.clipboard.writeText(raw); button.textContent = 'Copied'; }
+      catch { toast('Could not copy. Your browser blocked clipboard access.', true); return; }
+      setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+    }
+    async function saveReplyAsArtifact(raw) {
+      const title = raw.split('\n').find((line) => line.trim())?.replace(/^#+\s*/, '').slice(0, 60) || 'Saved reply';
+      try {
+        const response = await api('/api/artifacts', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session_id:sessionId, title, content:raw, kind:'note', content_type:'text/markdown'})});
+        if (!response.ok) throw new Error();
+        toast(`Saved as "${title}"`);
+        if (currentView === 'artifacts') loadArtifacts();
+      } catch { toast('Could not save that reply. Refresh and try again.', true); }
+    }
+    function messageActions(role, runId, raw) {
+      const primary = role === 'assistant'
+        ? `<button type="button" data-act="copy">Copy</button><button type="button" data-act="save">Save</button><button type="button" data-act="retry">Retry</button>`
+        : `<button type="button" data-act="copy">Copy</button><button type="button" data-act="edit">Edit</button>`;
+      const feedback = role === 'assistant' && runId
+        ? `<span class="message-actions-split"></span><button type="button" data-feedback-kind="useful">Useful</button><button type="button" data-feedback-kind="not_useful">Not useful</button><button type="button" data-feedback-kind="correction">Correct</button>`
+        : '';
+      return `<div class="message-actions"${runId ? ` data-feedback-run="${escapeHtml(runId)}"` : ''}>${primary}${feedback}</div>`;
+    }
+    function wireMessageActions(item, role, runId, raw) {
+      item.querySelectorAll('[data-act]').forEach((button) => {
+        button.onclick = () => {
+          const act = button.dataset.act;
+          if (act === 'copy') return copyMessage(button, raw);
+          if (act === 'save') return saveReplyAsArtifact(raw);
+          if (act === 'retry') {
+            const prompt = lastUserMessageBefore(item);
+            if (!prompt) return toast('Nothing to retry from.', true);
+            sendComposerText(prompt);
+            return;
+          }
+          if (act === 'edit') {
+            const input = $('message-input');
+            input.value = raw; input.focus();
+            input.setSelectionRange(raw.length, raw.length);
+            // Everything after the edited message is about to be superseded.
+            let next = item.nextElementSibling;
+            while (next) { const after = next.nextElementSibling; next.remove(); next = after; }
+            item.remove();
+          }
+        };
+      });
+      if (runId) item.querySelectorAll('[data-feedback-kind]').forEach((button) => {
+        button.onclick = () => recordResponseFeedback(runId, button.dataset.feedbackKind, button);
+      });
+    }
+
     // Which rail contents belong to which surface. The slot never moves, so
     // "what belongs to this project, in this mode" is always in one place.
     const SURFACE_RAIL = { chat:'Threads', code:'Changed files', design:'Drafts' };
@@ -1747,7 +1826,7 @@
     function fallbackCopy(text, done) { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch {} ta.remove(); done(); }
     function copyCodeBlock(button) { const text = button.parentElement.querySelector('pre').textContent; const done = () => { button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1600); }; if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done)); else fallbackCopy(text, done); }
     function transcriptPinned(transcript) { return transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 64; }
-    function appendMessage(role, content, timestamp = null, runId = null, live = false) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}${live ? ' live' : ''}`; const feedback = role === 'assistant' && runId ? `<div class="message-feedback" data-feedback-run="${escapeHtml(runId)}"><button type="button" data-feedback-kind="useful">Useful</button><button type="button" data-feedback-kind="not_useful">Not useful</button><button type="button" data-feedback-kind="correction">Correct</button></div>` : ''; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${renderMessageContent(content)}</div><div class="message-time">${formatTime(timestamp)}</div>${feedback}</div>`; item.querySelectorAll('.code-copy').forEach((button) => button.onclick = () => copyCodeBlock(button)); if (feedback) item.querySelectorAll('[data-feedback-kind]').forEach((button) => { button.onclick = () => recordResponseFeedback(runId, button.dataset.feedbackKind, button); }); const transcript = $('transcript'), pinned = transcriptPinned(transcript); transcript.appendChild(item); if (pinned || role === 'user') transcript.scrollTop = transcript.scrollHeight; }
+    function appendMessage(role, content, timestamp = null, runId = null, live = false) { if (role === 'assistant') latestAssistantContent = content; const item = document.createElement('article'); item.className = `message ${role === 'user' ? 'user' : 'assistant'}${live ? ' live' : ''}`; item.innerHTML = `<div class="avatar">${role === 'user' ? 'You' : 'P'}</div><div><div class="bubble">${renderMessageContent(content)}</div><div class="message-time">${formatTime(timestamp)}</div>${messageActions(role, runId, content)}</div>`; item.querySelectorAll('.code-copy').forEach((button) => button.onclick = () => copyCodeBlock(button)); wireMessageActions(item, role, runId, content); const transcript = $('transcript'), pinned = transcriptPinned(transcript); transcript.appendChild(item); if (pinned || role === 'user') transcript.scrollTop = transcript.scrollHeight; }
     function showProgress() { removeProgress(); progress = document.createElement('div'); progress.className = 'progress'; progress.innerHTML = '<span class="spinner"></span> Pico is working'; const transcript = $('transcript'), pinned = transcriptPinned(transcript); transcript.appendChild(progress); if (pinned) transcript.scrollTop = transcript.scrollHeight; }
     function removeProgress() { if (progress) { progress.remove(); progress = null; } }
     const RUN_LABELS = { queued:'Queued', running:'Running', waiting_for_approval:'Waiting for approval', completed:'Completed', failed:'Failed', cancelled:'Stopped' };
