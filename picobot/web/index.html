@@ -1072,6 +1072,14 @@
     .failed { padding:15px 17px; border:1px solid var(--bad); border-radius:9px; background:var(--panel); color:var(--bad); font-size:13px; line-height:1.6; }
     .empty { color:var(--muted); }
 
+    .code-state { display:grid; gap:2px; margin-bottom:14px; }
+    .code-state-row { display:flex; align-items:baseline; gap:10px; font-size:13px; }
+    .code-state-label { min-width:96px; color:var(--muted); font-size:12px; }
+    .code-commits { border-top:1px solid var(--line); padding-top:11px; }
+    .code-commit { display:flex; align-items:baseline; gap:10px; padding:3px 0; color:var(--muted); font-size:12px; }
+    .code-commit-id { min-width:56px; color:var(--soft,#98a1af); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .code-commit-date { min-width:74px; }
+
     .rail-pending { padding:4px 8px; color:var(--soft,#98a1af); font-size:12px; line-height:1.55; }
     .rail-label { padding:0 8px 5px; color:var(--soft,#98a1af); font-size:10px; font-weight:650; letter-spacing:.09em; text-transform:uppercase; }
     .rail-project { margin-bottom:14px; }
@@ -1651,6 +1659,58 @@
     function setSessionTitleEditing(editing) { $('page-title').hidden = editing; $('session-title-input').hidden = !editing; $('rename-session').hidden = editing || currentView !== 'chat'; $('archive-session').hidden = editing || currentView !== 'chat'; $('save-session-title').hidden = !editing; $('cancel-session-title').hidden = !editing; if (editing) $('session-title-input').focus(); }
     function connect() { clearTimeout(reconnectTimer); const host = window.location.hostname || '127.0.0.1'; socket = new WebSocket(`ws://${host}:${CONFIG.wsPort}`); socket.onopen = () => { reconnectAttempt = 0; socket.send(JSON.stringify({type:'hello', client_id:clientId, session_id:sessionId})); }; socket.onclose = () => { setConnected(false); const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempt)); reconnectAttempt += 1; reconnectTimer = setTimeout(connect, delay); }; socket.onerror = () => setConnected(false); socket.onmessage = handleSocket; }
     function handleSocket(event) { let data; try { data = JSON.parse(event.data); } catch { return; }     if (data.type === 'ready') { clientId = data.client_id; sessionId = data.session_id; latestAssistantRunId = null; localStorage.setItem(CLIENT_KEY, clientId); localStorage.setItem(SESSION_KEY, sessionId); setConnected(true); loadSessions(); refreshSessionChrome(); loadTranscript(); pollRuns(); loadPolicy(); return; } if (data.type === 'message') { removeProgress(); if (data.metadata && data.metadata.run_id) latestAssistantRunId = data.metadata.run_id; appendMessage('assistant', data.content, null, data.metadata?.run_id || null, true); if (data.metadata && data.metadata.context_warning) toast(data.metadata.context_warning); loadSessions(); if (currentView === 'context') loadSessionContext(); if (currentView === 'learning') loadLearning(); if (data.metadata && data.metadata.run_receipt) renderRunStatus(data.metadata.run_receipt); else pollRuns(); return; } if (data.type === 'error') { removeProgress(); toast(data.content || 'Pico could not process that request.', true); pollRuns(); } }
+    // Code reads the attached project's repository live on every visit. A
+    // stored summary of a working tree is wrong within minutes, and the whole
+    // point of this surface is telling you what is true right now.
+    let codeFiles = [];
+    function renderCodeRail() {
+      const list = $('session-list');
+      if (!list || currentView !== 'code') return;
+      list.dataset.pending = '1';
+      if (!codeFiles.length) { list.innerHTML = '<div class="rail-pending">Nothing changed since your last commit.</div>'; return; }
+      list.innerHTML = codeFiles.map((file) => `<div class="rail-context-item" style="cursor:default" title="${escapeHtml(file)}">${escapeHtml(file.replace(/^..\s*/, ''))}</div>`).join('');
+    }
+    async function loadCode() {
+      const slot = $('code-proposal'), name = $('code-project-name');
+      if (!slot) return;
+      // The rail's project block is the one place that says what Pico is
+      // reading. Code without it left "No project" above a list of that
+      // project's files.
+      const project = currentProjectContext();
+      if (project) railProject(project.title, `${project.kind || 'project'} · reading live`);
+      if (!project) {
+        codeFiles = []; renderCodeRail();
+        slot.innerHTML = '<div class="empty">No project attached. Attach one in Projects and Pico can read its repository and propose changes against it.</div>';
+        return;
+      }
+      if (name) name.textContent = project.title;
+      loadingSoon(slot, 'Reading the repository…');
+      try {
+        const response = await api(`/api/projects/${encodeURIComponent(project.id)}/resume`);
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        const local = (data.observed || []).find((entry) => entry.kind === 'local_folder') || (data.observed || [])[0];
+        if (!local) { slot.innerHTML = '<div class="empty">This project has no folder attached. Add one in Projects so Pico can read it.</div>'; codeFiles = []; renderCodeRail(); return; }
+        if (local.state !== 'ready') {
+          slot.innerHTML = `<div class="failed">Could not read ${escapeHtml(local.label || 'the folder')}. ${escapeHtml(local.message || 'Check it still exists.')}</div>`;
+          codeFiles = []; renderCodeRail(); return;
+        }
+        codeFiles = local.changed_files || [];
+        renderCodeRail();
+        const commits = (local.recent_commits || []).slice(0, 4);
+        slot.innerHTML = `<div class="code-state">
+          <div class="code-state-row"><span class="code-state-label">Branch</span><span>${escapeHtml(String(local.branch || 'not reported').split('...')[0])}</span></div>
+          <div class="code-state-row"><span class="code-state-label">Uncommitted</span><span>${local.changed_file_count || 0} file${local.changed_file_count === 1 ? '' : 's'}</span></div>
+        </div>${commits.length ? `<div class="code-commits">${commits.map((commit) => `<div class="code-commit"><span class="code-commit-id">${escapeHtml(commit.id)}</span><span class="code-commit-date">${escapeHtml(commit.date)}</span><span>${escapeHtml(commit.summary)}</span></div>`).join('')}</div>` : ''}
+        <div class="empty" style="margin-top:14px">Describe a change below. Pico drafts it, you approve, then it is written.</div>`;
+      } catch { slot.innerHTML = '<div class="failed">Could not read this repository. Refresh to try again.</div>'; codeFiles = []; renderCodeRail(); }
+    }
+    // refreshProjectContext already resolves the attached project for the
+    // composer footer, so it caches the object here rather than every surface
+    // refetching orientation to learn the same thing.
+    let attachedProject = null;
+    function currentProjectContext() { return attachedProject; }
+
     // Config lists everything authored, whatever its kind, and filters rather
     // than tabs. Filters hide themselves below two kinds present: a control
     // that cannot change anything is noise.
@@ -1832,7 +1892,12 @@
       const label = $('rail-context-label'), list = $('session-list'), search = $('session-search');
       const pending = { code:'Files you change will appear here.', design:'Drafts you start will appear here.' }[name];
       if (label) label.textContent = SURFACE_RAIL[name] || 'Threads';
+      // "Show archived" belongs to threads, not to files or drafts. Hiding the
+      // search box while leaving its checkbox behind was worse than leaving
+      // both: a control that cannot act on what is listed.
       if (search) search.hidden = Boolean(pending);
+      const archive = document.querySelector('.session-archive-toggle');
+      if (archive) archive.hidden = Boolean(pending) || name !== 'chat';
       if (!list) return;
       if (pending) { list.dataset.pending = '1'; list.innerHTML = `<div class="rail-pending">${escapeHtml(pending)}</div>`; return; }
       if (list.dataset.pending) { delete list.dataset.pending; loadSessions(); }
@@ -2249,7 +2314,7 @@
         refreshProjectContext();
       }
     }
-    async function refreshProjectContext() { const label = $('composer-project-context'); if (!label) return; try { const [orientationResponse, briefResponse] = await Promise.all([api(`/api/sessions/${encodeURIComponent(sessionId)}/orientation`), api(`/api/sessions/${encodeURIComponent(sessionId)}/brief-context`)]); if (!orientationResponse.ok || !briefResponse.ok) throw new Error(); const orientationData = await orientationResponse.json(), briefData = await briefResponse.json(), project = orientationData.project, brief = briefData.brief; const parts = []; if (project) parts.push(`Project · ${project.title}`); if (brief) parts.push(`Brief · ${brief.title} v${brief.revision}`); label.textContent = parts.length ? parts.join('  ·  ') : 'No project context'; label.title = brief ? 'The owner selected this brief revision as bounded reference material for the next model turn.' : project ? 'This project supplies session context only. Add a Brief artifact when Pico should read a bounded project summary.' : 'Attach a project from Projects when it should shape this session.'; } catch { label.textContent = 'No project'; } }
+    async function refreshProjectContext() { const label = $('composer-project-context'); if (!label) return; try { const [orientationResponse, briefResponse] = await Promise.all([api(`/api/sessions/${encodeURIComponent(sessionId)}/orientation`), api(`/api/sessions/${encodeURIComponent(sessionId)}/brief-context`)]); if (!orientationResponse.ok || !briefResponse.ok) throw new Error(); const orientationData = await orientationResponse.json(), briefData = await briefResponse.json(), project = orientationData.project, brief = briefData.brief; attachedProject = project || null; const parts = []; if (project) parts.push(`Project · ${project.title}`); if (brief) parts.push(`Brief · ${brief.title} v${brief.revision}`); label.textContent = parts.length ? parts.join('  ·  ') : 'No project context'; label.title = brief ? 'The owner selected this brief revision as bounded reference material for the next model turn.' : project ? 'This project supplies session context only. Add a Brief artifact when Pico should read a bounded project summary.' : 'Attach a project from Projects when it should shape this session.'; } catch { label.textContent = 'No project'; } }
     async function createBrowserPairing() { const response = await api('/api/browser-bridge/tickets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId})}); if (!response.ok) { toast('Pico could not create a browser session code.', true); return; } const data = await response.json(); $('operation-browser').innerHTML = `<div class="memory-meta">Paste this one-time code into the local Pico Browser Bridge popup. It expires in five minutes.</div><div class="memory-value" style="margin:9px 0;word-break:break-all">${escapeHtml(data.pairing_code)}</div><button class="memory-action" id="refresh-browser-pairing" type="button">Create another code</button>`; $('refresh-browser-pairing').onclick = createBrowserPairing; }
     async function revokeBrowserShare() { const response = await api('/api/browser-bridge/revoke', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:sessionId})}); if (!response.ok) { toast('Pico could not stop that browser share.', true); return; } toast('Browser sharing stopped for this session.'); loadOperations(); }
     async function saveOperationProfile() { const profile = $('operation-profile').value; const response = await api(`/api/sessions/${encodeURIComponent(sessionId)}/profile`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({profile})}); if (!response.ok) { toast('Pico could not update this session profile.', true); return; } toast('Session profile updated. New messages use its allowed tools.'); loadOperations(); refreshSessionChrome(); }
@@ -2481,7 +2546,7 @@
 // is about a session; the rest are about themselves.
 $('page-title').textContent = name === 'chat' ? currentSessionTitle : ({home:'Home', code:'Code', design:'Design', config:'Config'}[name] || $('view-label').textContent);
 document.querySelectorAll('#rename-session, #archive-session').forEach((button) => { button.hidden = name !== 'chat'; });
-railSurface(name); if (name === 'config') loadConfig(); if (name === 'home') loadHome(); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
+railSurface(name); if (name === 'code') loadCode(); if (name === 'config') loadConfig(); if (name === 'home') loadHome(); if (name === 'search') loadSearch(); if (name === 'memory') loadMemory(); if (name === 'learning') loadLearning(); if (name === 'context') loadSessionContext(); if (name === 'missions') loadMissions(); if (name === 'workflows') loadWorkflows(); if (name === 'schedules') loadSchedules(); if (name === 'artifacts') loadArtifacts(); if (name === 'operations') loadOperations(); if (name === 'providers') loadProviders(); if (name === 'skills') loadSkills(); if (name === 'chat') { loadSessions(); refreshSessionChrome(); loadStance(); } }
     $('new-session').onclick = () => { setSession(makeId()); renderWelcome(); loadSessions(); $('message-input').focus(); };
     $('command-trigger').onclick = openCommandPalette;
     $('theme-toggle').onclick = toggleTheme;
