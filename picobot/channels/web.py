@@ -1384,6 +1384,15 @@ class WebChannel(BaseChannel):
                     self._write_response(writer, 200, json.dumps(result).encode())
                 except (ValueError, json.JSONDecodeError) as exc:
                     self._write_response(writer, 400, self._json_error(str(exc)))
+            elif method == "POST" and path == "/api/prompt/compile":
+                try:
+                    client_id = self._browser_id_from_query(query)
+                    result = self._compile_prompt(client_id, self._json_body(body))
+                    self._write_response(
+                        writer, 200, json.dumps(result, ensure_ascii=False).encode()
+                    )
+                except (ValueError, KeyError, json.JSONDecodeError) as exc:
+                    self._write_response(writer, 400, self._json_error(str(exc)))
             elif method == "GET" and path == "/api/home":
                 try:
                     client_id = self._browser_id_from_query(query)
@@ -3626,6 +3635,61 @@ class WebChannel(BaseChannel):
                 }
             )
         return result
+
+    def _compile_prompt(self, client_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Draft a structured prompt from a rough message, for the owner to review.
+
+        Nothing is sent. The draft replaces the composer's contents so it can be
+        edited or discarded, and the response reports which records were used so
+        an odd draft is traceable to the memory that caused it.
+        """
+        from picobot.prompt import compile_prompt
+        from picobot.session.orientation import get_orientation
+
+        raw = payload.get("text")
+        if not isinstance(raw, str) or not raw.strip():
+            raise ValueError("Write the ask before compiling it")
+        session_id = self._valid_browser_id(payload.get("session_id"))
+        self._require_browser_session(client_id, session_id)
+
+        owner_id = self._memory_owner(client_id)
+        session = self._session_manager().get_or_create(self._session_key(client_id, session_id))
+        project_id = get_orientation(session.metadata).project_id
+
+        project = None
+        memories: list[Any] = []
+        store = self._memory_store()
+        if project_id:
+            try:
+                project = self._project_store().get(owner_id, project_id)
+            except (KeyError, ValueError):
+                project = None
+            # Project reasoning first: it is the context a rough ask is most
+            # often missing. Recall then adds anything else that matches.
+            memories = store.list(
+                owner_id,
+                project_id=project_id,
+                status="confirmed",
+                kinds=("constraint", "decision", "open_question"),
+                limit=12,
+            )
+        seen = {getattr(item, "id", None) for item in memories}
+        for item in store.recall(owner_id, raw, limit=5):
+            if getattr(item, "id", None) not in seen:
+                memories.append(item)
+
+        compiled = compile_prompt(
+            raw,
+            project=project,
+            memories=memories,
+            standing_instructions_active=bool(self.context_builder_active()),
+        )
+        return compiled.to_dict()
+
+    def context_builder_active(self) -> bool:
+        """Report whether standing-instruction files exist for this workspace."""
+        workspace = self._runtime_config().workspace_path
+        return any((workspace / name).exists() for name in ("AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md"))
 
     def _build_home_summary(self, owner_id: str) -> dict[str, Any]:
         """Assemble the cross-project view shown when Pico opens.

@@ -1057,6 +1057,9 @@
        that shifts the text when you approach it feels broken. */
     /* The compile note names what was drawn on. A draft you cannot trace is a
        draft you have to re-read in full every time; naming the sources makes an
+       odd compile diagnosable instead of mysterious. */
+    .compile-note { padding:7px 13px 0; color:var(--muted); font-size:11px; line-height:1.6; }
+    .compile-note button { padding:0; border:0; background:transparent; color:var(--pico); font:inherit; font-size:11px; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
 
     .message-actions { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:6px; opacity:0; transition:opacity .16s ease; }
     .message:hover .message-actions, .message:focus-within .message-actions { opacity:1; }
@@ -1460,7 +1463,7 @@
           </div>
         </div>
         <div class="transcript" id="transcript" aria-live="polite" aria-relevant="additions"></div>
-        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span id="composer-project-context">No project context</span><button class="capture-trigger" id="capture-toggle" type="button" aria-expanded="false">✎ Capture</button></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Pico remembers only what you explicitly save.</div></div>
+        <div class="composer-area"><div class="run-status" id="run-status" hidden><span class="run-status-dot"></span><span class="run-status-label" id="run-status-label">Run</span><span class="run-status-text" id="run-status-text"></span><button class="run-detail-button" id="view-run-detail" type="button" hidden>Details</button><button class="stop-button" id="stop-run" type="button">Stop</button></div><div class="run-detail-panel" id="run-detail-panel" hidden></div><form class="composer" id="composer"><div class="composer-meta"><span><i aria-hidden="true">✦</i> Personal canvas</span><span id="composer-project-context">No project context</span><button class="capture-trigger" id="compile-prompt" type="button" title="Draft a structured prompt from what you wrote">⌥ Compile</button><button class="capture-trigger" id="capture-toggle" type="button" aria-expanded="false">✎ Capture</button></div><div class="compile-note" id="compile-note" hidden></div><div class="composer-entry"><textarea id="message-input" placeholder="What would you like to work on?" rows="1"></textarea><button class="send" id="send" aria-label="Send message">↗</button></div></form><div class="composer-hint">Enter to send · Pico remembers only what you explicitly save.</div></div>
       </section>
       <section class="view workspace-view" id="view-projects"><div class="workspace"><div class="workspace-head"><div><div class="eyebrow">Pico Home</div><h2>Projects</h2><p>Connect only work Pico should understand. A project supplies context; it never grants execution authority.</p></div></div><div class="project-setup-grid"><div class="card project-connect-card"><div class="workspace-panel-head"><span>1 · Name the work</span><span>Owner scoped</span></div><form id="project-form" class="project-connect-form"><label>Project name<input id="project-title" maxlength="160" autocomplete="off" placeholder="e.g. Soothsayer"></label><label>Kind<select id="project-kind" aria-label="Project kind"><option value="software">Software</option><option value="research">Research</option><option value="writing">Writing</option><option value="business">Business</option><option value="personal">Personal</option></select></label><label class="project-purpose-field">What will Pico help you do with it?<textarea id="project-purpose" maxlength="4000" placeholder="e.g. Understand the operator workbench before I plan a bounded change."></textarea></label><button class="action" type="submit">Connect project</button></form><p class="provider-note">Next, Pico will let you attach its local folder or GitHub repository.</p></div><div class="card"><div class="workspace-panel-head"><span>Connected projects</span><span id="project-count">0 connected</span></div><div class="memory-list" id="project-list"><div class="empty">Start with one project you want Pico to understand.</div></div></div></div><div id="project-source-host" hidden></div><details class="card project-orientation-card" id="project-orientation-panel" hidden><summary><span>Optional · shape this session</span><span id="orientation-project-label">No project attached</span></summary><form id="orientation-form" class="memory-form"><input id="orientation-objective" maxlength="2000" placeholder="Objective for this session (optional)"><div class="form-row"><select id="orientation-role" aria-label="Role lens"><option value="">No role lens selected</option><option value="founder">Founder / strategist</option><option value="systems_designer">Systems designer / architect</option><option value="builder">Builder / maintainer</option><option value="researcher">Researcher / analyst</option><option value="writer">Writer / communicator</option></select><select id="orientation-challenge" aria-label="Challenge policy"><option value="active">Actively challenge</option><option value="balanced">Balanced</option><option value="supportive">Supportive</option></select></div><textarea id="orientation-constraints" maxlength="4000" placeholder="Temporary constraints, one per line (optional)"></textarea><input id="orientation-result" maxlength="1000" placeholder="Expected result (optional)"><button class="action" type="submit">Apply orientation</button></form><p class="provider-note">Orientation shapes reasoning for later turns. It cannot change tools, providers, profiles, or approvals.</p></details></div></section>
       <section class="view workspace-view" id="view-maintenance">
@@ -1694,6 +1697,53 @@
         const ready = (providers.connections || []).filter((c) => c.state === 'ready').length;
         if (ready) $('config-providers').textContent = `${ready} connected`;
       } catch { /* leave the descriptive default */ }
+    }
+
+    // Compile drafts a structured prompt and puts it in the composer for
+    // review. It never sends. The previous text is kept so a compile you do not
+    // like costs one click to undo rather than retyping the ask.
+    let promptBeforeCompile = null;
+    function showCompileNote(html) {
+      const note = $('compile-note');
+      if (!note) return;
+      note.innerHTML = html;
+      note.hidden = !html;
+      const undo = note.querySelector('[data-undo]');
+      if (undo) undo.onclick = () => {
+        if (promptBeforeCompile === null) return;
+        const input = $('message-input');
+        input.value = promptBeforeCompile;
+        promptBeforeCompile = null;
+        input.focus();
+        showCompileNote('');
+      };
+    }
+    async function compilePrompt() {
+      const input = $('message-input'), raw = input.value.trim();
+      if (!raw) { toast('Write the ask before compiling it.', true); input.focus(); return; }
+      const button = $('compile-prompt');
+      button.disabled = true; button.textContent = 'Compiling';
+      try {
+        const response = await api('/api/prompt/compile', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: sessionId, text: raw})});
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          throw new Error(detail.error || '');
+        }
+        const data = await response.json();
+        if (!data.changed) { showCompileNote('Nothing to add. Pico had no project context or decisions matching this ask.'); return; }
+        promptBeforeCompile = raw;
+        input.value = data.text;
+        input.style.height = 'auto'; input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
+        input.focus();
+        const parts = [];
+        if (data.used_project) parts.push(escapeHtml(data.used_project));
+        if (data.used_memories?.length) parts.push(`${data.used_memories.length} captured note${data.used_memories.length === 1 ? '' : 's'}`);
+        if (data.standing_instructions_active) parts.push('your standing instructions');
+        showCompileNote(`Drafted from ${parts.join(', ')}. Edit it, then send. <button type="button" data-undo>Undo</button>`);
+      } catch (error) {
+        toast(error.message || 'Could not compile that. Refresh and try again.', true);
+      } finally { button.disabled = false; button.textContent = '⌥ Compile'; }
     }
 
     // Actions on a message. A reply you cannot copy, keep or re-run is a wall
@@ -2428,6 +2478,7 @@
     document.addEventListener('keydown', (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); $('command-palette').hidden ? openCommandPalette() : closeCommandPalette(); } else if (event.key === 'Escape') { if (!$('command-palette').hidden) { event.preventDefault(); closeCommandPalette(); } else if (!$('capture-panel').hidden) { event.preventDefault(); $('capture-panel').hidden = true; $('capture-toggle').setAttribute('aria-expanded', 'false'); $('capture-toggle').focus(); } } else if (event.key === '/' && !isEditingTarget(event.target)) { event.preventDefault(); showView('chat'); $('message-input').focus(); } });
     $('maintenance-refresh').onclick = loadMaintenance;
     $('home-refresh').onclick = loadHome;
+    $('compile-prompt').onclick = compilePrompt;
     $('config-filters')?.querySelectorAll('[data-kind]').forEach((button) => {
       button.onclick = () => {
         configKind = button.dataset.kind;
