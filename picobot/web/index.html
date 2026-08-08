@@ -2663,6 +2663,27 @@ railSurface(name); if (name === 'code') loadCode(); if (name === 'config') loadC
     $('message-input').oninput = (event) => { event.target.style.height = 'auto'; event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`; };
     async function previewOperationAction(id) { const panel = ensureWorkspacePreviewPanel(); panel.hidden = false; panel.textContent = 'Loading approved change preview…'; const response = await api(`/api/actions/${encodeURIComponent(id)}/preview?session_id=${encodeURIComponent(sessionId)}`); const data = await response.json().catch(() => ({})); if (!response.ok) { panel.textContent = data.error || 'Pico could not load that preview.'; return; } const preview = data.preview || {}; panel.textContent = preview.kind === 'command' ? `Command (${preview.working_dir}, timeout ${preview.timeout}s):\n${preview.command}` : `${preview.path}\n\n${preview.diff || '(No file content change.)'}`; }
     function ensureWorkspacePreviewPanel() { let panel = $('operation-preview'); if (panel) return panel; panel = document.createElement('pre'); panel.id = 'operation-preview'; panel.className = 'artifact-preview'; panel.hidden = true; panel.style.marginTop = '12px'; $('operation-actions').parentElement.appendChild(panel); return panel; }
+    async function captureSelectionAsDecision() {
+      const sel = window.getSelection();
+      const text = sel ? sel.toString().trim() : '';
+      if (!text) { toast('Select text in a reply first, then press Cmd+Shift+K.', true); return; }
+      try {
+        const response = await api('/api/memory/capture', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, decision: { value: text } })
+        });
+        if (!response.ok) { toast('Pico could not capture decision from selection.', true); return; }
+        toast('Decision captured from selection.');
+        if (typeof loadMemory === 'function') loadMemory();
+      } catch { toast('Could not connect to capture decision.', true); }
+    }
+    document.addEventListener('keydown', (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'K' || event.key === 'k')) {
+        event.preventDefault();
+        captureSelectionAsDecision();
+      }
+    });
     applyTheme(localStorage.getItem(THEME_KEY)); renderWelcome(); setConnected(false); loadStance(); connect();
     function togglePolicyPanel() { const panel = $('policy-panel'); panel.hidden = !panel.hidden; if (!panel.hidden) loadPolicy(); }
     function setPolicyFields(scope, values) { const prefix = scope === 'session' ? 'session-policy' : 'global-policy'; $(`${prefix}-provider`).value = values.provider || ''; $(`${prefix}-model`).value = values.model || ''; $(`${prefix}-effort`).value = values.reasoningEffort || ''; $(`${prefix}-mode`).value = values.responseMode || 'default'; }
